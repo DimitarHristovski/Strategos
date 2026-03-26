@@ -378,6 +378,20 @@ const ICON_MAP = {
   FaCrown: "👑"
 };
 
+const FORMATION_LEVEL_LABELS: Record<keyof typeof formations, string> = {
+  Phalanx: "Level 1",
+  Arch: "Level 2",
+  Testudo: "Level 3",
+  Circle: "Level 4",
+  Staggered: "Level 5",
+  Delta: "Level 6",
+  Tercio: "Level 7",
+  Pincer: "Level 8"
+};
+
+type GameMode = "single-player" | "multiplayer" | "custom-scenario";
+type TeamName = "Romans" | "Barbarians" | "Greeks";
+
 function CodeConq() {
   const [currentFormation, setCurrentFormation] = useState<keyof typeof formations>("Phalanx");
   const [units, setUnits] = useState(formations["Phalanx"]);
@@ -389,12 +403,14 @@ function CodeConq() {
   // Custom setup mode states
   const [isSetupMode, setIsSetupMode] = useState(false);
   const [customUnits, setCustomUnits] = useState<any[]>([]);
-  const [selectedTeam, setSelectedTeam] = useState<"Romans" | "Barbarians" | "Greeks">("Romans");
+  const [selectedTeam, setSelectedTeam] = useState<TeamName>("Romans");
   const [draggedTroop, setDraggedTroop] = useState<any>(null);
   const [gameStarted, setGameStarted] = useState(false);
   const [mergeMode, setMergeMode] = useState(false);
   const [mergeCount, setMergeCount] = useState(0);
   const [selectedForMerge, setSelectedForMerge] = useState<any>(null);
+  const [gameMode, setGameMode] = useState<GameMode | null>(null);
+  const [multiplayerTeams, setMultiplayerTeams] = useState<[TeamName, TeamName]>(["Romans", "Barbarians"]);
 
   // Update units when formation changes
   useEffect(() => {
@@ -423,6 +439,23 @@ function CodeConq() {
   
   const isInRange = (a: any, b: any, range: number) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) <= range;
   const selected = getUnitById(selectedId);
+  const activeTeam = gameMode === "multiplayer" ? turn : "Romans";
+  const setupTeams: TeamName[] = gameMode === "multiplayer" ? [multiplayerTeams[0], multiplayerTeams[1]] : ["Romans", "Barbarians", "Greeks"];
+  const isTeamAllowedInSetup = (team: TeamName) => setupTeams.includes(team);
+
+  const advanceTurn = () => {
+    if (gameMode === "multiplayer") {
+      if (turn === multiplayerTeams[0]) {
+        setTurn(multiplayerTeams[1]);
+      } else {
+        setTurn(multiplayerTeams[0]);
+        setRound((r) => r + 1);
+      }
+      return;
+    }
+
+    setTurn("Barbarians");
+  };
 
   // Safety check - don't render if units is not properly initialized
   if (!units || units.length === 0) {
@@ -454,11 +487,11 @@ function CodeConq() {
       return;
     }
     
-    if (turn !== "Romans" || !units) return;
+    if (turn !== activeTeam || !units) return;
     
     const clicked = getUnit(x, y);
 
-    if (clicked && clicked.team === "Romans") {
+    if (clicked && clicked.team === activeTeam) {
       if (mergeMode) {
         // In merge mode, select first troop for merging
         if (!selectedForMerge) {
@@ -523,7 +556,7 @@ function CodeConq() {
         setSelectedId(clicked.id);
       }
     } else if (selected) {
-      if (clicked && (clicked.team === "Barbarians" || clicked.team === "Greeks") && isInRange(selected, clicked, selected.range)) {
+      if (clicked && clicked.team !== selected.team && isInRange(selected, clicked, selected.range)) {
         // Check if target is alive
         if (clicked.hp <= 0) {
           setLog((prevLog) => [`${clicked.name} is already dead!`, ...prevLog]);
@@ -537,7 +570,7 @@ function CodeConq() {
         // If this is a ranged attack, reduce ammunition
         if (selected.ammo && selected.ammo > 0) {
           selected.ammo -= 1;
-          setLog((prevLog) => [`${selected.name} (Romans) attacked ${clicked.name} (${clicked.team}) for ${dmg} (${selected.ammo} shots remaining)`, ...prevLog]);
+          setLog((prevLog) => [`${selected.name} (${selected.team}) attacked ${clicked.name} (${clicked.team}) for ${dmg} (${selected.ammo} shots remaining)`, ...prevLog]);
           
           // If out of ammo, switch to melee
           if (selected.ammo === 0) {
@@ -545,7 +578,7 @@ function CodeConq() {
             setLog((prevLog) => [`${selected.name} is out of ammo! Switching to melee combat.`, ...prevLog]);
           }
         } else {
-          setLog((prevLog) => [`${selected.name} (Romans) attacked ${clicked.name} (${clicked.team}) for ${dmg}`, ...prevLog]);
+          setLog((prevLog) => [`${selected.name} (${selected.team}) attacked ${clicked.name} (${clicked.team}) for ${dmg}`, ...prevLog]);
         }
         
         // Check if target was killed
@@ -556,18 +589,19 @@ function CodeConq() {
         }
         
         setSelectedId(null);
-        setTurn("Barbarians");
+        advanceTurn();
       } else if (!clicked && isInRange(selected, { x, y }, selected.move)) {
         // Move to empty space
         setUnits((prev) => prev.map((u: any) => u.id === selected.id ? { ...u, x, y } : u));
         setSelectedId(null);
-        setTurn("Barbarians");
+        advanceTurn();
       }
     }
   };
 
   const handleSetupClick = (x: number, y: number) => {
     if (draggedTroop) {
+      if (!isTeamAllowedInSetup(selectedTeam)) return;
       // Check if position is valid (not occupied)
       if (!getUnit(x, y)) {
         // Check team limits
@@ -604,6 +638,7 @@ function CodeConq() {
   const handleDrop = (e: React.DragEvent, x: number, y: number) => {
     e.preventDefault();
     if (draggedTroop) {
+      if (!isTeamAllowedInSetup(selectedTeam)) return;
       // Check if position is valid (not occupied)
       if (!getUnit(x, y)) {
         // Check team limits
@@ -701,7 +736,87 @@ function CodeConq() {
   const resetCustomSetup = () => {
     setCustomUnits([]);
     setDraggedTroop(null);
+    setSelectedTeam(gameMode === "multiplayer" ? multiplayerTeams[0] : "Romans");
+  };
+
+  const startSinglePlayerMode = () => {
+    setGameMode("single-player");
+    setIsSetupMode(false);
+    setUnits(formations[currentFormation]);
+    setTurn("Romans");
+    setRound(1);
+    setSelectedId(null);
+    setLog([]);
+    setGameStarted(true);
+    setMergeCount(0);
+    setMergeMode(false);
+    setSelectedForMerge(null);
+  };
+
+  const startMultiplayerMode = () => {
+    setGameMode("multiplayer");
+    setIsSetupMode(true);
+    setUnits(formations[currentFormation]);
+    setCustomUnits([]);
+    setSelectedTeam(multiplayerTeams[0]);
+    setTurn(multiplayerTeams[0]);
+    setRound(1);
+    setSelectedId(null);
+    setLog(["Multiplayer setup: choose 2 teams, place troops, then start."]);
+    setGameStarted(false);
+    setMergeCount(0);
+    setMergeMode(false);
+    setSelectedForMerge(null);
+  };
+
+  const startMultiplayerGame = () => {
+    if (customUnits.length === 0) return;
+    const teamAUnits = customUnits.filter((u: any) => u.team === multiplayerTeams[0]).length;
+    const teamBUnits = customUnits.filter((u: any) => u.team === multiplayerTeams[1]).length;
+    if (teamAUnits === 0 || teamBUnits === 0) {
+      setLog((prev) => [`Both selected teams need at least 1 troop before starting.`, ...prev]);
+      return;
+    }
+
+    setIsSetupMode(false);
+    setUnits(customUnits);
+    setTurn(multiplayerTeams[0]);
+    setRound(1);
+    setGameStarted(true);
+    setMergeCount(0);
+  };
+
+  const startCustomScenarioMode = () => {
+    setGameMode("custom-scenario");
+    setIsSetupMode(true);
+    setTurn("Romans");
+    setRound(1);
+    setSelectedId(null);
+    setLog([]);
+    setGameStarted(false);
+    setMergeCount(0);
+    setMergeMode(false);
+    setSelectedForMerge(null);
+    resetCustomSetup();
+  };
+
+  const backToMainMenu = () => {
+    setGameMode(null);
+    setIsSetupMode(false);
+    setCurrentFormation("Phalanx");
+    setUnits(formations["Phalanx"]);
+    setCustomUnits([]);
+    setDraggedTroop(null);
     setSelectedTeam("Romans");
+    setSelectedId(null);
+    setTurn("Romans");
+    setRound(1);
+    setLog([]);
+    setGameStarted(false);
+    setMergeMode(false);
+    setMergeCount(0);
+    setSelectedForMerge(null);
+    setMultiplayerTeams(["Romans", "Barbarians"]);
   };
 
   const getTeamCount = (team: string) => {
@@ -717,7 +832,7 @@ function CodeConq() {
 
   // Automatic movement for AI teams (Barbarians and Greeks) - one unit at a time
   useEffect(() => {
-    if (isSetupMode || (turn !== "Barbarians" && turn !== "Greeks") || !units) return;
+    if (isSetupMode || gameMode === "multiplayer" || (turn !== "Barbarians" && turn !== "Greeks") || !units) return;
     
     const timeout = setTimeout(() => {
       const currentTeam = turn;
@@ -830,11 +945,22 @@ function CodeConq() {
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [turn, units, isSetupMode]);
+  }, [turn, units, isSetupMode, gameMode]);
 
   const checkEnd = () => {
     const currentUnits = isSetupMode ? customUnits : units;
     if (!currentUnits || currentUnits.length === 0) return null;
+
+    if (gameMode === "multiplayer") {
+      const teamA = multiplayerTeams[0];
+      const teamB = multiplayerTeams[1];
+      const teamALeft = currentUnits.some((u: any) => u.team === teamA);
+      const teamBLeft = currentUnits.some((u: any) => u.team === teamB);
+      if (!teamALeft && !teamBLeft) return "Game Over - Both teams eliminated!";
+      if (!teamALeft) return `Victory - ${teamB} Win!`;
+      if (!teamBLeft) return `Victory - ${teamA} Win!`;
+      return null;
+    }
     
     const romansLeft = currentUnits.some((u: any) => u.team === "Romans");
     const barbariansLeft = currentUnits.some((u: any) => u.team === "Barbarians");
@@ -854,6 +980,38 @@ function CodeConq() {
     return null;
   };
 
+  if (!gameMode) {
+    return (
+      <div className="flex flex-col items-center justify-center p-6 space-y-6 bg-gradient-to-br from-green-800 via-green-700 to-green-900 min-h-screen">
+        <div className="game-ui p-8 text-center max-w-2xl w-full">
+          <h1 className="text-5xl font-bold text-yellow-200 mb-4 drop-shadow-lg">Battlecry</h1>
+          <p className="text-yellow-100 text-lg mb-8">Choose your mode to enter the battlefield</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <button
+              onClick={startSinglePlayerMode}
+              className="battle-button px-6 py-4 text-lg font-semibold bg-blue-600 hover:bg-blue-700"
+            >
+              Single Player
+            </button>
+            <button
+              onClick={startMultiplayerMode}
+              className="battle-button px-6 py-4 text-lg font-semibold bg-red-600 hover:bg-red-700"
+            >
+              Multiplayer
+            </button>
+            <button
+              onClick={startCustomScenarioMode}
+              className="battle-button px-6 py-4 text-lg font-semibold bg-purple-600 hover:bg-purple-700"
+            >
+              Custom Scenario
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 space-y-6 bg-gradient-to-br from-green-800 via-green-700 to-green-900 min-h-screen">
       {/* Game Header */}
@@ -866,10 +1024,16 @@ function CodeConq() {
           <path d="M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z"/>
         </svg>
         
-        <h1 className="text-4xl font-bold text-yellow-200 mb-2 drop-shadow-lg">Romans vs Barbarians</h1>
-        <p className="text-yellow-100 text-lg">Player vs AI Battle</p>
+        <h1 className="text-4xl font-bold text-yellow-200 mb-2 drop-shadow-lg">Battlecry</h1>
+        <p className="text-yellow-100 text-lg">
+          {gameMode === "multiplayer" ? "Local Multiplayer Battle" : "Player vs AI Battle"}
+        </p>
         <p className="text-green-200 text-sm mt-2">
-          {isSetupMode ? "Custom Setup Mode - Drag troops to place them on the field" : "You control the Romans! Click to select and move/attack Barbarians OR Greeks. All teams fight each other in a three-way battle."}
+          {isSetupMode
+            ? "Custom Setup Mode - Drag troops to place them on the field"
+            : gameMode === "multiplayer"
+              ? "Pass-and-play mode: Romans and Barbarians take turns on the same device. No AI."
+              : "You control the Romans! Click to select and move/attack Barbarians OR Greeks. All teams fight each other in a three-way battle."}
         </p>
         
         {/* Decorative swords */}
@@ -888,19 +1052,17 @@ function CodeConq() {
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
         </svg>
         
-        {!isSetupMode && (
-          <button
-            onClick={() => setIsSetupMode(true)}
-            className="battle-button px-6 py-3 text-lg font-semibold bg-purple-600 hover:bg-purple-700 relative"
-          >
-            <svg className="absolute -left-2 -top-2 w-6 h-6 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-            </svg>
-            🎯 Custom Setup Mode
-          </button>
-        )}
-        
-        {isSetupMode && (
+        <button
+          onClick={backToMainMenu}
+          className="battle-button px-6 py-3 text-lg font-semibold bg-gray-700 hover:bg-gray-800 relative"
+        >
+          <svg className="absolute -left-2 -top-2 w-6 h-6 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+          ↩️ Back to Menu
+        </button>
+
+        {gameMode === "custom-scenario" && isSetupMode && (
           <>
             <button
               onClick={startCustomGame}
@@ -930,15 +1092,40 @@ function CodeConq() {
               <svg className="absolute -left-2 -top-2 w-6 h-6 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
               </svg>
-              ↩️ Back to Formations
+              ↩️ Back to Scenario
+            </button>
+          </>
+        )}
+
+        {gameMode === "multiplayer" && isSetupMode && (
+          <>
+            <button
+              onClick={startMultiplayerGame}
+              disabled={customUnits.length === 0}
+              className="battle-button px-6 py-3 text-lg font-semibold bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed relative"
+            >
+              <svg className="absolute -left-2 -top-2 w-6 h-6 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+              🚀 Start Multiplayer Game
+            </button>
+            
+            <button
+              onClick={resetCustomSetup}
+              className="battle-button px-6 py-3 text-lg font-semibold bg-red-600 hover:bg-red-700 relative"
+            >
+              <svg className="absolute -left-2 -top-2 w-6 h-6 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+              🔄 Reset Setup
             </button>
           </>
         )}
         
-        {!isSetupMode && turn === "Romans" && gameStarted && (
+        {!isSetupMode && ((gameMode === "multiplayer" && gameStarted) || (gameMode !== "multiplayer" && turn === "Romans" && gameStarted)) && (
           <>
             <button
-              onClick={() => setTurn("Barbarians")}
+              onClick={advanceTurn}
               className="battle-button px-6 py-3 text-lg font-semibold bg-yellow-600 hover:bg-yellow-700 relative"
             >
               <svg className="absolute -left-2 -top-2 w-6 h-6 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
@@ -988,15 +1175,19 @@ function CodeConq() {
         
         <div className="text-yellow-200 font-semibold">
           <span className="block">
-            {isSetupMode ? "Custom Setup" : `Formation: ${currentFormation}`}
+            {gameMode === "custom-scenario"
+              ? (isSetupMode ? "Custom Setup" : "Mode: Custom Scenario")
+              : gameMode === "multiplayer"
+                ? `Mode: Multiplayer (${multiplayerTeams[0]} vs ${multiplayerTeams[1]})`
+                : `Level: ${FORMATION_LEVEL_LABELS[currentFormation]}`}
           </span>
           {!isSetupMode && <span className="block">Round: {round}</span>}
           
           {/* Formation Selector */}
-          {!isSetupMode && (
+          {!isSetupMode && gameMode !== "custom-scenario" && (
             <div className="mt-3">
               <label htmlFor="formation-select" className="block text-sm text-yellow-100 mb-1">
-                Switch Formation:
+                Switch Level:
               </label>
               <select
                 id="formation-select"
@@ -1004,14 +1195,14 @@ function CodeConq() {
                 onChange={(e) => setCurrentFormation(e.target.value as keyof typeof formations)}
                 className="bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-3 py-1 text-sm focus:outline-none focus:border-yellow-400"
               >
-                <option value="Phalanx">Phalanx (16v16)</option>
-                <option value="Arch">Arch (8v8)</option>
-                <option value="Testudo">Testudo (8v8)</option>
-                <option value="Circle">Circle (8v8)</option>
-                <option value="Staggered">Staggered (10v10)</option>
-                <option value="Delta">Delta (8v8)</option>
-                <option value="Tercio">Tercio (8v8)</option>
-                <option value="Pincer">Pincer (8v8)</option>
+                <option value="Phalanx">Level 1 (16v16)</option>
+                <option value="Arch">Level 2 (8v8)</option>
+                <option value="Testudo">Level 3 (8v8)</option>
+                <option value="Circle">Level 4 (8v8)</option>
+                <option value="Staggered">Level 5 (10v10)</option>
+                <option value="Delta">Level 6 (8v8)</option>
+                <option value="Tercio">Level 7 (8v8)</option>
+                <option value="Pincer">Level 8 (8v8)</option>
               </select>
             </div>
           )}
@@ -1031,40 +1222,61 @@ function CodeConq() {
             <path d="M6.92 5H5.14c-.47 0-.92.21-1.18.56L3.04 7H2v1h1.04l.92 1.44c.26.35.71.56 1.18.56h1.78c.47 0 .92-.21 1.18-.56L9.96 7H11V6H9.96L8.1 4.56C7.84 4.21 7.39 4 6.92 4z"/>
           </svg>
           
+          {gameMode === "multiplayer" && (
+            <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-yellow-200 text-sm mb-1">Player 1 Team</label>
+                <select
+                  value={multiplayerTeams[0]}
+                  onChange={(e) => {
+                    const next = e.target.value as TeamName;
+                    if (next === multiplayerTeams[1]) return;
+                    setMultiplayerTeams([next, multiplayerTeams[1]]);
+                    setCustomUnits((prev) => prev.filter((u: any) => u.team === next || u.team === multiplayerTeams[1]));
+                    if (selectedTeam !== next && selectedTeam !== multiplayerTeams[1]) setSelectedTeam(next);
+                  }}
+                  className="w-full bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"
+                >
+                  <option value="Romans">Romans</option>
+                  <option value="Barbarians">Barbarians</option>
+                  <option value="Greeks">Greeks</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-yellow-200 text-sm mb-1">Player 2 Team</label>
+                <select
+                  value={multiplayerTeams[1]}
+                  onChange={(e) => {
+                    const next = e.target.value as TeamName;
+                    if (next === multiplayerTeams[0]) return;
+                    setMultiplayerTeams([multiplayerTeams[0], next]);
+                    setCustomUnits((prev) => prev.filter((u: any) => u.team === multiplayerTeams[0] || u.team === next));
+                    if (selectedTeam !== next && selectedTeam !== multiplayerTeams[0]) setSelectedTeam(multiplayerTeams[0]);
+                  }}
+                  className="w-full bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"
+                >
+                  <option value="Romans">Romans</option>
+                  <option value="Barbarians">Barbarians</option>
+                  <option value="Greeks">Greeks</option>
+                </select>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-4 items-center justify-center mb-4">
-            <div className="text-center">
-              <button
-                onClick={() => setSelectedTeam("Romans")}
-                className={`px-4 py-2 rounded font-semibold ${selectedTeam === "Romans" ? "bg-blue-600 text-white" : "bg-gray-600 text-gray-300"} relative`}
-              >
-                <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-                Romans ({getTeamCount("Romans")}/16)
-              </button>
-            </div>
-            <div className="text-center">
-              <button
-                onClick={() => setSelectedTeam("Barbarians")}
-                className={`px-4 py-2 rounded font-semibold ${selectedTeam === "Barbarians" ? "bg-red-600 text-white" : "bg-gray-600 text-gray-300"} relative`}
-              >
-                <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-                Barbarians ({getTeamCount("Barbarians")}/16)
-              </button>
-            </div>
-            <div className="text-center">
-              <button
-                onClick={() => setSelectedTeam("Greeks")}
-                className={`px-4 py-2 rounded font-semibold ${selectedTeam === "Greeks" ? "bg-green-600 text-white" : "bg-gray-600 text-gray-300"} relative`}
-              >
-                <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-                Greeks ({getTeamCount("Greeks")}/16)
-              </button>
-            </div>
+            {setupTeams.map((team) => (
+              <div key={team} className="text-center">
+                <button
+                  onClick={() => setSelectedTeam(team)}
+                  className={`px-4 py-2 rounded font-semibold ${selectedTeam === team ? "bg-blue-600 text-white" : "bg-gray-600 text-gray-300"} relative`}
+                >
+                  <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                  </svg>
+                  {team} ({getTeamCount(team)}/16)
+                </button>
+              </div>
+            ))}
           </div>
           
           <div className="text-center text-yellow-200 text-sm">
@@ -1092,9 +1304,11 @@ function CodeConq() {
             {checkEnd() || `${turn.toUpperCase()} TURN`}
           </div>
           <div className="text-sm text-yellow-100 mt-1">
-            {turn === "Romans" ? "Your turn - Click to select and move/attack" : 
-             turn === "Barbarians" ? "Barbarians are thinking..." : 
-             turn === "Greeks" ? "Greeks are thinking..." : ""}
+            {gameMode === "multiplayer"
+              ? `${turn} player's turn`
+              : turn === "Romans" ? "Your turn - Click to select and move/attack"
+                : turn === "Barbarians" ? "Barbarians are thinking..."
+                  : turn === "Greeks" ? "Greeks are thinking..." : ""}
           </div>
           
           {/* Decorative sword */}
@@ -1274,9 +1488,9 @@ function CodeConq() {
               <div className="mt-4 p-3 bg-gray-800 rounded border border-gray-600">
                 <div className="text-yellow-200 font-semibold mb-2">Team Counts:</div>
                 <div className="text-sm text-gray-300">
-                  <div>Romans: {getTeamCount("Romans")}/16</div>
-                  <div>Barbarians: {getTeamCount("Barbarians")}/16</div>
-                  <div>Greeks: {getTeamCount("Greeks")}/16</div>
+                  {setupTeams.map((team) => (
+                    <div key={team}>{team}: {getTeamCount(team)}/16</div>
+                  ))}
                 </div>
               </div>
             </>
