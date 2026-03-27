@@ -11,7 +11,7 @@ import {
   import { FaCrown } from "react-icons/fa";
   
 //
-const ensureRangedAmmo = (stats: {
+const ensureRangedAmmo = (role: string, stats: {
   hp: number;
   maxHp: number;
   attack: number;
@@ -19,6 +19,32 @@ const ensureRangedAmmo = (stats: {
   range: number;
   move: number;
 }) => {
+  const normalizedRole = role.toLowerCase();
+  const projectileKeywords = [
+    "archer",
+    "slinger",
+    "crossbow",
+    "velites",
+    "shaman",
+    "skirmisher",
+    "peltast",
+    "psiloi",
+    "turcopole",
+    "thureophoroi",
+    "ballista",
+    "scorpion",
+    "catapult",
+    "trebuchet",
+    "polybolos",
+    "onager",
+    "bombard"
+  ];
+  const isProjectileUnit = projectileKeywords.some((keyword) => normalizedRole.includes(keyword));
+
+  if (!isProjectileUnit) {
+    return { ...stats, ammo: 0, range: 1 };
+  }
+
   if (stats.range > 1 && stats.ammo <= 0) {
     return { ...stats, ammo: Math.max(6, Math.min(16, stats.range * 4)) };
   }
@@ -277,7 +303,7 @@ case "Phalangite": // sarissa phalanx
   maxHp = hp;
   attack = Math.floor(Math.random() * (170 - 130) + 130);
   ammo = 0;
-  range = 2;       // long reach of sarissa
+  range = 1;
   move = 1;        // slow formation
   break;
 
@@ -659,7 +685,7 @@ case "Trebuchet":
       move = 1;
   }
 
-  return ensureRangedAmmo({ hp, maxHp, attack, ammo, range, move });
+  return ensureRangedAmmo(role, { hp, maxHp, attack, ammo, range, move });
 }; 
 
 const createUnit = (
