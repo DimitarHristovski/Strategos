@@ -1665,9 +1665,32 @@ const ensureRangedAmmo = (unit: any) => {
     return normalizedUnit;
   }
 
-  if ((normalizedUnit.range ?? 1) > 1 && (normalizedUnit.ammo ?? 0) <= 0) {
-    normalizedUnit.ammo = Math.max(6, Math.min(16, normalizedUnit.range * 4));
+  const isSiegeUnit = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "onager", "bombard"].some((keyword) =>
+    normalizedRole.includes(keyword)
+  );
+  const isLongbowUnit = normalizedRole.includes("longbow");
+  const isCrossbowUnit = normalizedRole.includes("crossbow");
+  const isSlingerUnit = normalizedRole.includes("slinger");
+
+  let minimumRange = 4;
+  let minimumAmmo = 12;
+
+  if (isSiegeUnit) {
+    minimumRange = 6;
+    minimumAmmo = 8;
+  } else if (isLongbowUnit) {
+    minimumRange = 6;
+    minimumAmmo = 14;
+  } else if (isCrossbowUnit) {
+    minimumRange = 5;
+    minimumAmmo = 12;
+  } else if (isSlingerUnit) {
+    minimumRange = 5;
+    minimumAmmo = 14;
   }
+
+  normalizedUnit.range = Math.max(minimumRange, normalizedUnit.range ?? 1);
+  normalizedUnit.ammo = Math.max(minimumAmmo, normalizedUnit.ammo ?? 0);
 
   return normalizedUnit;
 };
@@ -3173,6 +3196,79 @@ function CodeConq() {
     return customUnits.filter(u => u.team === team).length;
   };
 
+  const getAutoDeployUnitCount = (size: BattlefieldSize) => {
+    if (size <= 8) return 12;
+    if (size <= 10) return 14;
+    if (size <= 14) return 16;
+    return 18;
+  };
+
+  const getCompactDeploymentSlots = (
+    count: number,
+    size: BattlefieldSize,
+    side: "top" | "bottom"
+  ) => {
+    const columns = Math.min(6, Math.max(2, Math.ceil(Math.sqrt(count))));
+    const rows = Math.ceil(count / columns);
+    const startX = Math.max(0, Math.floor((size - columns) / 5));
+    const startY = side === "top" ? 0 : Math.max(0, size - rows - 0);
+
+    return Array.from({ length: count }, (_, index) => {
+      const row = Math.floor(index / columns);
+      const column = index % columns;
+      return {
+        x: startX + column,
+        y: startY + row
+      };
+    });
+  };
+
+  const getCustomAutoDeployOpponent = () =>
+    selectedTeam !== playerTeam
+      ? selectedTeam
+      : ALL_TEAMS.find((team) => team !== playerTeam) ?? "Barbarians";
+
+  const createAutoDeployedArmy = (
+    team: TeamName,
+    side: "top" | "bottom",
+    size: BattlefieldSize
+  ) => {
+    const availableTroops = AVAILABLE_TROOPS[team];
+    const unitCount = Math.min(getAutoDeployUnitCount(size), availableTroops.length, 16);
+    const chosenTroops = availableTroops.slice(0, unitCount);
+    const slots = getCompactDeploymentSlots(chosenTroops.length, size, side);
+
+    return chosenTroops.map((troop, index) => {
+      const stats = generateCustomTroopStats(troop.role);
+      const slot = slots[index];
+
+      return applyCivilizationPassive({
+        ...troop,
+        ...stats,
+        id: `${team}_${troop.role}_${side}_${index}_${Date.now()}`,
+        team,
+        x: slot.x,
+        y: slot.y,
+        Icon: troop.Icon
+      });
+    });
+  };
+
+  const autoDeployCustomBattle = () => {
+    const enemyTeam = getCustomAutoDeployOpponent();
+    const deployedPlayerArmy = createAutoDeployedArmy(playerTeam, "bottom", battlefieldSize);
+    const deployedEnemyArmy = createAutoDeployedArmy(enemyTeam, "top", battlefieldSize);
+
+    setCustomUnits([...deployedEnemyArmy, ...deployedPlayerArmy]);
+    setSelectedTeam(playerTeam);
+    setDraggedTroop(null);
+    setSelectedId(null);
+    setLog((prev) => [
+      `Auto deployed ${playerTeam} versus ${enemyTeam} in tight formations on opposite sides.`,
+      ...prev
+    ]);
+  };
+
   // Check if two troops are adjacent
   const areAdjacent = (troop1: any, troop2: any) => {
     const dx = Math.abs(troop1.x - troop2.x);
@@ -4005,6 +4101,16 @@ function CodeConq() {
 
             {gameMode === "custom-scenario" && isSetupMode && (
               <>
+                <button
+                  onClick={autoDeployCustomBattle}
+                  className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-blue-600 hover:bg-blue-700 relative"
+                >
+                  <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                  </svg>
+                  Auto Deploy
+                </button>
+
                 <button
                   onClick={startCustomGame}
                   disabled={customUnits.length === 0}

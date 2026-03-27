@@ -45,11 +45,35 @@ const ensureRangedAmmo = (role: string, stats: {
     return { ...stats, ammo: 0, range: 1 };
   }
 
-  if (stats.range > 1 && stats.ammo <= 0) {
-    return { ...stats, ammo: Math.max(6, Math.min(16, stats.range * 4)) };
+  const isSiegeUnit = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "onager", "bombard"].some((keyword) =>
+    normalizedRole.includes(keyword)
+  );
+  const isLongbowUnit = normalizedRole.includes("longbow");
+  const isCrossbowUnit = normalizedRole.includes("crossbow");
+  const isSlingerUnit = normalizedRole.includes("slinger");
+
+  let minimumRange = 4;
+  let minimumAmmo = 12;
+
+  if (isSiegeUnit) {
+    minimumRange = 6;
+    minimumAmmo = 8;
+  } else if (isLongbowUnit) {
+    minimumRange = 6;
+    minimumAmmo = 14;
+  } else if (isCrossbowUnit) {
+    minimumRange = 5;
+    minimumAmmo = 12;
+  } else if (isSlingerUnit) {
+    minimumRange = 5;
+    minimumAmmo = 14;
   }
 
-  return stats;
+  return {
+    ...stats,
+    ammo: Math.max(minimumAmmo, stats.ammo),
+    range: Math.max(minimumRange, stats.range)
+  };
 };
 
 const getIconComponent = (IconComponent: React.ElementType) => () => <IconComponent />;
