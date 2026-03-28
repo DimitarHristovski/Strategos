@@ -16,6 +16,7 @@
     background-color: #4a7c59;
     border: 3px solid #8b4513;
     position: relative;
+    isolation: isolate;
     box-shadow: 
         inset 0 0 20px rgba(0,0,0,0.3),
         0 8px 16px rgba(0,0,0,0.4);
@@ -66,8 +67,14 @@
 .terrain-cell {
     border: 1px solid rgba(61, 77, 31, 0.75);
     position: relative;
-    overflow: hidden;
+    /* visible so shared layout moves aren’t clipped mid-flight (was popping tile-to-tile) */
+    overflow: visible;
+    z-index: 1;
     box-shadow: inset 0 1px 2px rgba(255,255,255,0.08);
+}
+
+.terrain-cell--has-unit {
+    z-index: 6;
 }
 
 /* Unit styling with realistic shadows */
@@ -159,63 +166,487 @@
 }
 
 .battle-feedback-hit {
-    animation: battleHitFlash 0.36s ease-out;
+    animation: battleHitFlash 0.72s cubic-bezier(0.34, 1.3, 0.64, 1);
     box-shadow:
         inset 0 0 0 2px rgba(251, 146, 60, 0.95),
-        0 0 16px rgba(249, 115, 22, 0.55);
+        0 0 20px rgba(249, 115, 22, 0.6),
+        0 0 40px rgba(234, 88, 12, 0.2);
+}
+
+/* Close-combat strike sequence (pairs with 3000ms cell feedback) */
+.battle-feedback-melee-hit {
+    animation: battleMeleeFight 3s cubic-bezier(0.34, 1.15, 0.55, 1) forwards;
+    box-shadow:
+        inset 0 0 0 2px rgba(251, 146, 60, 0.95),
+        0 0 20px rgba(249, 115, 22, 0.6),
+        0 0 40px rgba(234, 88, 12, 0.2);
+    isolation: isolate;
+}
+
+/* Crossed blades + sparks above the unit (pseudo-elements sit above tile chrome) */
+.battle-feedback-melee-hit::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 46%;
+    z-index: 55;
+    width: 3px;
+    height: 34px;
+    border-radius: 1px;
+    transform: translate(-50%, -50%) rotate(-52deg);
+    transform-origin: 50% 92%;
+    pointer-events: none;
+    background: linear-gradient(
+        165deg,
+        #f1f5f9 0%,
+        #cbd5e1 28%,
+        #64748b 72%,
+        #334155 100%
+    );
+    box-shadow:
+        inset 1px 0 0 rgba(255, 255, 255, 0.35),
+        -1px 0 2px rgba(15, 23, 42, 0.35);
+    animation: meleeSwordBladeA 3s cubic-bezier(0.42, 0, 0.58, 1) forwards;
+}
+
+.battle-feedback-melee-hit::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 46%;
+    z-index: 56;
+    width: 3px;
+    height: 34px;
+    border-radius: 1px;
+    transform: translate(-50%, -50%) rotate(52deg);
+    transform-origin: 50% 92%;
+    pointer-events: none;
+    background: linear-gradient(
+        195deg,
+        #e7e5e4 0%,
+        #a8a29e 32%,
+        #57534e 70%,
+        #292524 100%
+    );
+    box-shadow:
+        inset -1px 0 0 rgba(255, 255, 255, 0.22),
+        1px 0 2px rgba(15, 23, 42, 0.4);
+    animation: meleeSwordBladeB 3s cubic-bezier(0.42, 0, 0.58, 1) forwards;
 }
 
 .battle-feedback-death {
-    animation: battleDeathFlash 0.72s ease-out;
+    animation: battleDeathFlash 0.85s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow:
         inset 0 0 0 3px rgba(248, 113, 113, 0.98),
-        0 0 22px rgba(185, 28, 28, 0.6);
+        0 0 28px rgba(185, 28, 28, 0.65);
 }
 
 .battle-feedback-charge {
-    animation: battleChargeSurge 0.52s ease-out;
+    animation: battleChargeSurge 3s cubic-bezier(0.25, 0.9, 0.35, 1.15) forwards;
     box-shadow:
-        inset 0 0 0 2px rgba(251, 191, 36, 0.9),
-        0 0 18px rgba(245, 158, 11, 0.52);
+        inset 0 0 0 2px rgba(251, 191, 36, 0.95),
+        0 0 22px rgba(245, 158, 11, 0.58),
+        0 0 36px rgba(234, 88, 12, 0.25);
 }
 
 .battle-feedback-morale {
-    animation: battleMoraleShake 0.9s ease-in-out;
+    animation: battleMoraleShake 1.5s cubic-bezier(0.36, 0.07, 0.19, 0.97);
     filter: saturate(0.72) contrast(1.05);
     box-shadow:
-        inset 0 0 0 2px rgba(168, 85, 247, 0.72),
-        0 0 18px rgba(107, 33, 168, 0.36);
+        inset 0 0 0 2px rgba(168, 85, 247, 0.78),
+        0 0 22px rgba(107, 33, 168, 0.42);
 }
 
 .battle-feedback-ranged {
-    animation: battleRangedPulse 0.26s ease-out;
+    animation: battleRangedPulse 2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.battle-projectile-trace {
+.battle-feedback-move {
+    animation: battleMoveDust 2s cubic-bezier(0.33, 1, 0.68, 1) forwards;
+    box-shadow:
+        inset 0 0 0 2px rgba(52, 211, 153, 0.45),
+        0 0 20px rgba(16, 185, 129, 0.35);
+}
+
+/* Siege rocks: dust / powder fog on the target tile when the volley lands (timed with projectile travel). */
+.battle-feedback-siege-fog {
+    position: relative;
+}
+
+.battle-feedback-siege-fog::after {
+    content: "";
     position: absolute;
-    height: 4px;
-    border-radius: 9999px;
+    inset: -6px;
+    z-index: 35;
+    pointer-events: none;
+    border-radius: 6px;
+    background:
+        radial-gradient(ellipse 130% 90% at 50% 58%, rgba(241, 245, 249, 0.55) 0%, rgba(148, 163, 184, 0.42) 38%, rgba(71, 85, 105, 0.28) 58%, transparent 76%),
+        radial-gradient(ellipse 80% 55% at 28% 42%, rgba(255, 255, 255, 0.4) 0%, transparent 52%),
+        radial-gradient(ellipse 75% 50% at 72% 48%, rgba(203, 213, 225, 0.38) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(100, 116, 139, 0.2) 0%, transparent 65%);
+    mix-blend-mode: screen;
+    animation: siegeImpactFog 3.2s ease-out forwards;
+    opacity: 0;
+}
+
+@keyframes siegeImpactFog {
+    0% {
+        opacity: 0;
+        transform: scale(0.82);
+        filter: blur(5px);
+    }
+    12% {
+        opacity: 0.92;
+        filter: blur(2px);
+    }
+    45% {
+        opacity: 0.88;
+        filter: blur(1px);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.12);
+        filter: blur(8px);
+    }
+}
+
+/* Smoother shared-layout moves between grid cells (pairs with Framer layout tween). */
+.battle-unit-layout-root {
+    position: relative;
+    z-index: 30;
+    backface-visibility: hidden;
+}
+
+/* Outer: position + rotation. Inner: CSS “props” (arrows / rocks / charge embers) flying along the arc. */
+.battle-projectile-wrap {
+    position: absolute;
     pointer-events: none;
     z-index: 20;
     transform-origin: left center;
-    animation: battleProjectileTrail 0.42s ease-out forwards;
 }
 
-.battle-projectile-arrow {
-    background: linear-gradient(90deg, rgba(103, 232, 249, 0.95), rgba(224, 242, 254, 0.18));
-    box-shadow: 0 0 10px rgba(34, 211, 238, 0.45);
+.battle-projectile-volley {
+    position: relative;
+    width: 100%;
+    height: 22px;
+    overflow: visible;
 }
 
-.battle-projectile-siege {
+.battle-projectile-volley--arrow {
+    height: 24px;
+}
+
+.battle-projectile-volley--siege {
+    height: 32px;
+}
+
+.battle-projectile-volley--charge {
+    height: 26px;
+}
+
+/* —— Arrow volley (wood + steel tip + fletching) —— */
+.battle-arrow-salvo {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    /* transform driven by battleArrowSalvoPath so the cluster can finish at the target (right edge of track) */
+    animation: battleArrowSalvoPath 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.55));
+}
+
+/* Many smaller shafts in one volley — grid cluster (not a single file) */
+.battle-arrow-salvo--compact {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    grid-auto-rows: auto;
+    gap: 2px 4px;
+    align-items: center;
+    justify-items: center;
+    filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.45));
+}
+
+.battle-arrow-unit {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.battle-arrow-salvo--compact .battle-arrow-unit {
+    transform: scale(0.68);
+}
+
+.battle-arrow-unit--dim {
+    opacity: 0.72;
+    transform: scale(0.92);
+}
+
+.battle-arrow-unit--dim2 {
+    opacity: 0.52;
+    transform: scale(0.84);
+}
+
+.battle-arrow-unit--dim3 {
+    opacity: 0.38;
+    transform: scale(0.76);
+}
+
+.battle-arrow-salvo--compact .battle-arrow-unit--dim {
+    opacity: 0.68;
+    transform: scale(0.62);
+}
+
+.battle-arrow-salvo--compact .battle-arrow-unit--dim2 {
+    opacity: 0.5;
+    transform: scale(0.56);
+}
+
+.battle-arrow-salvo--compact .battle-arrow-unit--dim3 {
+    opacity: 0.36;
+    transform: scale(0.51);
+}
+
+.battle-arrow-feather {
+    width: 5px;
+    height: 11px;
+    margin-right: 1px;
+    border-radius: 1px;
+    background: repeating-linear-gradient(
+        180deg,
+        #92400e 0px,
+        #92400e 2px,
+        #451a03 2px,
+        #451a03 4px
+    );
+    box-shadow: inset 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.battle-arrow-stick {
+    width: 16px;
+    height: 3px;
+    border-radius: 1px;
+    background: linear-gradient(180deg, #78716c, #a8a29e 45%, #57534e);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.battle-arrow-tip {
+    width: 0;
+    height: 0;
+    margin-left: -1px;
+    border-style: solid;
+    border-width: 5px 0 5px 9px;
+    border-color: transparent transparent transparent #e2e8f0;
+    filter: drop-shadow(0 0 3px rgba(148, 163, 184, 0.75));
+}
+
+.battle-arrow-salvo--compact .battle-arrow-feather {
+    width: 3px;
+    height: 7px;
+    margin-right: 0;
+    background: repeating-linear-gradient(
+        180deg,
+        #92400e 0px,
+        #92400e 1px,
+        #451a03 1px,
+        #451a03 2px
+    );
+}
+
+.battle-arrow-salvo--compact .battle-arrow-stick {
+    width: 10px;
+    height: 2px;
+}
+
+.battle-arrow-salvo--compact .battle-arrow-tip {
+    margin-left: -1px;
+    border-width: 3px 0 3px 6px;
+    filter: drop-shadow(0 0 2px rgba(148, 163, 184, 0.65));
+}
+
+/* —— Siege: tumbling rocks —— */
+.battle-rock-salvo {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    grid-auto-rows: auto;
+    gap: 5px 6px;
+    align-items: center;
+    justify-items: center;
+    animation: battleRockSalvoPath 2s cubic-bezier(0.2, 0.85, 0.28, 1) forwards;
+}
+
+.battle-rock {
+    flex-shrink: 0;
+    background: radial-gradient(ellipse at 30% 25%, #d1d5db 0%, #6b7280 42%, #374151 78%, #111827 100%);
+    box-shadow:
+        inset 2px -3px 4px rgba(0, 0, 0, 0.45),
+        inset -1px 1px 2px rgba(255, 255, 255, 0.12),
+        1px 2px 3px rgba(0, 0, 0, 0.4);
+}
+
+.battle-rock--1 {
+    width: 9px;
+    height: 8px;
+    border-radius: 42% 58% 48% 52%;
+    animation: battleRockTumble 2s ease-out forwards;
+}
+
+.battle-rock--2 {
+    width: 12px;
+    height: 10px;
+    border-radius: 55% 45% 52% 48%;
+    animation: battleRockTumble 2s ease-out 0.14s forwards;
+}
+
+.battle-rock--3 {
+    width: 10px;
+    height: 9px;
+    border-radius: 48% 52% 45% 55%;
+    animation: battleRockTumble 2s ease-out 0.28s forwards;
+}
+
+.battle-rock--4 {
+    width: 11px;
+    height: 11px;
+    border-radius: 50% 50% 48% 52%;
+    animation: battleRockTumble 2s ease-out 0.07s forwards;
+}
+
+.battle-rock--5 {
+    width: 8px;
+    height: 7px;
+    border-radius: 52% 48% 55% 45%;
+    animation: battleRockTumble 2s ease-out 0.2s forwards;
+}
+
+/* —— Charge: sparks / dust (not a laser beam) —— */
+.battle-charge-salvo {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    grid-auto-rows: auto;
+    gap: 4px 5px;
+    align-items: center;
+    justify-items: center;
+    animation: battleChargeSalvoPath 3s cubic-bezier(0.25, 1, 0.45, 1) forwards;
+}
+
+.battle-charge-ember {
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fef3c7 0%, #f59e0b 45%, #b45309 88%);
+    box-shadow:
+        0 0 8px rgba(251, 191, 36, 0.75),
+        0 0 14px rgba(234, 88, 12, 0.35);
+}
+
+.battle-charge-ember--1 {
+    width: 10px;
+    height: 10px;
+    animation: battleChargeSpark 3s ease-out forwards;
+}
+
+.battle-charge-ember--2 {
+    width: 7px;
+    height: 7px;
+    animation: battleChargeSpark 3s ease-out 0.33s forwards;
+}
+
+.battle-charge-ember--3 {
+    width: 9px;
+    height: 8px;
+    animation: battleChargeSpark 3s ease-out 0.63s forwards;
+}
+
+.battle-charge-ember--4 {
+    width: 6px;
     height: 6px;
-    background: linear-gradient(90deg, rgba(248, 250, 252, 0.95), rgba(148, 163, 184, 0.2));
-    box-shadow: 0 0 14px rgba(226, 232, 240, 0.38);
+    animation: battleChargeSpark 3s ease-out 0.21s forwards;
 }
 
-.battle-projectile-charge {
-    height: 6px;
-    background: linear-gradient(90deg, rgba(251, 191, 36, 0.95), rgba(249, 115, 22, 0.16));
-    box-shadow: 0 0 16px rgba(245, 158, 11, 0.45);
+@keyframes battleArrowSalvoPath {
+    0% {
+        left: 0;
+        transform: translateY(-50%) translateX(0);
+        opacity: 0;
+        filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.2));
+    }
+    10% {
+        opacity: 1;
+    }
+    100% {
+        /* Right edge of volley meets the defender cell (full width of the shot line) */
+        left: 100%;
+        transform: translateY(-50%) translateX(-100%);
+        opacity: 1;
+        filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.35));
+    }
+}
+
+@keyframes battleRockSalvoPath {
+    0% {
+        left: 0;
+        transform: translateY(-50%) translateX(0);
+        opacity: 0;
+    }
+    12% {
+        opacity: 1;
+    }
+    100% {
+        left: 100%;
+        transform: translateY(-50%) translateX(-100%);
+        opacity: 1;
+    }
+}
+
+@keyframes battleRockTumble {
+    0% {
+        transform: rotate(-18deg) translateY(0);
+    }
+    50% {
+        transform: rotate(140deg) translateY(-3px);
+    }
+    100% {
+        transform: rotate(280deg) translateY(1px);
+    }
+}
+
+@keyframes battleChargeSalvoPath {
+    0% {
+        left: 0;
+        transform: translateY(-50%) translateX(0);
+        opacity: 0;
+    }
+    18% {
+        opacity: 1;
+    }
+    100% {
+        left: 100%;
+        transform: translateY(-50%) translateX(-100%);
+        opacity: 1;
+    }
+}
+
+@keyframes battleChargeSpark {
+    0% {
+        transform: scale(0.65);
+        opacity: 0.85;
+    }
+    45% {
+        transform: scale(1.15);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(0.9);
+        opacity: 0.35;
+    }
 }
 
 /* Pulse animation */
@@ -226,16 +657,219 @@
 
 @keyframes battleHitFlash {
     0% {
-        filter: brightness(1);
-        transform: scale(1);
+        filter: brightness(1) contrast(1);
+        transform: scale(1) rotate(0deg);
     }
-    35% {
-        filter: brightness(1.35);
-        transform: scale(1.03);
+    22% {
+        filter: brightness(1.55) contrast(1.08);
+        transform: scale(1.045) rotate(-0.6deg);
+    }
+    45% {
+        filter: brightness(1.25) contrast(1.05);
+        transform: scale(1.02) rotate(0.4deg);
     }
     100% {
-        filter: brightness(1);
-        transform: scale(1);
+        filter: brightness(1) contrast(1);
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+@keyframes battleMeleeFight {
+    0%,
+    100% {
+        filter: brightness(1) contrast(1);
+        transform: scale(1) rotate(0deg);
+    }
+    6% {
+        filter: brightness(1.52) contrast(1.08);
+        transform: scale(1.042) rotate(-0.65deg);
+    }
+    12% {
+        filter: brightness(1.16) contrast(1.04);
+        transform: scale(1.017) rotate(0.42deg);
+    }
+    20% {
+        filter: brightness(1.48) contrast(1.07);
+        transform: scale(1.036) rotate(-0.48deg);
+    }
+    28% {
+        filter: brightness(1.14) contrast(1.03);
+        transform: scale(1.012) rotate(0.38deg);
+    }
+    36% {
+        filter: brightness(1.5) contrast(1.08);
+        transform: scale(1.04) rotate(0.58deg);
+    }
+    44% {
+        filter: brightness(1.15) contrast(1.03);
+        transform: scale(1.018) rotate(-0.42deg);
+    }
+    52% {
+        filter: brightness(1.46) contrast(1.07);
+        transform: scale(1.035) rotate(-0.52deg);
+    }
+    60% {
+        filter: brightness(1.12) contrast(1.03);
+        transform: scale(1.01) rotate(0.44deg);
+    }
+    68% {
+        filter: brightness(1.44) contrast(1.06);
+        transform: scale(1.033) rotate(0.48deg);
+    }
+    76% {
+        filter: brightness(1.13) contrast(1.03);
+        transform: scale(1.014) rotate(-0.36deg);
+    }
+    84% {
+        filter: brightness(1.36) contrast(1.05);
+        transform: scale(1.026) rotate(-0.4deg);
+    }
+    92% {
+        filter: brightness(1.08) contrast(1.02);
+        transform: scale(1.006) rotate(0.22deg);
+    }
+}
+
+/* Crossed steel: swing inward, spark on contact, separate — looped to match 3s melee */
+@keyframes meleeSwordBladeA {
+    0%,
+    100% {
+        transform: translate(-50%, -50%) translateX(-10px) rotate(-68deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    5% {
+        transform: translate(-50%, -50%) translateX(-2px) rotate(-30deg);
+        filter: drop-shadow(0 0 12px rgba(254, 243, 199, 0.98)) drop-shadow(0 0 4px rgba(251, 191, 36, 0.75));
+    }
+    9% {
+        transform: translate(-50%, -50%) translateX(-5px) rotate(-44deg);
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.45));
+    }
+    18% {
+        transform: translate(-50%, -50%) translateX(-10px) rotate(-64deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    23% {
+        transform: translate(-50%, -50%) translateX(-1px) rotate(-28deg);
+        filter: drop-shadow(0 0 11px rgba(254, 243, 199, 0.95)) drop-shadow(0 0 3px rgba(234, 179, 8, 0.65));
+    }
+    28% {
+        transform: translate(-50%, -50%) translateX(-6px) rotate(-46deg);
+        filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.35));
+    }
+    38% {
+        transform: translate(-50%, -50%) translateX(-10px) rotate(-66deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    43% {
+        transform: translate(-50%, -50%) translateX(-2px) rotate(-32deg);
+        filter: drop-shadow(0 0 10px rgba(255, 251, 235, 0.92));
+    }
+    48% {
+        transform: translate(-50%, -50%) translateX(-7px) rotate(-50deg);
+        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3));
+    }
+    58% {
+        transform: translate(-50%, -50%) translateX(-10px) rotate(-67deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    63% {
+        transform: translate(-50%, -50%) translateX(-1px) rotate(-26deg);
+        filter: drop-shadow(0 0 12px rgba(254, 243, 199, 0.98));
+    }
+    68% {
+        transform: translate(-50%, -50%) translateX(-6px) rotate(-48deg);
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
+    }
+    78% {
+        transform: translate(-50%, -50%) translateX(-10px) rotate(-65deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    83% {
+        transform: translate(-50%, -50%) translateX(-3px) rotate(-34deg);
+        filter: drop-shadow(0 0 9px rgba(255, 248, 220, 0.88));
+    }
+    90% {
+        transform: translate(-50%, -50%) translateX(-8px) rotate(-54deg);
+        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.25));
+    }
+}
+
+@keyframes meleeSwordBladeB {
+    0%,
+    100% {
+        transform: translate(-50%, -50%) translateX(10px) rotate(68deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    5% {
+        transform: translate(-50%, -50%) translateX(2px) rotate(30deg);
+        filter: drop-shadow(0 0 12px rgba(254, 243, 199, 0.98)) drop-shadow(0 0 4px rgba(251, 191, 36, 0.75));
+    }
+    9% {
+        transform: translate(-50%, -50%) translateX(5px) rotate(44deg);
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.45));
+    }
+    18% {
+        transform: translate(-50%, -50%) translateX(10px) rotate(64deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    23% {
+        transform: translate(-50%, -50%) translateX(1px) rotate(28deg);
+        filter: drop-shadow(0 0 11px rgba(254, 243, 199, 0.95)) drop-shadow(0 0 3px rgba(234, 179, 8, 0.65));
+    }
+    28% {
+        transform: translate(-50%, -50%) translateX(6px) rotate(46deg);
+        filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.35));
+    }
+    38% {
+        transform: translate(-50%, -50%) translateX(10px) rotate(66deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    43% {
+        transform: translate(-50%, -50%) translateX(2px) rotate(32deg);
+        filter: drop-shadow(0 0 10px rgba(255, 251, 235, 0.92));
+    }
+    48% {
+        transform: translate(-50%, -50%) translateX(7px) rotate(50deg);
+        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3));
+    }
+    58% {
+        transform: translate(-50%, -50%) translateX(10px) rotate(67deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    63% {
+        transform: translate(-50%, -50%) translateX(1px) rotate(26deg);
+        filter: drop-shadow(0 0 12px rgba(254, 243, 199, 0.98));
+    }
+    68% {
+        transform: translate(-50%, -50%) translateX(6px) rotate(48deg);
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
+    }
+    78% {
+        transform: translate(-50%, -50%) translateX(10px) rotate(65deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    83% {
+        transform: translate(-50%, -50%) translateX(3px) rotate(34deg);
+        filter: drop-shadow(0 0 9px rgba(255, 248, 220, 0.88));
+    }
+    90% {
+        transform: translate(-50%, -50%) translateX(8px) rotate(54deg);
+        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.25));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .battle-feedback-melee-hit::before {
+        animation: none;
+        transform: translate(-50%, -50%) translateX(-5px) rotate(-42deg);
+        filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.45));
+    }
+
+    .battle-feedback-melee-hit::after {
+        animation: none;
+        transform: translate(-50%, -50%) translateX(5px) rotate(42deg);
+        filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.45));
     }
 }
 
@@ -243,71 +877,112 @@
     0% {
         filter: grayscale(0) brightness(1);
         opacity: 1;
+        transform: scale(1) translateY(0);
     }
-    45% {
-        filter: grayscale(0.4) brightness(1.25);
-        opacity: 0.92;
+    35% {
+        filter: grayscale(0.35) brightness(1.35);
+        opacity: 0.88;
+        transform: scale(1.04) translateY(1px);
+    }
+    70% {
+        filter: grayscale(0.75) brightness(0.95);
+        opacity: 0.65;
+        transform: scale(0.96) translateY(4px);
     }
     100% {
-        filter: grayscale(0.88) brightness(0.85);
-        opacity: 0.5;
+        filter: grayscale(0.92) brightness(0.78);
+        opacity: 0.42;
+        transform: scale(0.92) translateY(6px);
     }
 }
 
 @keyframes battleChargeSurge {
-    0% {
-        transform: translateX(0) scale(1);
-    }
-    40% {
-        transform: translateX(2px) scale(1.06);
-    }
+    0%,
     100% {
         transform: translateX(0) scale(1);
+        filter: brightness(1);
+    }
+    10% {
+        transform: translateX(6px) scale(1.09);
+        filter: brightness(1.22);
+    }
+    20% {
+        transform: translateX(-2px) scale(1.04);
+        filter: brightness(1.1);
+    }
+    34% {
+        transform: translateX(5px) scale(1.07);
+        filter: brightness(1.18);
+    }
+    48% {
+        transform: translateX(0) scale(1.03);
+        filter: brightness(1.08);
+    }
+    62% {
+        transform: translateX(4px) scale(1.06);
+        filter: brightness(1.14);
+    }
+    76% {
+        transform: translateX(-1px) scale(1.02);
+        filter: brightness(1.05);
+    }
+    90% {
+        transform: translateX(2px) scale(1.03);
+        filter: brightness(1.06);
     }
 }
 
 @keyframes battleMoraleShake {
     0%, 100% {
-        transform: translateX(0);
+        transform: translate(0, 0) rotate(0deg);
     }
-    20% {
-        transform: translateX(-2px);
+    15% {
+        transform: translate(-3px, 1px) rotate(-0.8deg);
     }
-    40% {
-        transform: translateX(2px);
+    30% {
+        transform: translate(3px, -1px) rotate(0.8deg);
+    }
+    45% {
+        transform: translate(-2px, -1px) rotate(-0.5deg);
     }
     60% {
-        transform: translateX(-1px);
+        transform: translate(2px, 1px) rotate(0.5deg);
     }
-    80% {
-        transform: translateX(1px);
+    75% {
+        transform: translate(-1px, 0) rotate(-0.3deg);
     }
 }
 
 @keyframes battleRangedPulse {
     0% {
-        filter: brightness(1);
+        filter: brightness(1) saturate(1);
+        transform: scale(1);
     }
-    50% {
-        filter: brightness(1.4) saturate(1.2);
+    40% {
+        filter: brightness(1.5) saturate(1.35);
+        transform: scale(1.04);
     }
     100% {
-        filter: brightness(1);
+        filter: brightness(1) saturate(1);
+        transform: scale(1);
     }
 }
 
-@keyframes battleProjectileTrail {
+@keyframes battleMoveDust {
     0% {
-        opacity: 0;
-        transform: translateY(-50%) scaleX(0.05);
-    }
-    20% {
+        filter: brightness(1);
+        transform: scale(1);
         opacity: 1;
-        transform: translateY(-50%) scaleX(0.65);
+    }
+    30% {
+        filter: brightness(1.2) saturate(1.15);
+        transform: scale(1.04);
+        opacity: 1;
     }
     100% {
-        opacity: 0;
-        transform: translateY(-50%) scaleX(1);
+        filter: brightness(1);
+        transform: scale(1);
+        opacity: 0.92;
     }
 }
 

@@ -1,358 +1,98 @@
 // CodeConq - Grid Strategy Game with Highlights and Expanded Features
 // Now includes: Health Bars, Kill Counters, Special Ability Tooltips, and Custom Drag & Drop Setup
 
-import { createElement, useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { LayoutGroup, motion, useReducedMotion } from "framer-motion";
+import { FormationLoadingScreen } from "./components/codeconq/FormationLoadingScreen";
+import { useBattlefieldViewport } from "./hooks/useBattlefieldViewport";
+import { useBattleSession } from "./hooks/useCodeConqController";
 import { levels } from "./Units/InitialUnits";
 import { generateTroopStats, getTroopAbilities, getTroopReferenceStats, type TroopReferenceStats } from "./Units/troopStats";
 import { createBattleSfxController, getTurnCueForTeam, type BattleSfxKey } from "./audio/battleSfx";
+import {
+  applyRoleHealthBuffs,
+  didRoleHealthBuffStateChange,
+  getAttackDamage,
+  getDisplayedAttack,
+  getEffectiveMove,
+  getEffectiveRange,
+  getOrientationRotationSteps,
+  getTerrainModifiers,
+  getTroopMechanicType,
+  getUnitEffectNotes,
+  hasNoAmmoPenalty,
+  isLeaderRole,
+  rotateUnitCoordinates,
+  TROOP_MECHANIC_ICONS,
+  TROOP_MECHANIC_LABELS
+} from "./game/battleEngine";
+import {
+  ALL_TEAMS,
+  BACKGROUND_MUSIC_SRC,
+  BATTLEFIELD_SIZE_OPTIONS,
+  DEFAULT_GAME_OPTIONS,
+  DEFAULT_TERRAIN_GENERATION_SETTINGS,
+  GAME_BUILD_LABEL,
+  GAME_STATE_STORAGE_KEY,
+  GAME_VERSION,
+  GRID_ORIENTATIONS,
+  LEVEL_MATCHUP_LABELS,
+  TEAM_SELECT_GROUPS,
+  TERRAIN_ASSETS,
+  TERRAIN_LABELS,
+  TERRAIN_TYPES
+} from "./game/constants";
+import { getAliveTeams, getLevelTeams, getValidLevelPlayerTeam } from "./game/levelUtils";
+import {
+  ADDITIONAL_MECHANICS_INFO,
+  AI_MECHANICS_INFO,
+  GAME_MECHANICS_INFO,
+  getBattleLogAppearance,
+  TERRAIN_MECHANICS_INFO,
+  TROOP_MECHANICS_INFO,
+  UNIT_ABILITY_MECHANICS_INFO
+} from "./game/mechanicsInfo";
+import { generateTerrainMap, getEnabledTerrainTypes, getTerrainAt, isValidTerrainMap } from "./game/terrainEngine";
+import {
+  AVAILABLE_TROOPS,
+  getBattlefieldUnitLabel,
+  getTroopSearchKeywords,
+  getTroopTypeDisplay,
+  getUnitDisplayIcon,
+  ICON_MAP
+} from "./game/unitCatalog";
+import {
+  applyCivilizationPassive,
+  CIV_PASSIVES,
+  PASSIVE_ICONS,
+  prepareUnitsForBattle,
+  restoreUnitFromStorage,
+  rerollUnits,
+  stripUnitForStorage
+} from "./game/unitLifecycle";
+import type {
+  BattlefieldSize,
+  BattleFeedbackKind,
+  GameMode,
+  GameOptions,
+  GridOrientation,
+  HoverScrollDirection,
+  ProjectileFeedback,
+  TeamName,
+  TerrainGenerationSettings,
+  TerrainPoint,
+  TerrainPreset,
+  TerrainType,
+  TroopMechanicType,
+  UnitsReferenceScope
+} from "./game/types";
 
-// Available troop types for custom setup - using existing definitions
-const AVAILABLE_TROOPS = {
-  Romans: [
-    { role: "Roman King", name: "Roman King", Icon: "👑" },
-    { role: "Legionary", name: "Legionary", Icon: "⚔️" },
-    { role: "Centurion", name: "Centurion", Icon: "⚔️" },
-    { role: "Praetorian", name: "Praetorian", Icon: "⚔️" },
-    { role: "Auxiliary", name: "Auxiliary", Icon: "⚔️" },
-    { role: "Triarii", name: "Triarii", Icon: "⚔️" },
-    { role: "Cavalry", name: "Cavalry", Icon: "🐎" },
-    { role: "Archer", name: "Archer", Icon: "🏹" },
-    { role: "Velites", name: "Velites", Icon: "🏹" },
-    { role: "Ballista", name: "Ballista", Icon: "⚙️" },
-    { role: "Scorpion", name: "Scorpion", Icon: "⚙️" },
-    { role: "Onager", name: "Onager", Icon: "⚙️" }
-  ],
-  Barbarians: [
-    { role: "Barbarian Chief", name: "Barbarian Chief", Icon: "👑" },
-    { role: "Barbarian Warrior", name: "Barbarian Warrior", Icon: "⚔️" },
-    { role: "Barbarian Berserker", name: "Barbarian Berserker", Icon: "⚔️" },
-    { role: "Barbarian Axeman", name: "Barbarian Axeman", Icon: "⚔️" },
-    { role: "Barbarian Spearman", name: "Barbarian Spearman", Icon: "⚔️" },
-    { role: "Barbarian Raider", name: "Barbarian Raider", Icon: "⚔️" },
-    { role: "Barbarian Warlord", name: "Barbarian Warlord", Icon: "⚔️" },
-    { role: "Oathsworn", name: "Oathsworn", Icon: "⚔️" },
-    { role: "Barbarian Scout", name: "Barbarian Scout", Icon: "🐎🏹" },
-    { role: "Barbarian Noble Rider", name: "Barbarian Noble Rider", Icon: "🐎" },
-    { role: "Barbarian Archer", name: "Barbarian Archer", Icon: "🏹" },
-    { role: "Barbarian Shaman", name: "Barbarian Shaman", Icon: "🏹" },
-  ],
-  Greeks: [
-    { role: "Macedonian King", name: "Macedonian King", Icon: "👑" },
-    { role: "Hoplite", name: "Hoplite", Icon: "⚔️" },
-    { role: "Phalangite", name: "Phalangite", Icon: "⚔️" },
-    { role: "Hypaspist", name: "Hypaspist", Icon: "⚔️" },
-    { role: "Thureophoroi", name: "Thureophoroi", Icon: "⚔️" },
-    { role: "Agema", name: "Agema", Icon: "⚔️" },
-    { role: "Companion Cavalry", name: "Companion Cavalry", Icon: "🐎" },
-    { role: "Thessalian Cavalry", name: "Thessalian Cavalry", Icon: "🐎" },
-    { role: "Peltast", name: "Peltast", Icon: "🏹" },
-    { role: "Cretan Archer", name: "Cretan Archer", Icon: "🏹" },
-    { role: "Greek Catapult", name: "Greek Catapult", Icon: "⚙️" },
-    { role: "Polybolos", name: "Polybolos", Icon: "⚙️" }
-  ],
-  Gauls: [
-    { role: "Gallic King", name: "Gallic King", Icon: "👑" },
-    { role: "Gallic Warrior", name: "Gallic Warrior", Icon: "⚔️" },
-    { role: "Gallic Berserker", name: "Gallic Berserker", Icon: "⚔️" },
-    { role: "Gallic Spearman", name: "Gallic Spearman", Icon: "⚔️" },
-    { role: "Gallic Oathsworn", name: "Gallic Oathsworn", Icon: "⚔️" },
-    { role: "Gaesatae", name: "Gaesatae", Icon: "⚔️" },
-    { role: "Fianna", name: "Fianna", Icon: "⚔️" },
-    { role: "Gallic Cavalry", name: "Gallic Cavalry", Icon: "🐎" },
-    { role: "Gallic Chariot", name: "Gallic Chariot", Icon: "🐎🏹" },
-    { role: "Gallic Noble Horseman", name: "Gallic Noble Horseman", Icon: "🐎" },
-    { role: "Gallic Archer", name: "Gallic Archer", Icon: "🏹" },
-    { role: "Gallic Skirmisher", name: "Gallic Skirmisher", Icon: "🏹" },
-  ],
-  Germanic: [
-    { role: "Germanic King", name: "Germanic King", Icon: "👑" },
-    { role: "Germanic Warrior", name: "Germanic Warrior", Icon: "⚔️" },
-    { role: "Germanic Spearman", name: "Germanic Spearman", Icon: "⚔️" },
-    { role: "Germanic Berserker", name: "Germanic Berserker", Icon: "⚔️" },
-    { role: "Germanic Raider", name: "Germanic Raider", Icon: "⚔️" },
-    { role: "Chosen Axeman", name: "Chosen Axeman", Icon: "⚔️" },
-    { role: "Hearthguard", name: "Hearthguard", Icon: "⚔️" },
-    { role: "Germanic Wolf Rider", name: "Germanic Wolf Rider", Icon: "🐎" },
-    { role: "Suebi Rider", name: "Suebi Rider", Icon: "🐎" },
-    { role: "Gothic Lancer", name: "Gothic Lancer", Icon: "🐎" },
-    { role: "Germanic Archer", name: "Germanic Archer", Icon: "🏹" },
-    { role: "Tribal Slinger", name: "Tribal Slinger", Icon: "🏹" },
-  ],
-  Carthage: [
-    { role: "Carthaginian General", name: "Carthaginian General", Icon: "👑" },
-    { role: "Libyan Infantry", name: "Libyan Infantry", Icon: "⚔️" },
-    { role: "Sacred Band", name: "Sacred Band", Icon: "⚔️" },
-    { role: "Liby-Phoenician Infantry", name: "Liby-Phoenician Infantry", Icon: "⚔️" },
-    { role: "Iberian Swordsman", name: "Iberian Swordsman", Icon: "⚔️" },
-    { role: "African Pikeman", name: "African Pikeman", Icon: "⚔️" },
-    { role: "Punic Spearman", name: "Punic Spearman", Icon: "⚔️" },
-    { role: "Numidian Cavalry", name: "Numidian Cavalry", Icon: "🐎" },
-    { role: "War Elephant", name: "War Elephant", Icon: "🐘" },
-    { role: "Balearic Slinger", name: "Balearic Slinger", Icon: "🏹" },
-    { role: "Carthaginian Archer", name: "Carthaginian Archer", Icon: "🏹" },
-    { role: "Elephant Archer", name: "Elephant Archer", Icon: "🐘🏹" }
-  ],
-  Egypt: [
-    { role: "Pharaoh", name: "Pharaoh", Icon: "👑" },
-    { role: "Egyptian Warrior", name: "Egyptian Warrior", Icon: "⚔️" },
-    { role: "Medjay", name: "Medjay", Icon: "⚔️" },
-    { role: "Khopesh Warrior", name: "Khopesh Warrior", Icon: "⚔️" },
-    { role: "Shield Bearer", name: "Shield Bearer", Icon: "⚔️" },
-    { role: "Royal Guard", name: "Royal Guard", Icon: "⚔️" },
-    { role: "Egyptian Archer", name: "Egyptian Archer", Icon: "🏹" },
-    { role: "Nubian Archer", name: "Nubian Archer", Icon: "🏹" },
-    { role: "War Chariot", name: "War Chariot", Icon: "🐎" },
-    { role: "Royal Chariot", name: "Royal Chariot", Icon: "🐎🏹" },
-    { role: "Desert Scout", name: "Desert Scout", Icon: "🐎🏹" },
-    { role: "Egyptian Catapult", name: "Egyptian Catapult", Icon: "⚙️" }
-  ],
-  Thracians: [
-    { role: "Thracian King", name: "Thracian King", Icon: "👑" },
-    { role: "Thracian Warrior", name: "Thracian Warrior", Icon: "⚔️" },
-    { role: "Rhomphaia Fighter", name: "Rhomphaia Fighter", Icon: "⚔️" },
-    { role: "Falx Warrior", name: "Falx Warrior", Icon: "⚔️" },
-    { role: "Thracian Spearman", name: "Thracian Spearman", Icon: "⚔️" },
-    { role: "Thracian Guard", name: "Thracian Guard", Icon: "⚔️" },
-    { role: "Thracian Peltast", name: "Thracian Peltast", Icon: "🏹" },
-    { role: "Thracian Archer", name: "Thracian Archer", Icon: "🏹" },
-    { role: "Thracian Rider", name: "Thracian Rider", Icon: "🐎" },
-    { role: "Thracian Noble Rider", name: "Thracian Noble Rider", Icon: "🐎" },
-    { role: "War Drummer", name: "War Drummer", Icon: "🥁" },
-    { role: "Thracian Catapult", name: "Thracian Catapult", Icon: "⚙️" }
-  ],
-  Dacians: [
-    { role: "Dacian King", name: "Dacian King", Icon: "👑" },
-    { role: "Dacian Warrior", name: "Dacian Warrior", Icon: "⚔️" },
-    { role: "Falxman", name: "Falxman", Icon: "⚔️" },
-    { role: "Dacian Spearman", name: "Dacian Spearman", Icon: "⚔️" },
-    { role: "Dacian Shield Bearer", name: "Dacian Shield Bearer", Icon: "⚔️" },
-    { role: "Dacian Guard", name: "Dacian Guard", Icon: "⚔️" },
-    { role: "Dacian Slinger", name: "Dacian Slinger", Icon: "🏹" },
-    { role: "Dacian Archer", name: "Dacian Archer", Icon: "🏹" },
-    { role: "Dacian Rider", name: "Dacian Rider", Icon: "🐎" },
-    { role: "Dacian Noble Rider", name: "Dacian Noble Rider", Icon: "🐎" },
-    { role: "War Horn", name: "War Horn", Icon: "📯" },
-    { role: "Dacian Catapult", name: "Dacian Catapult", Icon: "⚙️" }
-  ],
-  Parthians: [
-    { role: "Parthian King", name: "Parthian King", Icon: "👑" },
-    { role: "Parthian Warrior", name: "Parthian Warrior", Icon: "⚔️" },
-    { role: "Parthian Spearman", name: "Parthian Spearman", Icon: "⚔️" },
-    { role: "Parthian Cataphract", name: "Cataphract", Icon: "🐎" },
-    { role: "Parthian Noble Rider", name: "Parthian Noble Rider", Icon: "🐎" },
-    { role: "Horse Archer", name: "Horse Archer", Icon: "🏹🐎" },
-    { role: "Elite Horse Archer", name: "Elite Horse Archer", Icon: "🏹🐎" },
-    { role: "Parthian Archer", name: "Parthian Archer", Icon: "🏹" },
-    { role: "Scout Rider", name: "Scout Rider", Icon: "🐎" },
-    { role: "Camel Rider", name: "Camel Rider", Icon: "🐪" },
-    { role: "Camel Rider Archer", name: "Camel Rider Archer", Icon: "🐪🏹" },
-    { role: "Parthian Ballista", name: "Parthian Ballista", Icon: "⚙️" }
-  ],
-  Seleucids: [
-    { role: "Seleucid King", name: "Seleucid King", Icon: "👑" },
-    { role: "Seleucid Phalangite", name: "Phalangite", Icon: "⚔️" },
-    { role: "Silver Shield Infantry", name: "Silver Shield Infantry", Icon: "⚔️" },
-    { role: "Thorakitai", name: "Thorakitai", Icon: "⚔️" },
-    { role: "Eastern Spearman", name: "Eastern Spearman", Icon: "⚔️" },
-    { role: "Seleucid War Elephant", name: "War Elephant", Icon: "🐘" },
-    { role: "Seleucid Cataphract", name: "Cataphract", Icon: "🐎" },
-    { role: "Seleucid Light Cavalry", name: "Light Cavalry", Icon: "🐎" },
-    { role: "Eastern Archer", name: "Eastern Archer", Icon: "🏹" },
-    { role: "Seleucid Slinger", name: "Slinger", Icon: "🏹" },
-    { role: "Seleucid Elephant Archer", name: "Seleucid Elephant Archer", Icon: "🐘🏹" },
+/** Match projectile volley duration (ranged) / melee & charge clash duration. */
+const ATTACK_RESOLVE_RANGED_MS = 2000;
+const ATTACK_RESOLVE_MELEE_MS = 3000;
 
-    { role: "Seleucid Catapult", name: "Seleucid Catapult", Icon: "⚙️" }
-  ],
-  Vikings: [
-    { role: "Jarl", name: "Viking Jarl", Icon: "👑" },
-    { role: "Viking Raider", name: "Viking Raider", Icon: "⚔️" },
-    { role: "Berserker", name: "Berserker", Icon: "⚔️" },
-    { role: "Shieldmaiden", name: "Shieldmaiden", Icon: "⚔️" },
-    { role: "Huscarl", name: "Huscarl", Icon: "⚔️" },
-    { role: "Bondi Spearman", name: "Bondi Spearman", Icon: "⚔️" },
-    { role: "Hirdman", name: "Hirdman", Icon: "⚔️" },
-    { role: "Ulfhednar", name: "Ulfhednar", Icon: "⚔️" },
-    { role: "Varangian Guard", name: "Varangian Guard", Icon: "⚔️" },
-    { role: "Jomsviking", name: "Jomsviking", Icon: "⚔️" },
-    { role: "Scout", name: "Scout", Icon: "🐎🏹" },
-    { role: "Viking Archer", name: "Viking Archer", Icon: "🏹" }
-  ]
-};
-
-// Icon mapping
-const ICON_MAP = {
-  GiSwordman: "⚔️",
-  GiArcher: "🏹",
-  GiCavalry: "🐎",
-  GiCrossedSwords: "⚔️",
-  GiHelmet: "🪖",
-  GiBo: "🏹",
-  GiAce: "🪓",
-  FaCrown: "👑"
-};
-
-const halveAmmo = (ammo: number) => {
-  if (ammo <= 0) return 0;
-  return Math.max(1, Math.ceil(ammo / 2));
-};
-
-const usesAmmoRole = (unit: any) => {
-  const normalizedRole = String(unit?.role ?? unit?.name ?? "").toLowerCase();
-  return [
-    "archer",
-    "longbow",
-    "slinger",
-    "crossbow",
-    "velites",
-    "shaman",
-    "skirmisher",
-    "peltast",
-    "psiloi",
-    "turcopole",
-    "thureophoroi",
-    "ballista",
-    "scorpion",
-    "catapult",
-    "trebuchet",
-    "polybolos",
-    "onager",
-    "bombard",
-    "barbarian scout",
-    "gallic chariot",
-    "royal chariot",
-    "desert scout",
-    "scout",
-    "horse archer"
-  ].some((keyword) => normalizedRole.includes(keyword));
-};
-
-const hasNoAmmoPenalty = (unit: any) => usesAmmoRole(unit) && (unit?.ammo ?? 0) <= 0;
-
-const isHybridMountedRangedUnit = (unit: any) => {
-  const normalizedRole = String(unit?.role ?? unit?.name ?? "").toLowerCase();
-  const mountedKeywords = ["cavalry", "chariot", "rider", "scout", "knight", "elephant", "horse", "camel", "cataphract"];
-  const hasMountedTrait = mountedKeywords.some((keyword) => normalizedRole.includes(keyword));
-  return hasMountedTrait && (unit?.ammo ?? 0) > 0 && (unit?.range ?? 1) > 1;
-};
-
-const getTroopTypeDisplay = (unit: any) => {
-  if (isHybridMountedRangedUnit(unit)) {
-    return {
-      icon: "🐎🏹",
-      label: "Hybrid",
-      type: "hybrid"
-    } as const;
-  }
-
-  const troopType = getTroopMechanicType(unit);
-  return {
-    icon: TROOP_MECHANIC_ICONS[troopType],
-    label: TROOP_MECHANIC_LABELS[troopType],
-    type: troopType
-  } as const;
-};
-
-const getTroopSearchKeywords = (unit: any, team?: TeamName) => {
-  const troopTypeDisplay = getTroopTypeDisplay(unit);
-  const abilityKeywords = getTroopAbilities(String(unit?.role ?? unit?.name ?? ""))
-    .flatMap((ability) => [ability.name.toLowerCase(), ability.key.toLowerCase(), "skill", "skills", "ability", "abilities", "passive", "passives"]);
-  const keywords = [
-    String(unit?.name ?? "").toLowerCase(),
-    String(unit?.role ?? "").toLowerCase(),
-    String(team ?? unit?.team ?? "").toLowerCase(),
-    troopTypeDisplay.label.toLowerCase(),
-    troopTypeDisplay.type.toLowerCase(),
-    ...abilityKeywords
-  ];
-
-  if (troopTypeDisplay.type === "hybrid") {
-    keywords.push("mounted", "ranged", "mounted ranged", "mounted+ranged", "horse archer", "hybrid");
-  }
-
-  if (troopTypeDisplay.type === "ranged") {
-    keywords.push("archer", "projectile", "missile");
-  }
-
-  if (troopTypeDisplay.type === "mounted") {
-    keywords.push("cavalry", "horse", "mobile");
-  }
-
-  if (troopTypeDisplay.type === "closecombat") {
-    keywords.push("melee", "close combat", "infantry");
-  }
-
-  if (troopTypeDisplay.type === "sieged") {
-    keywords.push("siege", "artillery", "engine");
-  }
-
-  if (isLeaderRole(String(unit?.role ?? unit?.name ?? ""))) {
-    keywords.push("leader", "commander", "king", "general");
-  }
-
-  return Array.from(new Set(keywords.filter(Boolean)));
-};
-
-const LEVEL_MATCHUP_LABELS: Record<keyof typeof levels, string> = {
-  Level1: "Romans vs Barbarians",
-  Level2: "Greeks vs Gauls",
-  Level3: "Carthage vs Vikings",
-  Level4: "Germanic vs Egypt",
-  Level5: "Romans vs Carthage",
-  Level6: "Greeks vs Germanic",
-  Level7: "Gauls vs Vikings",
-  Level8: "Barbarians vs Egypt",
-  Level9: "Egypt vs Romans",
-  Level10: "Egypt vs Greeks",
-  Level11: "Gauls vs Carthage",
-  Level12: "Vikings vs Egypt",
-  Level13: "Thracians vs Dacians",
-  Level14: "Parthians vs Seleucids",
-  Level15: "Thracians vs Parthians",
-  Level16: "Dacians vs Seleucids"
-};
-
-const BACKGROUND_MUSIC_SRC = "/Crown%20of%20Ashes.mp3";
-const ALL_TEAMS = ["Romans", "Barbarians", "Greeks", "Gauls", "Germanic", "Carthage", "Egypt", "Thracians", "Dacians", "Parthians", "Seleucids", "Vikings"] as const;
-const GRID_ORIENTATIONS = ["north", "east", "south", "west"] as const;
-const TEAM_SELECT_GROUPS = [
-  { label: "Ancient Powers", teams: ["Romans", "Greeks", "Carthage", "Egypt", "Seleucids"] as TeamName[] },
-  { label: "Border Kingdoms", teams: ["Thracians", "Dacians", "Parthians"] as TeamName[] },
-  { label: "Tribal Realms", teams: ["Barbarians", "Gauls", "Germanic", "Vikings"] as TeamName[] }
-] as const;
-
-type GameMode = "single-player" | "multiplayer" | "custom-scenario";
-type TeamName = "Romans" | "Barbarians" | "Greeks" | "Gauls" | "Germanic" | "Carthage" | "Egypt" | "Thracians" | "Dacians" | "Parthians" | "Seleucids" | "Vikings";
-type UnitsReferenceScope = TeamName | "All";
-type BattlefieldSize = 8 | 10 | 12 | 14 | 16 | 18 | 20;
-type GridOrientation = typeof GRID_ORIENTATIONS[number];
-type HoverScrollDirection = "up" | "down" | "left" | "right" | null;
-type TroopMechanicType = "closecombat" | "mounted" | "ranged" | "sieged";
-type TerrainType = "plain" | "forest" | "hill" | "river" | "desert";
-type TerrainPreset = "mixed" | Exclude<TerrainType, "river">;
-type TerrainGenerationSettings = Record<TerrainType, boolean>;
-type TerrainPoint = { x: number; y: number };
-type ScalarField = number[][];
-type GameOptions = {
-  musicEnabled: boolean;
-  sfxEnabled: boolean;
-  showMoveHighlights: boolean;
-  showAttackHighlights: boolean;
-  showBattleLog: boolean;
-  showTurnBanner: boolean;
-  terrainEffectsEnabled: boolean;
-  battlefieldSize: BattlefieldSize;
-};
-
-type BattleFeedbackKind = "hit" | "death" | "charge" | "morale" | "ranged";
-
-type ProjectileFeedback = {
-  id: string;
-  variant: "arrow" | "siege" | "charge";
-  startX: number;
-  startY: number;
-  angle: number;
-  distance: number;
-};
+const getAttackResolutionDelayMs = (isProjectile: boolean) =>
+  isProjectile ? ATTACK_RESOLVE_RANGED_MS : ATTACK_RESOLVE_MELEE_MS;
 
 const renderTeamSelectOptions = (
   allowedTeams: readonly TeamName[],
@@ -373,1984 +113,21 @@ const renderTeamSelectOptions = (
     );
   });
 
-const getLevelTeams = (levelKey: keyof typeof levels): TeamName[] =>
-  Array.from(new Set(levels[levelKey].map((unit: any) => unit.team))) as TeamName[];
-
-const getValidLevelPlayerTeam = (levelKey: keyof typeof levels, preferredTeam: TeamName): TeamName => {
-  const levelTeams = getLevelTeams(levelKey);
-  return levelTeams.includes(preferredTeam) ? preferredTeam : levelTeams[0] ?? "Romans";
-};
-
-const getAliveTeams = (battleUnits: any[]): TeamName[] =>
-  ALL_TEAMS.filter((team) => battleUnits.some((unit: any) => unit.team === team && unit.hp > 0)) as TeamName[];
-
-const TERRAIN_ASSETS: Record<TerrainType, string> = {
-  plain: "/tiles/plain.png",
-  forest: "/tiles/forrest.png",
-  hill: "/tiles/hill.png",
-  river: "/tiles/river.png",
-  desert: "/tiles/dessert.png"
-};
-
-const TERRAIN_LABELS: Record<TerrainType, string> = {
-  plain: "Plain",
-  forest: "Forest",
-  hill: "Hill",
-  river: "River",
-  desert: "Desert"
-};
-
-const TERRAIN_TYPES: TerrainType[] = ["plain", "forest", "hill", "river", "desert"];
-const DEFAULT_TERRAIN_GENERATION_SETTINGS: TerrainGenerationSettings = {
-  plain: true,
-  forest: true,
-  hill: true,
-  river: true,
-  desert: true
-};
-
-const CARDINAL_DIRECTIONS: TerrainPoint[] = [
-  { x: 0, y: -1 },
-  { x: 1, y: 0 },
-  { x: 0, y: 1 },
-  { x: -1, y: 0 }
-];
-const ALL_DIRECTIONS: TerrainPoint[] = [
-  ...CARDINAL_DIRECTIONS,
-  { x: -1, y: -1 },
-  { x: 1, y: -1 },
-  { x: 1, y: 1 },
-  { x: -1, y: 1 }
-];
-
-const getEnabledTerrainTypes = (terrainSettings: TerrainGenerationSettings): TerrainType[] => {
-  const enabledTypes = TERRAIN_TYPES.filter((terrainType) => terrainSettings[terrainType]);
-  return enabledTypes.length > 0 ? enabledTypes : ["plain"];
-};
-
-const getMixedTerrainTypeLimit = (battlefieldSize: BattlefieldSize) => {
-  if (battlefieldSize <= 10) return 2;
-  if (battlefieldSize <= 16) return 3;
-  return 4;
-};
-
-const getMixedTerrainTypes = (
-  terrainSettings: TerrainGenerationSettings,
-  battlefieldSize: BattlefieldSize
-): TerrainType[] => {
-  const enabledTypes = getEnabledTerrainTypes(terrainSettings);
-
-  // Keep desert isolated so sand never appears blended into greener mixed maps.
-  const desertFilteredTypes =
-    enabledTypes.includes("desert") && enabledTypes.length > 1
-      ? enabledTypes.filter((terrainType) => terrainType !== "desert")
-      : enabledTypes;
-
-  const terrainLimit = getMixedTerrainTypeLimit(battlefieldSize);
-  if (desertFilteredTypes.length <= terrainLimit) {
-    return desertFilteredTypes;
-  }
-
-  const priorityOrder: TerrainType[] = ["plain", "forest", "hill", "river", "desert"];
-  return priorityOrder.filter((terrainType) => desertFilteredTypes.includes(terrainType)).slice(0, terrainLimit);
-};
-
-const createTerrainCounts = (): Record<TerrainType, number> => ({
-  plain: 0,
-  forest: 0,
-  hill: 0,
-  river: 0,
-  desert: 0
-});
-
-const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
-
-const createScalarField = (size: number, valueFactory: (x: number, y: number) => number): ScalarField =>
-  Array.from({ length: size }, (_, y) => Array.from({ length: size }, (_, x) => valueFactory(x, y)));
-
-const createTerrainField = (size: number, valueFactory: (x: number, y: number) => TerrainType): TerrainType[][] =>
-  Array.from({ length: size }, (_, y) => Array.from({ length: size }, (_, x) => valueFactory(x, y)));
-
-const normalizeScalarField = (field: ScalarField): ScalarField => {
-  let minimum = Infinity;
-  let maximum = -Infinity;
-
-  field.forEach((row) => {
-    row.forEach((value) => {
-      minimum = Math.min(minimum, value);
-      maximum = Math.max(maximum, value);
-    });
-  });
-
-  if (minimum === Infinity || maximum === -Infinity || Math.abs(maximum - minimum) < 0.0001) {
-    return field.map((row) => row.map(() => 0.5));
-  }
-
-  return field.map((row) => row.map((value) => (value - minimum) / (maximum - minimum)));
-};
-
-const blurScalarField = (field: ScalarField, passes = 1): ScalarField => {
-  let current = field.map((row) => [...row]);
-
-  for (let pass = 0; pass < passes; pass += 1) {
-    current = current.map((row, y) =>
-      row.map((_, x) => {
-        let total = 0;
-        let weight = 0;
-
-        for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
-          for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-            const sampleX = x + offsetX;
-            const sampleY = y + offsetY;
-            if (sampleX < 0 || sampleY < 0 || sampleX >= row.length || sampleY >= current.length) continue;
-
-            const sampleWeight = offsetX === 0 && offsetY === 0 ? 4 : offsetX === 0 || offsetY === 0 ? 2 : 1;
-            total += current[sampleY][sampleX] * sampleWeight;
-            weight += sampleWeight;
-          }
-        }
-
-        return weight > 0 ? total / weight : current[y][x];
-      })
-    );
-  }
-
-  return current;
-};
-
-const getNeighbors = (x: number, y: number, size: number, includeDiagonals = true): TerrainPoint[] => {
-  const offsets = includeDiagonals ? ALL_DIRECTIONS : CARDINAL_DIRECTIONS;
-  const neighbors: TerrainPoint[] = [];
-
-  offsets.forEach((offset) => {
-    const nextX = x + offset.x;
-    const nextY = y + offset.y;
-    if (nextX < 0 || nextY < 0 || nextX >= size || nextY >= size) return;
-    neighbors.push({ x: nextX, y: nextY });
-  });
-
-  return neighbors;
-};
-
-const getManhattanDistance = (left: TerrainPoint, right: TerrainPoint) =>
-  Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
-
-const chooseEnabledTerrain = (terrainOptions: TerrainType[], enabledTerrainTypes: TerrainType[]): TerrainType => {
-  for (const terrainType of terrainOptions) {
-    if (enabledTerrainTypes.includes(terrainType)) return terrainType;
-  }
-
-  return enabledTerrainTypes[0] ?? "plain";
-};
-
-const generateElevationField = (battlefieldSize: BattlefieldSize): ScalarField => {
-  const size = battlefieldSize;
-  const broadNoise = blurScalarField(createScalarField(size, () => Math.random()), 4 + Math.floor(size / 6));
-  const detailNoise = blurScalarField(createScalarField(size, () => Math.random()), 2 + Math.floor(size / 10));
-  const ridgeNoise = blurScalarField(createScalarField(size, () => Math.random()), 3);
-  const ridgeIsVertical = Math.random() < 0.5;
-  const ridgeCenter = 0.2 + Math.random() * 0.6;
-  const ridgeWidth = 0.16 + Math.random() * 0.12;
-
-  const elevation = createScalarField(size, (x, y) => {
-    const normalizedX = size <= 1 ? 0 : x / (size - 1);
-    const normalizedY = size <= 1 ? 0 : y / (size - 1);
-    const axis = ridgeIsVertical ? normalizedX : normalizedY;
-    const ridgeBand = clamp01(1 - Math.abs(axis - ridgeCenter) / ridgeWidth);
-    const edgeDistance = Math.min(normalizedX, normalizedY, 1 - normalizedX, 1 - normalizedY);
-    const inlandLift = clamp01(edgeDistance / 0.5);
-
-    return (
-      broadNoise[y][x] * 0.46 +
-      detailNoise[y][x] * 0.18 +
-      ridgeNoise[y][x] * ridgeBand * 0.26 +
-      inlandLift * 0.1
-    );
-  });
-
-  return normalizeScalarField(elevation);
-};
-
-const generateMoistureField = (battlefieldSize: BattlefieldSize, elevationField: ScalarField): ScalarField => {
-  const size = battlefieldSize;
-  const broadNoise = blurScalarField(createScalarField(size, () => Math.random()), 4 + Math.floor(size / 6));
-  const detailNoise = blurScalarField(createScalarField(size, () => Math.random()), 2);
-  const directionX = Math.random() * 2 - 1 || 0.65;
-  const directionY = Math.random() * 2 - 1 || -0.45;
-
-  const directionalField = normalizeScalarField(
-    createScalarField(size, (x, y) => {
-      const normalizedX = size <= 1 ? 0 : x / (size - 1);
-      const normalizedY = size <= 1 ? 0 : y / (size - 1);
-      return normalizedX * directionX + normalizedY * directionY;
-    })
-  );
-
-  const moisture = createScalarField(size, (x, y) => {
-    const elevationPenalty = elevationField[y][x] * 0.18;
-    return broadNoise[y][x] * 0.5 + detailNoise[y][x] * 0.2 + directionalField[y][x] * 0.22 + (1 - elevationPenalty) * 0.08;
-  });
-
-  return normalizeScalarField(moisture);
-};
-
-const pickRiverSources = (elevationField: ScalarField, battlefieldSize: BattlefieldSize): TerrainPoint[] => {
-  const size = battlefieldSize;
-  const candidates: Array<TerrainPoint & { score: number }> = [];
-
-  for (let y = 1; y < size - 1; y += 1) {
-    for (let x = 1; x < size - 1; x += 1) {
-      const elevation = elevationField[y][x];
-      if (elevation < 0.6) continue;
-      candidates.push({ x, y, score: elevation + Math.random() * 0.15 });
-    }
-  }
-
-  candidates.sort((left, right) => right.score - left.score);
-
-  const riverCount = Math.max(1, Math.min(3, Math.floor(size / 7)));
-  const minimumSpacing = Math.max(3, Math.floor(size / 3));
-  const sources: TerrainPoint[] = [];
-
-  candidates.forEach(({ x, y }) => {
-    if (sources.length >= riverCount) return;
-    const point = { x, y };
-    const overlapsExistingSource = sources.some((source) => getManhattanDistance(source, point) < minimumSpacing);
-    if (!overlapsExistingSource) sources.push(point);
-  });
-
-  return sources;
-};
-
-const pickRiverExit = (source: TerrainPoint, battlefieldSize: BattlefieldSize): TerrainPoint => {
-  const size = battlefieldSize;
-  const exitOptions = [
-    { x: 0, y: source.y, weight: Math.pow(Math.max(1, source.x), 1.1) },
-    { x: size - 1, y: source.y, weight: Math.pow(Math.max(1, size - 1 - source.x), 1.1) },
-    { x: source.x, y: 0, weight: Math.pow(Math.max(1, source.y), 1.1) },
-    { x: source.x, y: size - 1, weight: Math.pow(Math.max(1, size - 1 - source.y), 1.1) }
-  ];
-  const totalWeight = exitOptions.reduce((sum, option) => sum + option.weight, 0);
-  let roll = Math.random() * totalWeight;
-
-  for (const option of exitOptions) {
-    roll -= option.weight;
-    if (roll <= 0) return { x: option.x, y: option.y };
-  }
-
-  return { x: 0, y: source.y };
-};
-
-const traceRiverPath = (
-  source: TerrainPoint,
-  target: TerrainPoint,
-  elevationField: ScalarField,
-  moistureField: ScalarField,
-  existingRiverField: boolean[][]
-): TerrainPoint[] => {
-  const size = elevationField.length;
-  const minimumLength = Math.max(4, Math.floor(size * 0.45));
-  const path: TerrainPoint[] = [];
-  const visited = new Set<string>();
-  let current = source;
-  let previousDirection: TerrainPoint | null = null;
-
-  for (let step = 0; step < size * size; step += 1) {
-    const currentKey = `${current.x},${current.y}`;
-    if (visited.has(currentKey)) break;
-
-    visited.add(currentKey);
-    path.push(current);
-
-    const reachedExistingRiver = existingRiverField[current.y][current.x];
-    const reachedEdge = current.x === 0 || current.y === 0 || current.x === size - 1 || current.y === size - 1;
-
-    if ((reachedExistingRiver && path.length >= Math.max(3, Math.floor(minimumLength * 0.5))) || (reachedEdge && path.length >= minimumLength)) {
-      return path;
-    }
-
-    let bestNextPoint: TerrainPoint = current;
-    let foundNextPoint = false;
-    let bestScore = Infinity;
-
-    for (const neighbor of getNeighbors(current.x, current.y, size, false)) {
-      const neighborKey = `${neighbor.x},${neighbor.y}`;
-      if (visited.has(neighborKey)) continue;
-
-      const direction = { x: neighbor.x - current.x, y: neighbor.y - current.y };
-      const uphillPenalty = Math.max(0, elevationField[neighbor.y][neighbor.x] - elevationField[current.y][current.x]) * 3.2;
-      const targetDistance = getManhattanDistance(neighbor, target) / Math.max(1, size - 1);
-      const turnPenalty =
-        previousDirection && (previousDirection.x !== direction.x || previousDirection.y !== direction.y) ? 0.12 : 0;
-      const mergeBonus = existingRiverField[neighbor.y][neighbor.x] ? -0.55 : 0;
-      const edgeBonus =
-        neighbor.x === 0 || neighbor.y === 0 || neighbor.x === size - 1 || neighbor.y === size - 1 ? -0.18 : 0;
-      const score =
-        elevationField[neighbor.y][neighbor.x] * 0.62 +
-        targetDistance * 0.26 +
-        uphillPenalty +
-        turnPenalty +
-        mergeBonus +
-        edgeBonus -
-        moistureField[neighbor.y][neighbor.x] * 0.08 +
-        Math.random() * 0.04;
-
-      if (score < bestScore) {
-        bestScore = score;
-        bestNextPoint = neighbor;
-        foundNextPoint = true;
-      }
-    }
-
-    if (!foundNextPoint) break;
-
-    previousDirection = { x: bestNextPoint.x - current.x, y: bestNextPoint.y - current.y };
-    current = bestNextPoint;
-  }
-
-  return path.length >= minimumLength ? path : [];
-};
-
-const generateRiverField = (
-  battlefieldSize: BattlefieldSize,
-  elevationField: ScalarField,
-  moistureField: ScalarField
-): boolean[][] => {
-  const size = battlefieldSize;
-  const riverField = Array.from({ length: size }, () => Array.from({ length: size }, () => false));
-
-  pickRiverSources(elevationField, battlefieldSize).forEach((source) => {
-    const riverPath = traceRiverPath(source, pickRiverExit(source, battlefieldSize), elevationField, moistureField, riverField);
-    riverPath.forEach((point) => {
-      riverField[point.y][point.x] = true;
-    });
-  });
-
-  return riverField;
-};
-
-const buildRiverDistanceField = (riverField: boolean[][]): ScalarField => {
-  const size = riverField.length;
-  const distances = Array.from({ length: size }, () => Array.from({ length: size }, () => Number.POSITIVE_INFINITY));
-  const queue: TerrainPoint[] = [];
-  let pointer = 0;
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      if (!riverField[y][x]) continue;
-      distances[y][x] = 0;
-      queue.push({ x, y });
-    }
-  }
-
-  while (pointer < queue.length) {
-    const current = queue[pointer];
-    pointer += 1;
-
-    getNeighbors(current.x, current.y, size, false).forEach((neighbor) => {
-      const nextDistance = distances[current.y][current.x] + 1;
-      if (nextDistance >= distances[neighbor.y][neighbor.x]) return;
-      distances[neighbor.y][neighbor.x] = nextDistance;
-      queue.push(neighbor);
-    });
-  }
-
-  return distances;
-};
-
-const hydrateMoistureField = (
-  moistureField: ScalarField,
-  elevationField: ScalarField,
-  riverDistanceField: ScalarField
-): ScalarField => {
-  const size = moistureField.length;
-
-  const hydratedField = createScalarField(size, (x, y) => {
-    const riverBonus = Math.max(0, 0.28 - riverDistanceField[y][x] * 0.08);
-    const hillDryness = Math.max(0, elevationField[y][x] - 0.72) * 0.18;
-    return clamp01(moistureField[y][x] + riverBonus - hillDryness);
-  });
-
-  return normalizeScalarField(hydratedField);
-};
-
-const chooseBaseTerrain = (
-  elevation: number,
-  moisture: number,
-  nearRiver: boolean,
-  enabledTerrainTypes: TerrainType[]
-): TerrainType => {
-  if (nearRiver) return chooseEnabledTerrain(["river", "plain", "forest", "hill", "desert"], enabledTerrainTypes);
-
-  if (elevation >= 0.72) {
-    return chooseEnabledTerrain(["hill", moisture >= 0.58 ? "forest" : "plain", "desert"], enabledTerrainTypes);
-  }
-
-  if (moisture <= 0.3) {
-    return chooseEnabledTerrain(["desert", "plain", "hill", "forest"], enabledTerrainTypes);
-  }
-
-  if (moisture >= 0.62) {
-    return chooseEnabledTerrain(["forest", "plain", "hill", "desert"], enabledTerrainTypes);
-  }
-
-  return chooseEnabledTerrain(["plain", "forest", "hill", "desert"], enabledTerrainTypes);
-};
-
-const getNeighborTerrainCounts = (
-  terrainMap: TerrainType[][],
-  x: number,
-  y: number,
-  includeDiagonals = true
-): Record<TerrainType, number> => {
-  const counts = createTerrainCounts();
-  getNeighbors(x, y, terrainMap.length, includeDiagonals).forEach((neighbor) => {
-    counts[terrainMap[neighbor.y][neighbor.x]] += 1;
-  });
-  return counts;
-};
-
-const getDominantNeighborTerrain = (
-  terrainMap: TerrainType[][],
-  x: number,
-  y: number,
-  enabledTerrainTypes: TerrainType[],
-  excludedTerrainTypes: TerrainType[] = []
-): TerrainType => {
-  const counts = getNeighborTerrainCounts(terrainMap, x, y);
-  const ranking: TerrainType[] = ["plain", "forest", "hill", "desert", "river"];
-  let bestTerrain = terrainMap[y][x];
-  let bestCount = -1;
-
-  ranking.forEach((terrainType) => {
-    if (!enabledTerrainTypes.includes(terrainType) || excludedTerrainTypes.includes(terrainType)) return;
-    if (counts[terrainType] > bestCount) {
-      bestTerrain = terrainType;
-      bestCount = counts[terrainType];
-    }
-  });
-
-  return bestTerrain;
-};
-
-const removeIsolatedTerrainTiles = (
-  terrainMap: TerrainType[][],
-  enabledTerrainTypes: TerrainType[],
-  moistureField: ScalarField,
-  riverDistanceField: ScalarField
-): TerrainType[][] => {
-  const nextMap = terrainMap.map((row) => [...row]);
-
-  for (let y = 0; y < terrainMap.length; y += 1) {
-    for (let x = 0; x < terrainMap.length; x += 1) {
-      const currentTerrain = terrainMap[y][x];
-      const counts = getNeighborTerrainCounts(terrainMap, x, y);
-      const sameNeighbors = counts[currentTerrain];
-
-      if (currentTerrain === "river") {
-        if (sameNeighbors === 0) {
-          nextMap[y][x] = chooseEnabledTerrain(["plain", "forest", "hill", "desert"], enabledTerrainTypes);
-        }
-        continue;
-      }
-
-      if (currentTerrain === "hill" && sameNeighbors === 0) {
-        nextMap[y][x] = chooseEnabledTerrain(["plain", "forest", "desert"], enabledTerrainTypes);
-        continue;
-      }
-
-      if (currentTerrain === "forest" && counts.desert >= 2) {
-        nextMap[y][x] = chooseEnabledTerrain(["plain", "forest"], enabledTerrainTypes);
-        continue;
-      }
-
-      if (currentTerrain === "desert" && (counts.forest >= 2 || riverDistanceField[y][x] <= 1 || moistureField[y][x] >= 0.46)) {
-        nextMap[y][x] = chooseEnabledTerrain(["plain", "forest", "desert"], enabledTerrainTypes);
-        continue;
-      }
-
-      if (sameNeighbors <= 1) {
-        nextMap[y][x] = getDominantNeighborTerrain(terrainMap, x, y, enabledTerrainTypes, ["river"]);
-      }
-    }
-  }
-
-  return nextMap;
-};
-
-const mergeTinyTerrainRegions = (
-  terrainMap: TerrainType[][],
-  battlefieldSize: BattlefieldSize,
-  enabledTerrainTypes: TerrainType[]
-): TerrainType[][] => {
-  const nextMap = terrainMap.map((row) => [...row]);
-  const visited = new Set<string>();
-  const size = terrainMap.length;
-  const tinyRegionSize = Math.max(2, Math.floor(battlefieldSize / 3));
-  const minimumRiverSize = Math.max(3, Math.floor(battlefieldSize * 0.45));
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const regionKey = `${x},${y}`;
-      if (visited.has(regionKey)) continue;
-
-      const terrainType = terrainMap[y][x];
-      const queue: TerrainPoint[] = [{ x, y }];
-      const region: TerrainPoint[] = [];
-      visited.add(regionKey);
-
-      while (queue.length > 0) {
-        const current = queue.shift()!;
-        region.push(current);
-
-        getNeighbors(current.x, current.y, size, false).forEach((neighbor) => {
-          const neighborKey = `${neighbor.x},${neighbor.y}`;
-          if (terrainMap[neighbor.y][neighbor.x] !== terrainType || visited.has(neighborKey)) return;
-          visited.add(neighborKey);
-          queue.push(neighbor);
-        });
-      }
-
-      const shouldMerge =
-        terrainType === "river" ? region.length < minimumRiverSize : terrainType !== "plain" && region.length <= tinyRegionSize;
-
-      if (!shouldMerge) continue;
-
-      const replacement =
-        terrainType === "river"
-          ? chooseEnabledTerrain(["plain", "forest", "hill", "desert"], enabledTerrainTypes)
-          : getDominantNeighborTerrain(nextMap, x, y, enabledTerrainTypes, ["river"]);
-
-      region.forEach((point) => {
-        nextMap[point.y][point.x] = replacement;
-      });
-    }
-  }
-
-  return nextMap;
-};
-
-const enforceBiomeTransitions = (
-  terrainMap: TerrainType[][],
-  enabledTerrainTypes: TerrainType[],
-  moistureField: ScalarField,
-  elevationField: ScalarField,
-  riverDistanceField: ScalarField
-): TerrainType[][] => {
-  const nextMap = terrainMap.map((row) => [...row]);
-
-  for (let y = 0; y < terrainMap.length; y += 1) {
-    for (let x = 0; x < terrainMap.length; x += 1) {
-      const currentTerrain = terrainMap[y][x];
-      if (currentTerrain === "river") continue;
-
-      const counts = getNeighborTerrainCounts(terrainMap, x, y);
-
-      if (currentTerrain === "forest" && counts.desert >= 2) {
-        nextMap[y][x] = chooseEnabledTerrain(["plain", "forest"], enabledTerrainTypes);
-        continue;
-      }
-
-      if (currentTerrain === "desert") {
-        if (counts.forest >= 1 || counts.hill >= 3 || riverDistanceField[y][x] <= 1 || moistureField[y][x] > 0.5) {
-          nextMap[y][x] = chooseEnabledTerrain(["plain", "forest", "desert"], enabledTerrainTypes);
-        }
-        continue;
-      }
-
-      if (currentTerrain === "hill") {
-        if (counts.hill === 0 || (counts.desert >= 2 && counts.plain + counts.forest >= 2)) {
-          nextMap[y][x] = chooseEnabledTerrain(["plain", elevationField[y][x] > 0.66 ? "hill" : "forest"], enabledTerrainTypes);
-        }
-        continue;
-      }
-
-      if (currentTerrain === "plain") {
-        if (moistureField[y][x] >= 0.7 && counts.forest >= 4) {
-          nextMap[y][x] = chooseEnabledTerrain(["forest", "plain"], enabledTerrainTypes);
-          continue;
-        }
-
-        if (moistureField[y][x] <= 0.22 && counts.desert >= 4 && riverDistanceField[y][x] > 1) {
-          nextMap[y][x] = chooseEnabledTerrain(["desert", "plain"], enabledTerrainTypes);
-        }
-      }
-    }
-  }
-
-  return nextMap;
-};
-
-const smoothTerrainEdges = (
-  terrainMap: TerrainType[][],
-  enabledTerrainTypes: TerrainType[],
-  passes = 2
-): TerrainType[][] => {
-  let currentMap = terrainMap.map((row) => [...row]);
-
-  for (let pass = 0; pass < passes; pass += 1) {
-    const nextMap = currentMap.map((row) => [...row]);
-
-    for (let y = 0; y < currentMap.length; y += 1) {
-      for (let x = 0; x < currentMap.length; x += 1) {
-        const currentTerrain = currentMap[y][x];
-        if (currentTerrain === "river") continue;
-
-        const counts = getNeighborTerrainCounts(currentMap, x, y);
-        const dominantTerrain = getDominantNeighborTerrain(currentMap, x, y, enabledTerrainTypes, ["river"]);
-
-        if (dominantTerrain === currentTerrain || counts[dominantTerrain] < 5) continue;
-
-        const isHarshGreenDryBoundary =
-          (currentTerrain === "forest" && dominantTerrain === "desert") ||
-          (currentTerrain === "desert" && dominantTerrain === "forest");
-
-        nextMap[y][x] = isHarshGreenDryBoundary
-          ? chooseEnabledTerrain(["plain", dominantTerrain, currentTerrain], enabledTerrainTypes)
-          : dominantTerrain;
-      }
-    }
-
-    currentMap = nextMap;
-  }
-
-  return currentMap;
-};
-
-const generateBattlefieldTerrain = (battlefieldSize: BattlefieldSize, terrainSettings: TerrainGenerationSettings): TerrainType[][] => {
-  const enabledTerrainTypes = getMixedTerrainTypes(terrainSettings, battlefieldSize);
-
-  if (enabledTerrainTypes.length === 1) {
-    return generatePureTerrain(battlefieldSize, enabledTerrainTypes[0]);
-  }
-
-  const elevationField = generateElevationField(battlefieldSize);
-  const baseMoistureField = generateMoistureField(battlefieldSize, elevationField);
-  const riverField: boolean[][] = terrainSettings.river
-    ? generateRiverField(battlefieldSize, elevationField, baseMoistureField)
-    : Array.from({ length: battlefieldSize }, () => Array.from({ length: battlefieldSize }, () => false));
-  const riverDistanceField = terrainSettings.river
-    ? buildRiverDistanceField(riverField)
-    : createScalarField(battlefieldSize, () => Number.POSITIVE_INFINITY);
-  const hydratedMoistureField = hydrateMoistureField(baseMoistureField, elevationField, riverDistanceField);
-
-  let terrainMap = createTerrainField(battlefieldSize, (x, y) => {
-    const nearRiver = terrainSettings.river && riverField[y]?.[x];
-    return chooseBaseTerrain(elevationField[y][x], hydratedMoistureField[y][x], nearRiver, enabledTerrainTypes);
-  });
-
-  // Build macro geography first, then collapse tiny speckles so plains become the natural transition biome.
-  terrainMap = removeIsolatedTerrainTiles(terrainMap, enabledTerrainTypes, hydratedMoistureField, riverDistanceField);
-  terrainMap = mergeTinyTerrainRegions(terrainMap, battlefieldSize, enabledTerrainTypes);
-  terrainMap = enforceBiomeTransitions(terrainMap, enabledTerrainTypes, hydratedMoistureField, elevationField, riverDistanceField);
-  terrainMap = smoothTerrainEdges(terrainMap, enabledTerrainTypes, 2);
-  terrainMap = mergeTinyTerrainRegions(terrainMap, battlefieldSize, enabledTerrainTypes);
-
-  return terrainMap;
-};
-
-const generatePureTerrain = (battlefieldSize: BattlefieldSize, terrainType: TerrainType): TerrainType[][] =>
-  Array.from({ length: battlefieldSize }, () => Array.from({ length: battlefieldSize }, () => terrainType));
-
-const generateTerrainMap = (
-  battlefieldSize: BattlefieldSize,
-  terrainPreset: TerrainPreset,
-  terrainSettings: TerrainGenerationSettings
-): TerrainType[][] =>
-  terrainPreset === "mixed"
-    ? generateBattlefieldTerrain(battlefieldSize, terrainSettings)
-    : generatePureTerrain(battlefieldSize, terrainPreset);
-
-const isValidTerrainMap = (terrainMap: any, battlefieldSize: BattlefieldSize): terrainMap is TerrainType[][] => {
-  return (
-    Array.isArray(terrainMap) &&
-    terrainMap.length === battlefieldSize &&
-    terrainMap.every(
-      (row: any) =>
-        Array.isArray(row) &&
-        row.length === battlefieldSize &&
-        row.every((tile: any) => ["plain", "forest", "hill", "river", "desert"].includes(tile))
-    )
-  );
-};
-
-const getTerrainAt = (terrainMap: TerrainType[][], x: number, y: number): TerrainType => {
-  return terrainMap?.[y]?.[x] ?? "plain";
-};
-
-const getBattleLogAppearance = (entry: string) => {
-  const normalizedEntry = String(entry ?? "").toLowerCase();
-  if (normalizedEntry.includes(" was killed")) {
-    return {
-      accent: "border-red-500/70",
-      text: "text-red-100",
-      bg: "bg-red-950/45"
-    };
-  }
-  if (normalizedEntry.includes(" attacked ")) {
-    return {
-      accent: "border-orange-400/70",
-      text: "text-orange-100",
-      bg: "bg-orange-950/35"
-    };
-  }
-  if (normalizedEntry.includes("charge") || normalizedEntry.includes("crashed into")) {
-    return {
-      accent: "border-amber-400/70",
-      text: "text-amber-100",
-      bg: "bg-amber-950/35"
-    };
-  }
-  if (normalizedEntry.includes("shaken") || normalizedEntry.includes("morale")) {
-    return {
-      accent: "border-violet-400/70",
-      text: "text-violet-100",
-      bg: "bg-violet-950/35"
-    };
-  }
-  if (normalizedEntry.includes("moved onto") || normalizedEntry.includes("repositioned") || normalizedEntry.includes("advanced")) {
-    return {
-      accent: "border-sky-400/70",
-      text: "text-sky-100",
-      bg: "bg-sky-950/35"
-    };
-  }
-  if (normalizedEntry.includes("merge")) {
-    return {
-      accent: "border-fuchsia-400/70",
-      text: "text-fuchsia-100",
-      bg: "bg-fuchsia-950/35"
-    };
-  }
-  return {
-    accent: "border-yellow-500/60",
-    text: "text-yellow-100",
-    bg: "bg-black/25"
-  };
-};
-
-const ensureRangedAmmo = (unit: any) => {
-  if (!unit) return unit;
-
-  const normalizedUnit = { ...unit };
-  const normalizedRole = String(normalizedUnit.role ?? normalizedUnit.name ?? "").toLowerCase();
-  const projectileKeywords = [
-    "archer",
-    "longbow",
-    "slinger",
-    "crossbow",
-    "velites",
-    "shaman",
-    "skirmisher",
-    "peltast",
-    "psiloi",
-    "turcopole",
-    "thureophoroi",
-    "ballista",
-    "scorpion",
-    "catapult",
-    "trebuchet",
-    "polybolos",
-    "onager",
-    "bombard",
-    "barbarian scout",
-    "gallic chariot",
-    "royal chariot",
-    "desert scout",
-    "scout",
-    "horse archer",
-    "elephant archer"
-  ];
-  const isProjectileUnit = projectileKeywords.some((keyword) => normalizedRole.includes(keyword));
-
-  if (!isProjectileUnit) {
-    normalizedUnit.ammo = 0;
-    normalizedUnit.range = 1;
-    return normalizedUnit;
-  }
-
-  const isSiegeUnit = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "onager", "bombard"].some((keyword) =>
-    normalizedRole.includes(keyword)
-  );
-  const isLongbowUnit = normalizedRole.includes("longbow");
-  const isCrossbowUnit = normalizedRole.includes("crossbow");
-  const isSlingerUnit = normalizedRole.includes("slinger");
-  const isHybridMountedRangedUnit = ["barbarian scout", "gallic chariot", "royal chariot", "desert scout", "scout", "horse archer", "camel rider archer", "elephant archer"].some((keyword) =>
-    normalizedRole.includes(keyword)
-  );
-
-  let minimumRange = 4;
-  let minimumAmmo = 12;
-
-  if (isSiegeUnit) {
-    minimumRange = 6;
-    minimumAmmo = 8;
-  } else if (isHybridMountedRangedUnit) {
-    minimumRange = 3;
-    minimumAmmo = 8;
-  } else if (isLongbowUnit) {
-    minimumRange = 6;
-    minimumAmmo = 14;
-  } else if (isCrossbowUnit) {
-    minimumRange = 5;
-    minimumAmmo = 12;
-  } else if (isSlingerUnit) {
-    minimumRange = 5;
-    minimumAmmo = 14;
-  }
-
-  normalizedUnit.range = Math.max(minimumRange, normalizedUnit.range ?? 1);
-  normalizedUnit.ammo = halveAmmo(Math.max(minimumAmmo, normalizedUnit.ammo ?? 0));
-
-  return normalizedUnit;
-};
-
-const getTroopMechanicType = (unit: any): TroopMechanicType => {
-  if (!unit) return "closecombat";
-
-  const role = String(unit.role ?? "").toLowerCase();
-  const siegeKeywords = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "siege tower", "onager", "bombard"];
-  const mountedKeywords = ["cavalry", "chariot", "rider", "scout", "knight", "elephant", "horse", "camel", "cataphract"];
-
-  if (siegeKeywords.some((keyword) => role.includes(keyword))) {
-    return "sieged";
-  }
-
-  if (usesAmmoRole(unit) && (unit.ammo ?? 0) <= 0) {
-    return "closecombat";
-  }
-
-  if ((unit.ammo ?? 0) > 0 && (unit.range ?? 1) > 1) {
-    return "ranged";
-  }
-
-  if (mountedKeywords.some((keyword) => role.includes(keyword)) || ((unit.move ?? 0) >= 3 && (unit.range ?? 1) <= 1)) {
-    return "mounted";
-  }
-
-  return "closecombat";
-};
-
-const LEADER_AURA_ATTACK_MULTIPLIER = 1.1;
-
-const isLeaderRole = (role: string) => {
-  const normalizedRole = String(role ?? "").toLowerCase();
-  return ["king", "jarl", "general", "leader", "marshal", "pharaoh"].some((keyword) => normalizedRole.includes(keyword));
-};
-
-const isNearKing = (unit: any, allUnits: any[]) => {
-  if (!unit || !Array.isArray(allUnits)) return false;
-
-  return allUnits.some((candidate) => {
-    if (!candidate || candidate.id === unit.id || candidate.hp <= 0) return false;
-    if (candidate.team !== unit.team || !isLeaderRole(candidate.role)) return false;
-
-    const distance = Math.abs(candidate.x - unit.x) + Math.abs(candidate.y - unit.y);
-    return distance === 1;
-  });
-};
-
-const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = [], terrainMap: TerrainType[][] = []) => {
-  const attackerType = getTroopMechanicType(attacker);
-  const defenderType = getTroopMechanicType(defender);
-  const hasAdvantage = TROOP_MECHANIC_ADVANTAGE[attackerType].includes(defenderType);
-  const hasLeaderAura = isNearKing(attacker, allUnits);
-  const attackerTerrain = getTerrainAt(terrainMap, attacker?.x ?? 0, attacker?.y ?? 0);
-  const defenderTerrain = getTerrainAt(terrainMap, defender?.x ?? 0, defender?.y ?? 0);
-  const terrainModifiers = getTerrainModifiers(attacker, attackerTerrain);
-  const hasTerrainModifier = terrainModifiers.attackMultiplier !== 1;
-  let damage = attacker.attack;
-
-  if (hasNoAmmoPenalty(attacker)) {
-    damage = Math.round(damage * 0.5);
-  }
-
-  if (hasLeaderAura) {
-    damage = Math.round(damage * LEADER_AURA_ATTACK_MULTIPLIER);
-  }
-
-  if (hasTerrainModifier) {
-    damage = Math.round(damage * terrainModifiers.attackMultiplier);
-  }
-
-  const abilityEffects = getAbilityEffects(attacker, defender, allUnits, attackerTerrain, defenderTerrain);
-  if (abilityEffects.attackMultiplier !== 1) {
-    damage = Math.round(damage * abilityEffects.attackMultiplier);
-  }
-
-  if (hasAdvantage) {
-    damage = Math.round(damage * TROOP_MECHANIC_ADVANTAGE_MULTIPLIER);
-  }
-
-  if (abilityEffects.damageTakenMultiplier !== 1) {
-    damage = Math.round(damage * abilityEffects.damageTakenMultiplier);
-  }
-
-  return {
-    damage,
-    attackerType,
-    defenderType,
-    hasAdvantage,
-    hasLeaderAura,
-    hasTerrainModifier,
-    terrainType: attackerTerrain,
-    terrainLabel: terrainModifiers.terrainLabel,
-    abilityTags: [...abilityEffects.attackerTags, ...abilityEffects.defenderTags]
-  };
-};
-
-const getDisplayedAttack = (unit: any, allUnits: any[] = [], terrainMap: TerrainType[][] = []) => {
-  if (!unit) return 0;
-
-  let displayedAttack = unit.attack;
-  const terrainModifiers = getTerrainModifiers(unit, getTerrainAt(terrainMap, unit.x, unit.y));
-
-  if (hasNoAmmoPenalty(unit)) {
-    displayedAttack = Math.round(displayedAttack * 0.5);
-  }
-
-  if (isNearKing(unit, allUnits)) {
-    displayedAttack = Math.round(displayedAttack * LEADER_AURA_ATTACK_MULTIPLIER);
-  }
-
-  if (terrainModifiers.attackMultiplier !== 1) {
-    displayedAttack = Math.round(displayedAttack * terrainModifiers.attackMultiplier);
-  }
-
-  return displayedAttack;
-};
-
-const getUnitEffectNotes = (
-  unit: any,
-  allUnits: any[] = [],
-  terrainMap: TerrainType[][] = [],
-  terrainEffectsEnabled = true
-) => {
-  if (!unit) return [] as string[];
-
-  const notes: string[] = [];
-
-  if (unit.civPassiveName && unit.civPassiveEffect) {
-    notes.push(`${unit.civPassiveName}: ${unit.civPassiveEffect}`);
-  } else if (unit.civPassiveEffect) {
-    notes.push(unit.civPassiveEffect);
-  }
-
-  if (isNearKing(unit, allUnits)) {
-    notes.push("Leader Aura: +10% attack");
-  }
-
-  if (getAdjacentCommanders(unit, allUnits).length > 0) {
-    notes.push("Command Aura: +5% attack from an adjacent commander");
-  }
-
-  if (unit.roleHealthBuffActive) {
-    notes.push(`Formation Buff: +${Math.round(((unit.roleHealthBuffMultiplier ?? 1) - 1) * 100)}% max health`);
-  }
-
-  if (hasNoAmmoPenalty(unit)) {
-    notes.push("Out of Ammo: -50% attack");
-  }
-
-  if (terrainEffectsEnabled) {
-    const terrainNotes = getTerrainModifiers(unit, getTerrainAt(terrainMap, unit.x, unit.y)).notes;
-    terrainNotes.forEach((note) => notes.push(`Terrain: ${note}`));
-  }
-
-  getTroopAbilities(unit.role).forEach((ability) => {
-    switch (ability.key) {
-      case "shieldWall":
-        if (getAdjacentAllies(unit, allUnits).length > 0) {
-          notes.push(`${ability.name}: active while holding formation next to an ally`);
-        } else {
-          notes.push(`${ability.name}: ${ability.description}`);
-        }
-        break;
-      case "charge":
-        if (getTerrainAt(terrainMap, unit.x, unit.y) === "plain") {
-          notes.push(`${ability.name}: active on open ground`);
-        } else {
-          notes.push(`${ability.name}: ${ability.description}`);
-        }
-        break;
-      case "guarded":
-        if ((unit?.hp ?? 0) > Math.ceil((unit?.maxHp ?? 0) * 0.5)) {
-          notes.push(`${ability.name}: active while above half health`);
-        } else {
-          notes.push(`${ability.name}: ${ability.description}`);
-        }
-        break;
-      case "ferocity":
-        if (getAdjacentAllies(unit, allUnits).length === 0) {
-          notes.push(`${ability.name}: active while fighting away from allied support`);
-        } else {
-          notes.push(`${ability.name}: ${ability.description}`);
-        }
-        break;
-      case "deadeye":
-        if (getTerrainAt(terrainMap, unit.x, unit.y) === "hill") {
-          notes.push(`${ability.name}: active high-ground range bonus`);
-        } else {
-          notes.push(`${ability.name}: ${ability.description}`);
-        }
-        break;
-      case "crush":
-        notes.push(`${ability.name}: extra damage against close-combat and defensive units`);
-        break;
-      case "command":
-        notes.push(`${ability.name}: adjacent allies gain +5% attack`);
-        break;
-      case "siegeMastery":
-        if (getTerrainAt(terrainMap, unit.x, unit.y) === "hill") {
-          notes.push(`${ability.name}: active elevated range and damage bonus`);
-        } else if (getTerrainAt(terrainMap, unit.x, unit.y) === "plain") {
-          notes.push(`${ability.name}: active stable-ground damage bonus`);
-        } else {
-          notes.push(`${ability.name}: ${ability.description}`);
-        }
-        break;
-      case "skirmishStep":
-        if ((unit?.ammo ?? 0) > 0) {
-          notes.push(`${ability.name}: active +1 move while ammunition lasts`);
-        } else {
-          notes.push(`${ability.name}: ${ability.description}`);
-        }
-        break;
-      case "resolve":
-        if (hasAdjacentWoundedAlly(unit, allUnits)) {
-          notes.push(`${ability.name}: active near a wounded ally`);
-        } else {
-          notes.push(`${ability.name}: ${ability.description}`);
-        }
-        break;
-      default:
-        notes.push(`${ability.name}: ${ability.description}`);
-        break;
-    }
-  });
-
-  return notes;
-};
-
-const ROLE_HEALTH_BUFF_PER_EXTRA_UNIT = 0.05;
-const ROLE_HEALTH_BUFF_MIN_GROUP_SIZE = 2;
-const GAME_MECHANICS_INFO = [
-  {
-    icon: "⚔️",
-    title: "Troop Type Matchups",
-    description: "Only mounted troops get a type advantage. They deal +10% attack damage against ranged and sieged units."
-  },
-  {
-    icon: "🧱",
-    title: "Role Formation Buff",
-    description: "Adjacent allied troops with the same role gain scaling max health: 2 units = +5%, 3 = +10%, 4 = +15%, and larger groups keep scaling while connected."
-  },
-  {
-    icon: "👑",
-    title: "Leader Aura",
-    description: "Troops directly next to a King, Jarl, General, or Leader gain +10% attack."
-  },
-  {
-    icon: "🏹",
-    title: "Ranged Shots",
-    description: "Ranged and sieged troops have limited shots. When they run dry, they can no longer fire effectively."
-  },
-  {
-    icon: "🧬",
-    title: "Merge Limit",
-    description: "You can merge adjacent same-role troops into elite units a limited number of times each battle."
-  },
-  {
-    icon: "🗺️",
-    title: "Dynamic Terrain",
-    description: "Every new battle generates fresh terrain. Forests add cover, hills extend firing lanes, rivers punish heavy crossings, plains favor charges, and deserts wear down non-native armies."
-  }
-] as const;
-
-const ADDITIONAL_MECHANICS_INFO = [
-  {
-    icon: "🐎🏹",
-    title: "Hybrid Troops",
-    description: "Mounted-ranged units are shown as Hybrid in the UI. While they still have ammo, they fight as ranged attackers and keep their two-icon identity."
-  },
-  {
-    icon: "🪫",
-    title: "Ammo Exhaustion",
-    description: "Every shot spends 1 ammo. At 0 ammo, the unit drops to range 1 and attacks at half power, turning ranged hybrids into close-combat fighters."
-  },
-  {
-    icon: "🏴",
-    title: "Civilization Passives",
-    description: "Each faction applies a passive bonus before battle starts, which can change movement, health, range, or attack depending on the civilization."
-  },
-  {
-    icon: "✨",
-    title: "Signature Unit Abilities",
-    description: "Selected roles now carry passive signature abilities like Brace, Shield Wall, Charge, Harrier, Shock Assault, Guarded, Deadeye, Crush, Command Aura, Siege Mastery, Skirmish Step, and Resolve that trigger automatically during combat."
-  },
-  {
-    icon: "🎺",
-    title: "Battle Sound Cues",
-    description: "Music and battle SFX are now separated. Turn stingers, impact sounds, charge hits, projectile releases, and morale breaks help you read combat momentum by ear."
-  },
-  {
-    icon: "💥",
-    title: "Battlefield Feedback",
-    description: "Temporary hit, death, ranged, charge, projectile, and morale effects pulse directly on the grid so critical events stand out without slowing the battle down."
-  },
-  {
-    icon: "🔒",
-    title: "Terrain Lock",
-    description: "Terrain settings and regeneration are only available before combat starts. Once the battle begins, the battlefield is locked for the rest of the match."
-  }
-] as const;
-
-const UNIT_ABILITY_MECHANICS_INFO = [
-  {
-    icon: "🛡️",
-    title: "Brace",
-    detail: "Spear and phalanx troops deal +15% damage into mounted enemies and take 15% less damage when receiving a mounted charge."
-  },
-  {
-    icon: "🧱",
-    title: "Shield Wall",
-    detail: "Defensive infantry take 10% less damage while standing adjacent to at least 1 allied unit."
-  },
-  {
-    icon: "🔥",
-    title: "Shock Assault",
-    detail: "Berserker and falx-style shock troops hit 20% harder against targets already at or below half health."
-  },
-  {
-    icon: "🐎",
-    title: "Charge",
-    detail: "Mounted shock troops gain +15% damage on plains and gain another +10% when crashing into ranged or siege units."
-  },
-  {
-    icon: "🏹",
-    title: "Harrier",
-    detail: "Skirmishers and horse archers deal +10% damage while they still have ammo against targets with 1 or less move, and against siege crews."
-  },
-  {
-    icon: "🪖",
-    title: "Guarded",
-    detail: "Heavy line troops take 10% less damage while they stay above half health."
-  },
-  {
-    icon: "🪓",
-    title: "Ferocity",
-    detail: "Aggressive fighters gain +10% attack when they are not standing next to an allied unit."
-  },
-  {
-    icon: "🎯",
-    title: "Deadeye",
-    detail: "Precision archers gain +1 range on hills and deal +10% damage into unsupported ranged or siege targets."
-  },
-  {
-    icon: "🐘",
-    title: "Crush",
-    detail: "Elephants and impact troops deal +15% damage into close-combat units and gain another +5% against Guarded or Shield Wall defenders."
-  },
-  {
-    icon: "🏴",
-    title: "Command Aura",
-    detail: "Allies adjacent to a command unit gain +5% attack, stacking with the normal +10% leader aura when present."
-  },
-  {
-    icon: "🏰",
-    title: "Siege Mastery",
-    detail: "Siege engines gain +10% attack from plains or hills and gain +1 extra range on hills."
-  },
-  {
-    icon: "🪶",
-    title: "Skirmish Step",
-    detail: "Mobile skirmish troops gain +1 move while they still have ammunition."
-  },
-  {
-    icon: "⚡",
-    title: "Resolve",
-    detail: "Elite troops gain +10% attack when an adjacent allied unit is at or below 50% HP."
-  }
-] as const;
-
-const AI_MECHANICS_INFO = [
-  "Front-line melee units now push harder and value moves that create an immediate attack on the next turn.",
-  "The AI focuses wounded enemies, exposed ranged units, siege crews, and isolated leaders more aggressively.",
-  "Ranged and siege troops still prefer safer firing ground, but they now step into pressure range sooner instead of drifting too far back.",
-  "Mounted units prefer flank lanes, open ground, and fast collapses onto fragile back-line targets.",
-  "Leaders stay more disciplined than other roles, but the army as a whole is less hesitant and avoids sideways stalling.",
-  "If the advanced scorer cannot find a premium action, the AI still falls back to a nearest-target attack or direct advance."
-] as const;
-
-const TROOP_MECHANICS_INFO: Array<{ type: TroopMechanicType; summary: string; pros: string[]; cons: string[] }> = [
-  {
-    type: "closecombat",
-    summary: "Front-line fighters built to hold ground and finish broken enemies up close.",
-    pros: ["Gets a hill bonus from elevated footing.", "Reliable front-line presence in direct combat."],
-    cons: ["Usually slower than mounted troops.", "Loses attack power while fighting in rivers."]
-  },
-  {
-    type: "mounted",
-    summary: "Fast flankers that exploit open ground and pressure fragile back lines.",
-    pros: ["Strong against ranged and sieged units.", "Gain +1 move on plains."],
-    cons: ["Lose power and speed in forests and rivers.", "Climbing hills slows them down."]
-  },
-  {
-    type: "ranged",
-    summary: "Flexible missile troops that chip away at enemies before they can close in.",
-    pros: ["Gain attack bonuses in forests and on hills.", "Useful for softening enemies before contact."],
-    cons: ["Vulnerable to mounted flanks.", "Dusty desert terrain weakens their attacks."]
-  },
-  {
-    type: "sieged",
-    summary: "Heavy engines that hit hard from distance but hate rough terrain and close pressure.",
-    pros: ["Benefit from stable firing positions, especially hills.", "Can hit hard from long range."],
-    cons: ["Weak to mounted flanks.", "Forests, rivers, and deserts slow or weaken them."]
-  }
-] as const;
-
-const TERRAIN_MECHANICS_INFO: Array<{ terrain: TerrainType; summary: string; effects: string[] }> = [
-  {
-    terrain: "plain",
-    summary: "Open ground that connects the other biomes and favors mobility.",
-    effects: [
-      "Mounted troops gain +1 move on open ground.",
-      "Sieged troops gain +5% attack from stable firing lanes.",
-      "Romans and Vikings gain +5% attack on plains."
-    ]
-  },
-  {
-    terrain: "forest",
-    summary: "Wet, dense terrain that rewards cover and punishes fast movement.",
-    effects: [
-      "Ranged troops gain +5% attack in forest cover.",
-      "Mounted troops suffer -1 move and -15% attack in dense woods.",
-      "Sieged troops suffer -1 move and -10% attack in forests.",
-      "Non-mounted defenders take 8% less incoming damage in forest cover.",
-      "Gauls and Germanic troops gain +10% attack and +1 move in forests."
-    ]
-  },
-  {
-    terrain: "hill",
-    summary: "Elevated ground that improves firing positions and slows rapid troops.",
-    effects: [
-      "Ranged troops gain +15% attack and +1 range from high ground.",
-      "Closecombat troops gain +5% attack on hills.",
-      "Mounted troops lose 1 move climbing hills.",
-      "Sieged troops gain +10% attack and +1 range from elevated positions.",
-      "Greeks and Egypt gain +10% attack on hills."
-    ]
-  },
-  {
-    terrain: "river",
-    summary: "Water lanes disrupt combat flow unless a faction is good at crossing.",
-    effects: [
-      "Closecombat troops suffer -10% attack while fighting through water.",
-      "Mounted troops suffer -2 move and -10% attack in rivers.",
-      "Sieged troops suffer -2 move and -15% attack in rivers.",
-      "Romans and Carthage gain +5% attack and +1 move in rivers."
-    ]
-  },
-  {
-    terrain: "desert",
-    summary: "Dry, punishing terrain that drains movement and weakens ranged fire.",
-    effects: [
-      "All non-mounted troops lose 1 move in desert terrain.",
-      "Ranged troops suffer -15% attack from dust and heat.",
-      "Sieged troops suffer -15% attack in desert sand.",
-      "Carthage, Barbarians, Egypt, and Parthians gain +10% attack and +1 move in deserts."
-    ]
-  }
-] as const;
-
-const getOrientationRotationSteps = (from: GridOrientation, to: GridOrientation) => {
-  const fromIndex = GRID_ORIENTATIONS.indexOf(from);
-  const toIndex = GRID_ORIENTATIONS.indexOf(to);
-  return (toIndex - fromIndex + GRID_ORIENTATIONS.length) % GRID_ORIENTATIONS.length;
-};
-
-const rotateUnitCoordinates = (units: any[], steps: number, battlefieldSize: BattlefieldSize) => {
-  if (steps === 0) return units;
-
-  return units.map((unit) => {
-    if (!unit) return unit;
-
-    let nextX = unit.x;
-    let nextY = unit.y;
-
-    for (let step = 0; step < steps; step += 1) {
-      const rotatedX = battlefieldSize - 1 - nextY;
-      const rotatedY = nextX;
-      nextX = rotatedX;
-      nextY = rotatedY;
-    }
-
-    return {
-      ...unit,
-      x: nextX,
-      y: nextY
-    };
-  });
-};
-
-const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
-  const troopType = getTroopMechanicType(unit);
-  let attackMultiplier = 1;
-  let damageTakenMultiplier = 1;
-  let moveDelta = 0;
-  let rangeBonus = 0;
-  const notes: string[] = [];
-
-  switch (terrainType) {
-    case "forest":
-      if (troopType === "ranged") {
-        attackMultiplier *= 1.05;
-        notes.push("+5% attack for ranged cover");
-      }
-      if (troopType === "mounted") {
-        moveDelta -= 1;
-        attackMultiplier *= 0.85;
-        notes.push("-1 move and -15% attack for mounted troops in dense woods");
-      }
-      if (troopType === "sieged") {
-        moveDelta -= 1;
-        attackMultiplier *= 0.9;
-        notes.push("-1 move and -10% attack for siege engines in forests");
-      }
-      if (troopType !== "mounted") {
-        damageTakenMultiplier *= 0.92;
-        notes.push("-8% incoming damage from forest cover");
-      }
-      if (unit.team === "Gauls" || unit.team === "Germanic") {
-        attackMultiplier *= 1.1;
-        moveDelta += 1;
-        notes.push("+10% attack and +1 move for woodland factions");
-      }
-      break;
-    case "hill":
-      if (troopType === "ranged") {
-        attackMultiplier *= 1.15;
-        rangeBonus += 1;
-        notes.push("+15% attack and +1 range from high ground");
-      } else if (troopType === "closecombat") {
-        attackMultiplier *= 1.05;
-        notes.push("+5% attack from elevated footing");
-      }
-      if (troopType === "mounted") {
-        moveDelta -= 1;
-        notes.push("-1 move climbing hills");
-      }
-      if (troopType === "sieged") {
-        attackMultiplier *= 1.1;
-        rangeBonus += 1;
-        notes.push("+10% attack and +1 range from elevated siege positions");
-      }
-      if (unit.team === "Greeks" || unit.team === "Egypt") {
-        attackMultiplier *= 1.1;
-        notes.push("+10% attack for disciplined hill fighters");
-      }
-      break;
-    case "river":
-      if (troopType === "closecombat") {
-        attackMultiplier *= 0.9;
-        notes.push("-10% attack while fighting through water");
-      }
-      if (troopType === "mounted") {
-        moveDelta -= 2;
-        attackMultiplier *= 0.9;
-        notes.push("-2 move and -10% attack for mounted troops in rivers");
-      }
-      if (troopType === "sieged") {
-        moveDelta -= 2;
-        attackMultiplier *= 0.85;
-        notes.push("-2 move and -15% attack for siege engines in rivers");
-      }
-      if (unit.team === "Romans" || unit.team === "Carthage") {
-        attackMultiplier *= 1.05;
-        moveDelta += 1;
-        notes.push("+5% attack and +1 move from organized river crossing");
-      }
-      break;
-    case "desert":
-      if (troopType !== "mounted") {
-        moveDelta -= 1;
-        notes.push("-1 move in harsh desert terrain");
-      }
-      if (troopType === "ranged") {
-        attackMultiplier *= 0.85;
-        notes.push("-15% attack from dust and heat");
-      }
-      if (troopType === "sieged") {
-        attackMultiplier *= 0.85;
-        notes.push("-15% attack for siege engines in shifting sand");
-      }
-      if (unit.team === "Carthage" || unit.team === "Barbarians" || unit.team === "Egypt" || unit.team === "Parthians") {
-        attackMultiplier *= 1.1;
-        moveDelta += 1;
-        notes.push("+10% attack and +1 move for desert-adapted factions");
-      }
-      break;
-    case "plain":
-    default:
-      if (troopType === "mounted") {
-        moveDelta += 1;
-        notes.push("+1 move on open ground");
-      }
-      if (troopType === "sieged") {
-        attackMultiplier *= 1.05;
-        notes.push("+5% attack from stable firing lanes");
-      }
-      if (unit.team === "Romans" || unit.team === "Vikings") {
-        attackMultiplier *= 1.05;
-        notes.push("+5% attack on open terrain");
-      }
-      break;
-  }
-
-  return {
-    terrainType,
-    terrainLabel: TERRAIN_LABELS[terrainType],
-    attackMultiplier,
-    damageTakenMultiplier,
-    moveDelta,
-    rangeBonus,
-    notes
-  };
-};
-
-const getEffectiveMove = (unit: any, terrainMap: TerrainType[][]) => {
-  if (!unit) return 0;
-  const terrainType = getTerrainAt(terrainMap, unit.x, unit.y);
-  const modifiers = getTerrainModifiers(unit, terrainType);
-  const skirmishStepBonus = getTroopAbilities(unit.role).some((ability) => ability.key === "skirmishStep") && (unit?.ammo ?? 0) > 0 ? 1 : 0;
-  return Math.max(1, unit.move + modifiers.moveDelta + skirmishStepBonus);
-};
-
-const getEffectiveRange = (unit: any, terrainMap: TerrainType[][]) => {
-  if (!unit) return 0;
-  const terrainType = getTerrainAt(terrainMap, unit.x, unit.y);
-  const modifiers = getTerrainModifiers(unit, terrainType);
-  const abilities = getTroopAbilities(unit.role);
-  let abilityRangeBonus = 0;
-  if (terrainType === "hill" && abilities.some((ability) => ability.key === "deadeye")) {
-    abilityRangeBonus += 1;
-  }
-  if (terrainType === "hill" && abilities.some((ability) => ability.key === "siegeMastery")) {
-    abilityRangeBonus += 1;
-  }
-  return Math.max(1, unit.range + modifiers.rangeBonus + abilityRangeBonus);
-};
-
-const getAdjacentAllies = (unit: any, allUnits: any[] = []) =>
-  allUnits.filter((candidate) => {
-    if (!unit || !candidate || candidate.id === unit.id || candidate.hp <= 0) return false;
-    if (candidate.team !== unit.team) return false;
-    return Math.abs(candidate.x - unit.x) + Math.abs(candidate.y - unit.y) === 1;
-  });
-
-const unitHasAbility = (unit: any, abilityKey: string) =>
-  getTroopAbilities(unit?.role ?? "").some((ability) => ability.key === abilityKey);
-
-const getAdjacentCommanders = (unit: any, allUnits: any[] = []) =>
-  getAdjacentAllies(unit, allUnits).filter((candidate) => unitHasAbility(candidate, "command"));
-
-const hasAdjacentWoundedAlly = (unit: any, allUnits: any[] = []) =>
-  getAdjacentAllies(unit, allUnits).some((candidate) => candidate.hp <= Math.ceil(candidate.maxHp * 0.5));
-
-const getAbilityEffects = (
-  attacker: any,
-  defender: any,
-  allUnits: any[] = [],
-  attackerTerrain: TerrainType,
-  defenderTerrain: TerrainType
-) => {
-  const attackerAbilities = getTroopAbilities(attacker?.role ?? "");
-  const defenderAbilities = getTroopAbilities(defender?.role ?? "");
-  const attackerType = getTroopMechanicType(attacker);
-  const defenderType = getTroopMechanicType(defender);
-  const attackerTags: string[] = [];
-  const defenderTags: string[] = [];
-  let attackMultiplier = 1;
-  let damageTakenMultiplier = 1;
-
-  attackerAbilities.forEach((ability) => {
-    switch (ability.key) {
-      case "brace":
-        if (defenderType === "mounted") {
-          attackMultiplier *= 1.15;
-          attackerTags.push("Brace");
-        }
-        break;
-      case "shieldWall":
-        break;
-      case "shock":
-        if ((defender?.hp ?? 0) <= Math.ceil((defender?.maxHp ?? 0) * 0.5)) {
-          attackMultiplier *= 1.2;
-          attackerTags.push("Shock Assault");
-        }
-        break;
-      case "charge":
-        if (attackerTerrain === "plain" && attackerType === "mounted") {
-          attackMultiplier *= 1.15;
-          attackerTags.push("Charge");
-        }
-        if (defenderType === "ranged" || defenderType === "sieged") {
-          attackMultiplier *= 1.1;
-          if (!attackerTags.includes("Charge")) attackerTags.push("Charge");
-        }
-        break;
-      case "harrier":
-        if ((attacker?.ammo ?? 0) > 0 && ((defender?.move ?? 0) <= 1 || defenderType === "sieged")) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Harrier");
-        }
-        break;
-      case "guarded":
-        break;
-      case "ferocity":
-        if (getAdjacentAllies(attacker, allUnits).length === 0) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Ferocity");
-        }
-        break;
-      case "deadeye":
-        if (
-          (defenderType === "ranged" || defenderType === "sieged") &&
-          getAdjacentAllies(defender, allUnits).length === 0
-        ) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Deadeye");
-        }
-        break;
-      case "crush":
-        if (defenderType === "closecombat") {
-          attackMultiplier *= 1.15;
-          attackerTags.push("Crush");
-        }
-        if (defenderAbilities.some((defenderAbility) => defenderAbility.key === "shieldWall" || defenderAbility.key === "guarded")) {
-          attackMultiplier *= 1.05;
-          if (!attackerTags.includes("Crush")) attackerTags.push("Crush");
-        }
-        break;
-      case "command":
-        break;
-      case "siegeMastery":
-        if (attackerType === "sieged" && (attackerTerrain === "plain" || attackerTerrain === "hill")) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Siege Mastery");
-        }
-        break;
-      case "skirmishStep":
-        break;
-      case "resolve":
-        if (hasAdjacentWoundedAlly(attacker, allUnits)) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Resolve");
-        }
-        break;
-    }
-  });
-
-  if (getAdjacentCommanders(attacker, allUnits).length > 0) {
-    attackMultiplier *= 1.05;
-    attackerTags.push("Command Aura");
-  }
-
-  defenderAbilities.forEach((ability) => {
-    switch (ability.key) {
-      case "brace":
-        if (attackerType === "mounted") {
-          damageTakenMultiplier *= 0.85;
-          defenderTags.push("Brace");
-        }
-        break;
-      case "shieldWall":
-        if (getAdjacentAllies(defender, allUnits).length > 0) {
-          damageTakenMultiplier *= 0.9;
-          defenderTags.push("Shield Wall");
-        }
-        break;
-      case "guarded":
-        if ((defender?.hp ?? 0) > Math.ceil((defender?.maxHp ?? 0) * 0.5)) {
-          damageTakenMultiplier *= 0.9;
-          defenderTags.push("Guarded");
-        }
-        break;
-      default:
-        break;
-    }
-  });
-
-  const defenderTerrainModifiers = getTerrainModifiers(defender, defenderTerrain);
-  if (defenderTerrainModifiers.damageTakenMultiplier !== 1) {
-    damageTakenMultiplier *= defenderTerrainModifiers.damageTakenMultiplier;
-    defenderTags.push(`${defenderTerrainModifiers.terrainLabel} Cover`);
-  }
-
-  return {
-    attackMultiplier,
-    damageTakenMultiplier,
-    attackerTags,
-    defenderTags
-  };
-};
-
-const applyRoleHealthBuffs = (units: any[]) => {
-  if (!Array.isArray(units) || units.length === 0) return units;
-
-  const aliveUnits = units.filter((unit) => unit && unit.hp > 0);
-  const qualifyingBuffs = new Map<string, number>();
-  const visited = new Set<string>();
-
-  aliveUnits.forEach((unit) => {
-    if (visited.has(unit.id)) return;
-
-    const component: any[] = [];
-    const stack = [unit];
-
-    while (stack.length > 0) {
-      const current = stack.pop();
-      if (!current || visited.has(current.id)) continue;
-
-      visited.add(current.id);
-      component.push(current);
-
-      aliveUnits.forEach((candidate) => {
-        if (visited.has(candidate.id)) return;
-        if (candidate.team !== current.team || candidate.role !== current.role) return;
-
-        const distance = Math.abs(candidate.x - current.x) + Math.abs(candidate.y - current.y);
-        if (distance === 1) stack.push(candidate);
-      });
-    }
-
-    if (component.length >= ROLE_HEALTH_BUFF_MIN_GROUP_SIZE) {
-      const multiplier = 1 + ROLE_HEALTH_BUFF_PER_EXTRA_UNIT * (component.length - 1);
-      component.forEach((member) => qualifyingBuffs.set(member.id, multiplier));
-    }
-  });
-
-  return units.map((unit) => {
-    if (!unit) return unit;
-
-    const baseMaxHp = unit.baseMaxHp ?? unit.maxHp;
-    const roleHealthBuffMultiplier = qualifyingBuffs.get(unit.id) ?? 1;
-    const desiredBuff = unit.hp > 0 && roleHealthBuffMultiplier > 1;
-    const desiredMaxHp = desiredBuff ? Math.round(baseMaxHp * roleHealthBuffMultiplier) : baseMaxHp;
-    const currentMaxHp = unit.maxHp ?? baseMaxHp;
-    const stateChanged =
-      currentMaxHp !== desiredMaxHp ||
-      Boolean(unit.roleHealthBuffActive) !== desiredBuff ||
-      unit.baseMaxHp !== baseMaxHp;
-
-    let nextHp = unit.hp;
-    if (unit.hp > 0 && stateChanged) {
-      const hpRatio = currentMaxHp > 0 ? unit.hp / currentMaxHp : 1;
-      nextHp = Math.max(1, Math.min(desiredMaxHp, Math.round(desiredMaxHp * hpRatio)));
-    }
-
-    return {
-      ...unit,
-      baseMaxHp,
-      roleHealthBuffMultiplier,
-      maxHp: desiredMaxHp,
-      hp: unit.hp <= 0 ? unit.hp : nextHp,
-      roleHealthBuffActive: desiredBuff
-    };
-  });
-};
-
-const didRoleHealthBuffStateChange = (currentUnits: any[], updatedUnits: any[]) => {
-  if (currentUnits.length !== updatedUnits.length) return true;
-
-  return updatedUnits.some((unit, index) => {
-    const current = currentUnits[index];
-    return (
-      current?.hp !== unit?.hp ||
-      current?.maxHp !== unit?.maxHp ||
-      current?.baseMaxHp !== unit?.baseMaxHp ||
-      current?.roleHealthBuffMultiplier !== unit?.roleHealthBuffMultiplier ||
-      current?.roleHealthBuffActive !== unit?.roleHealthBuffActive
-    );
-  });
-};
-
-const CIV_PASSIVES: Record<TeamName, { name: string; effect: string }> = {
-  Romans: { name: "Roman Discipline", effect: "+10% hp, +10% attack" },
-  Barbarians: { name: "Barbarian Fury", effect: "+20% attack, -10% hp" },
-  Greeks: { name: "Phalanx Mastery", effect: "+1 range (infantry), -1 move (infantry)" },
-  Gauls: { name: "Swift Warriors", effect: "+1 move, -10% hp" },
-  Germanic: { name: "Brutal Strength", effect: "+15% attack" },
-  Carthage: { name: "Mercenary Tactics", effect: "+10% hp, +10% attack, -10% move" },
-  Egypt: { name: "Chariot Kingdom", effect: "+1 move (mounted), +10% attack (ranged)" },
-  Thracians: { name: "Hill Raiders", effect: "+10% attack (infantry), +1 move (ranged)" },
-  Dacians: { name: "Falx Discipline", effect: "+10% hp, +10% attack" },
-  Parthians: { name: "Parthian Shot", effect: "+1 move (mounted), +10% attack (ranged)" },
-  Seleucids: { name: "Imperial Arms", effect: "+10% hp (infantry), +10% attack (siege and elephants)" },
-  Vikings: { name: "Relentless Raiders", effect: "+1 move, +10% attack, -10% hp" }
-};
-
-const PASSIVE_ICONS: Record<TeamName, string> = {
-  Romans: "🛡️",
-  Barbarians: "🔥",
-  Greeks: "🗡️",
-  Gauls: "🍃",
-  Germanic: "🪓",
-  Carthage: "🐘",
-  Egypt: "☀️",
-  Thracians: "🗡️",
-  Dacians: "🐺",
-  Parthians: "🏹",
-  Seleucids: "🏺",
-  Vikings: "⛵"
-};
-
-const TROOP_MECHANIC_ADVANTAGE: Record<TroopMechanicType, TroopMechanicType[]> = {
-  closecombat: [],
-  mounted: ["ranged", "sieged"],
-  ranged: [],
-  sieged: []
-};
-
-const TROOP_MECHANIC_LABELS: Record<TroopMechanicType, string> = {
-  closecombat: "Close Combat",
-  mounted: "Mounted",
-  ranged: "Ranged",
-  sieged: "Sieged"
-};
-
-const TROOP_MECHANIC_ICONS: Record<TroopMechanicType, string> = {
-  closecombat: "⚔️",
-  mounted: "🐎",
-  ranged: "🏹",
-  sieged: "⚙️"
-};
-
-const TROOP_MECHANIC_ADVANTAGE_MULTIPLIER = 1.1;
-
-const GAME_STATE_STORAGE_KEY = "battlecry-game-state";
-const GAME_VERSION = "0.0.0";
-const GAME_BUILD_LABEL = "Battle Feedback Pass";
-const BATTLEFIELD_SIZE_OPTIONS: BattlefieldSize[] = [8, 10, 12, 14, 16, 18, 20];
-const DEFAULT_GAME_OPTIONS: GameOptions = {
-  musicEnabled: true,
-  sfxEnabled: true,
-  showMoveHighlights: true,
-  showAttackHighlights: true,
-  showBattleLog: true,
-  showTurnBanner: true,
-  terrainEffectsEnabled: true,
-  battlefieldSize: 8
-};
-
-const ROLE_ICON_LOOKUP = Object.values(AVAILABLE_TROOPS).flat().reduce((lookup, troop) => {
-  lookup[troop.role] = troop.Icon;
-  return lookup;
-}, {} as Record<string, string>);
-
-const getUnitDisplayIcon = (unit: any) => {
-  if (!unit) return "⚔️";
-  return ROLE_ICON_LOOKUP[unit.role] ?? unit.Icon ?? "⚔️";
-};
-
-const getBattlefieldUnitLabel = (unit: any) => {
-  const baseLabel = String(unit?.name ?? unit?.role ?? "").trim();
-  if (!baseLabel) return "Unit";
-
-  const compactLabel = baseLabel.split(" ").slice(0, 2).join(" ");
-  return compactLabel.length > 14 ? `${compactLabel.slice(0, 13)}...` : compactLabel;
-};
-
-const adjustStatPercent = (value: number, percent: number) => Math.max(0, Math.round(value * (1 + percent)));
-const adjustMovePercent = (value: number, percent: number) => {
-  if (value <= 0) return 0;
-  return Math.max(1, Math.floor(value * (1 + percent)));
-};
-
-const isInfantryRole = (role: string) => {
-  const lowerRole = role.toLowerCase();
-  const nonInfantryKeywords = [
-    "archer",
-    "slinger",
-    "ballista",
-    "scorpion",
-    "catapult",
-    "polybolos",
-    "trebuchet",
-    "onager",
-    "bombard",
-    "cavalry",
-    "chariot",
-    "elephant",
-    "rider",
-    "horseman",
-    "lancer",
-    "equites",
-    "xystophoroi",
-    "turcopole",
-    "scout",
-    "knight",
-    "horse",
-    "camel",
-    "cataphract",
-    "king",
-    "jarl",
-    "general",
-    "marshal"
-  ];
-
-  return !nonInfantryKeywords.some((keyword) => lowerRole.includes(keyword));
-};
-
-const stripUnitForStorage = (unit: any) => {
-  if (!unit) return null;
-  const { Icon, ...serializableUnit } = unit;
-  return serializableUnit;
-};
-
-const restoreUnitFromStorage = (unit: any) => {
-  if (!unit) return null;
-  return {
-    ...unit,
-    Icon: getUnitDisplayIcon(unit)
-  };
-};
-
-const applyCivilizationPassive = (unit: any) => {
-  if (!unit) return null;
-
-  const normalizedUnit = ensureRangedAmmo(unit);
-  if (normalizedUnit.civPassiveApplied) return normalizedUnit;
-
-  const team = normalizedUnit.team as TeamName;
-  const passive = CIV_PASSIVES[team];
-  if (!passive) return normalizedUnit;
-
-  switch (team) {
-    case "Romans":
-      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
-      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
-      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
-      break;
-    case "Barbarians":
-      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, -0.1);
-      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, -0.1);
-      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.2);
-      break;
-    case "Greeks":
-      if (isInfantryRole(normalizedUnit.role)) {
-        normalizedUnit.range += 1;
-        normalizedUnit.move = Math.max(0, normalizedUnit.move - 1);
-      }
-      break;
-    case "Gauls":
-      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, -0.1);
-      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, -0.1);
-      normalizedUnit.move += 1;
-      break;
-    case "Germanic":
-      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.15);
-      break;
-    case "Carthage":
-      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
-      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
-      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
-      normalizedUnit.move = adjustMovePercent(normalizedUnit.move, -0.1);
-      break;
-    case "Egypt": {
-      const troopType = getTroopMechanicType(normalizedUnit);
-      if (troopType === "mounted") {
-        normalizedUnit.move += 1;
-      }
-      if (troopType === "ranged") {
-        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
-      }
-      break;
-    }
-    case "Thracians":
-      if (isInfantryRole(normalizedUnit.role)) {
-        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
-      }
-      if (getTroopMechanicType(normalizedUnit) === "ranged") {
-        normalizedUnit.move += 1;
-      }
-      break;
-    case "Dacians":
-      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
-      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
-      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
-      break;
-    case "Parthians": {
-      const normalizedRole = String(normalizedUnit.role ?? "").toLowerCase();
-      if (["cavalry", "rider", "horse", "camel", "cataphract", "scout"].some((keyword) => normalizedRole.includes(keyword))) {
-        normalizedUnit.move += 1;
-      }
-      if (getTroopMechanicType(normalizedUnit) === "ranged") {
-        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
-      }
-      break;
-    }
-    case "Seleucids": {
-      const normalizedRole = String(normalizedUnit.role ?? "").toLowerCase();
-      if (isInfantryRole(normalizedUnit.role)) {
-        normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
-        normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
-      }
-      if (normalizedRole.includes("elephant") || getTroopMechanicType(normalizedUnit) === "sieged") {
-        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
-      }
-      break;
-    }
-    case "Vikings":
-      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, -0.1);
-      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, -0.1);
-      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
-      normalizedUnit.move += 1;
-      break;
-  }
-
-  normalizedUnit.civPassiveApplied = true;
-  normalizedUnit.civPassiveName = passive.name;
-  normalizedUnit.civPassiveEffect = passive.effect;
-
-  return ensureRangedAmmo(normalizedUnit);
-};
-
-const prepareUnitsForBattle = (units: any[]) =>
-  units.map((unit) =>
-    applyCivilizationPassive({
-      ...unit,
-      Icon: getUnitDisplayIcon(unit)
-    })
-  );
-
-const rerollUnitStats = (unit: any) => {
-  const rerolledStats = generateTroopStats(unit.role);
-
-  return applyCivilizationPassive({
-    ...unit,
-    ...rerolledStats,
-    Icon: getUnitDisplayIcon(unit),
-    civPassiveApplied: false,
-    civPassiveName: undefined,
-    civPassiveEffect: undefined
-  });
-};
-
-const rerollUnits = (units: any[]) => units.map((unit) => rerollUnitStats(unit));
 
 function CodeConq() {
   const [currentLevel, setCurrentLevel] = useState<keyof typeof levels>("Level1");
   const [terrainPreset, setTerrainPreset] = useState<TerrainPreset>("mixed");
   const [terrainGenerationSettings, setTerrainGenerationSettings] = useState<TerrainGenerationSettings>(DEFAULT_TERRAIN_GENERATION_SETTINGS);
-  const [units, setUnits] = useState(() => prepareUnitsForBattle(levels["Level1"]));
+  const { units, setUnits, turn, setTurn, log, setLog, round, setRound } = useBattleSession(() => ({
+    units: prepareUnitsForBattle(levels["Level1"]),
+    turn: "Romans",
+    log: [] as string[],
+    round: 1
+  }));
   const [battlefieldTerrain, setBattlefieldTerrain] = useState<TerrainType[][]>(() => generateTerrainMap(DEFAULT_GAME_OPTIONS.battlefieldSize, "mixed", DEFAULT_TERRAIN_GENERATION_SETTINGS));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedUnitId, setInspectedUnitId] = useState<string | null>(null);
   const [inspectedTile, setInspectedTile] = useState<TerrainPoint | null>(null);
-  const [turn, setTurn] = useState("Romans");
-  const [log, setLog] = useState<string[]>([]);
-  const [round, setRound] = useState(1);
   
   // Custom setup mode states
   const [isSetupMode, setIsSetupMode] = useState(false);
@@ -2395,6 +172,24 @@ function CodeConq() {
   const [hoverScrollDirection, setHoverScrollDirection] = useState<HoverScrollDirection>(null);
   const [cellFeedback, setCellFeedback] = useState<Record<string, BattleFeedbackKind[]>>({});
   const [projectileFeedback, setProjectileFeedback] = useState<ProjectileFeedback[]>([]);
+  /** Previous commit’s grid positions — used to scale layout move duration by tiles moved (Manhattan). */
+  const unitPreviousGridRef = useRef<Record<string, { x: number; y: number }>>({});
+  /** Blocks player actions while an attack animation is playing and results are not yet applied. */
+  const battleResolutionPendingRef = useRef(false);
+  /** Prevents the AI effect from scheduling a second decision when units update mid–attack animation. */
+  const aiAttackAnimatingRef = useRef(false);
+  const reduceUiMotion = useReducedMotion();
+
+  useLayoutEffect(() => {
+    const list = isSetupMode ? customUnits : units;
+    const next: Record<string, { x: number; y: number }> = {};
+    for (const unit of list) {
+      if (unit && unit.hp > 0) {
+        next[unit.id] = { x: unit.x, y: unit.y };
+      }
+    }
+    unitPreviousGridRef.current = next;
+  }, [units, customUnits, isSetupMode]);
 
   // Update units when level changes
   useEffect(() => {
@@ -2732,7 +527,7 @@ function CodeConq() {
     from: TerrainPoint,
     to: TerrainPoint,
     variant: ProjectileFeedback["variant"],
-    durationMs = 420
+    durationMs = 2000
   ) => {
     const gridRect = battlefieldGridRef.current?.getBoundingClientRect();
     const fromRect = battlefieldCellRefs.current[`${from.x},${from.y}`]?.getBoundingClientRect();
@@ -2770,6 +565,19 @@ function CodeConq() {
     if (!gameOptions.sfxEnabled) return;
     battleSfxRef.current?.play(key, options);
   };
+  const applyAttackOutcomeFeedback = (defender: any, updatedTargetHp: number, moraleThreshold: number) => {
+    const defenderKey = `${defender.x},${defender.y}`;
+    if (updatedTargetHp <= 0) {
+      triggerCellFeedback(defenderKey, "death", 1080);
+      playBattleSfx("death-fall", { cooldownMs: 100, volumeMultiplier: 1.1 });
+      return;
+    }
+    if (updatedTargetHp <= Math.ceil(defender.maxHp * moraleThreshold)) {
+      triggerCellFeedback(defenderKey, "morale", 1350);
+      playBattleSfx("morale-break", { cooldownMs: 200, volumeMultiplier: 0.95 });
+    }
+  };
+
   const triggerAttackFeedback = (
     attacker: any,
     defender: any,
@@ -2779,16 +587,30 @@ function CodeConq() {
       updatedTargetHp: number;
       isProjectile: boolean;
       moraleThreshold?: number;
+      /** When true, HP/log are applied later; skip death & morale here; defer ranged impact flash to projectile arrival. */
+      suppressOutcome?: boolean;
     }
   ) => {
     const attackerPoint = options.attackerPosition ?? { x: attacker.x, y: attacker.y };
     const defenderKey = `${defender.x},${defender.y}`;
     const attackerKey = `${attackerPoint.x},${attackerPoint.y}`;
     const moraleThreshold = options.moraleThreshold ?? 0.35;
+    const suppressOutcome = options.suppressOutcome ?? false;
 
-    triggerCellFeedback(defenderKey, "hit", 360);
+    const meleeFightMs = ATTACK_RESOLVE_MELEE_MS;
+    if (options.isProjectile) {
+      if (suppressOutcome) {
+        registerFeedbackTimeout(() => {
+          triggerCellFeedback(defenderKey, "hit", 720);
+        }, ATTACK_RESOLVE_RANGED_MS);
+      } else {
+        triggerCellFeedback(defenderKey, "hit", 720);
+      }
+    } else {
+      triggerCellFeedback(defenderKey, "meleeHit", meleeFightMs);
+    }
     if (attackOutcome.abilityTags.includes("Charge")) {
-      triggerCellFeedback(attackerKey, "charge", 520);
+      triggerCellFeedback(attackerKey, "charge", options.isProjectile ? 780 : meleeFightMs);
       playBattleSfx("charge-impact", { cooldownMs: 100, volumeMultiplier: 1.15 });
     } else if (options.isProjectile) {
       playBattleSfx("arrow-shot", { cooldownMs: 60, playbackRate: getTroopMechanicType(attacker) === "sieged" ? 0.84 : 1 });
@@ -2797,20 +619,30 @@ function CodeConq() {
     }
 
     if (options.isProjectile) {
-      triggerProjectileFeedback(attackerPoint, { x: defender.x, y: defender.y }, getTroopMechanicType(attacker) === "sieged" ? "siege" : "arrow");
-      triggerCellFeedback(attackerKey, "ranged", 260);
+      const projectileVariant = getTroopMechanicType(attacker) === "sieged" ? "siege" : "arrow";
+      triggerProjectileFeedback(attackerPoint, { x: defender.x, y: defender.y }, projectileVariant);
+      triggerCellFeedback(attackerKey, "ranged", 2000);
+      if (projectileVariant === "siege") {
+        const impactDelayMs = 2000;
+        const fogDurationMs = 3200;
+        registerFeedbackTimeout(() => {
+          triggerCellFeedback(defenderKey, "siegeFog", fogDurationMs);
+        }, impactDelayMs);
+      }
     } else if (attackOutcome.abilityTags.includes("Charge")) {
-      triggerProjectileFeedback(attackerPoint, { x: defender.x, y: defender.y }, "charge", 300);
+      triggerProjectileFeedback(attackerPoint, { x: defender.x, y: defender.y }, "charge", meleeFightMs);
     }
 
+    if (suppressOutcome) return;
+
     if (options.updatedTargetHp <= 0) {
-      triggerCellFeedback(defenderKey, "death", 720);
+      triggerCellFeedback(defenderKey, "death", 1080);
       playBattleSfx("death-fall", { cooldownMs: 100, volumeMultiplier: 1.1 });
       return;
     }
 
     if (options.updatedTargetHp <= Math.ceil(defender.maxHp * moraleThreshold)) {
-      triggerCellFeedback(defenderKey, "morale", 900);
+      triggerCellFeedback(defenderKey, "morale", 1350);
       playBattleSfx("morale-break", { cooldownMs: 200, volumeMultiplier: 0.95 });
     }
   };
@@ -3243,22 +1075,149 @@ function CodeConq() {
     setTurn(aiTeams[0] ?? playerTeam);
   };
 
+  // Automatic movement for AI teams - one unit at a time
+  useEffect(() => {
+    if (isSetupMode || gameMode === "multiplayer" || !aiTeams.includes(turn as TeamName) || !units) return;
+    if (aiAttackAnimatingRef.current) return;
+
+    const timeout = setTimeout(() => {
+      const currentTeam = turn;
+      const aiDecision = decideAiAction(currentTeam as TeamName, units);
+
+      if (!aiDecision) {
+        advanceAiTurn(currentTeam as TeamName);
+        return;
+      }
+
+      if (aiDecision.type === "attack") {
+        const actingUnit = units.find((unit: any) => unit.id === aiDecision.unitId);
+        const targetUnit = units.find((unit: any) => unit.id === aiDecision.targetId);
+
+        if (!actingUnit || !targetUnit) {
+          advanceAiTurn(currentTeam as TeamName);
+          return;
+        }
+
+        const movedAttacker = aiDecision.moveTo ? { ...actingUnit, ...aiDecision.moveTo } : actingUnit;
+        const attackOutcome = getAttackDamage(movedAttacker, targetUnit, units, terrainEffectMap);
+        const remainingAmmo = actingUnit.ammo && actingUnit.ammo > 0 ? actingUnit.ammo - 1 : actingUnit.ammo;
+        const updatedTargetHp = targetUnit.hp - attackOutcome.damage;
+        const runsOutOfAmmo = Boolean(actingUnit.ammo && actingUnit.ammo > 0 && remainingAmmo === 0);
+        const usedProjectileAttack = Boolean(actingUnit.ammo && actingUnit.ammo > 0);
+        const resolveDelayMs = getAttackResolutionDelayMs(usedProjectileAttack);
+
+        aiAttackAnimatingRef.current = true;
+        setUnits((prev) =>
+          prev.map((unit: any) => {
+            if (unit.id === actingUnit.id) {
+              return {
+                ...unit,
+                ...(aiDecision.moveTo ?? {}),
+                ammo: remainingAmmo,
+                range: runsOutOfAmmo ? 1 : unit.range
+              };
+            }
+            return unit;
+          })
+        );
+
+        if (aiDecision.moveTo) {
+          triggerCellFeedback(`${aiDecision.moveTo.x},${aiDecision.moveTo.y}`, "move", 2000);
+        }
+
+        triggerAttackFeedback(movedAttacker, targetUnit, attackOutcome, {
+          attackerPosition: aiDecision.moveTo ?? null,
+          updatedTargetHp,
+          isProjectile: usedProjectileAttack,
+          suppressOutcome: true
+        });
+
+        registerFeedbackTimeout(() => {
+          setUnits((prev) =>
+            prev
+              .map((unit: any) => {
+                if (unit.id === targetUnit.id) {
+                  return {
+                    ...unit,
+                    hp: updatedTargetHp
+                  };
+                }
+                return unit;
+              })
+              .filter((unit: any) => unit.hp > 0)
+          );
+
+          setLog((existingLog) => {
+            const nextLog = [
+              buildAttackLogLine(movedAttacker, targetUnit, attackOutcome, {
+                closedIn: Boolean(aiDecision.moveTo),
+                remainingAmmo: actingUnit.ammo && actingUnit.ammo > 0 ? remainingAmmo ?? 0 : undefined
+              }),
+              `${actingUnit.name} (${currentTeam}) ${aiDecision.reason}.`,
+              ...existingLog
+            ];
+
+            if (runsOutOfAmmo) {
+              nextLog.unshift(`${actingUnit.name} is out of ammo! Switching to melee combat.`);
+            }
+
+            if (updatedTargetHp <= 0) {
+              nextLog.unshift(`${targetUnit.name} (${targetUnit.team}) was killed!`);
+            }
+
+            return nextLog;
+          });
+
+          if (attackOutcome.abilityTags.includes("Charge")) {
+            setLog((existingLog) => [`${actingUnit.name} (${currentTeam}) crashed into the line with a charge!`, ...existingLog]);
+          }
+
+          if (updatedTargetHp > 0 && updatedTargetHp <= Math.ceil(targetUnit.maxHp * 0.35)) {
+            setLog((existingLog) => [`${targetUnit.name} (${targetUnit.team}) is shaken and losing morale!`, ...existingLog]);
+          }
+
+          applyAttackOutcomeFeedback(targetUnit, updatedTargetHp, 0.35);
+          advanceAiTurn(currentTeam as TeamName);
+          aiAttackAnimatingRef.current = false;
+        }, resolveDelayMs);
+
+        return;
+      } else if (aiDecision.type === "move" && aiDecision.moveTo) {
+        const actingUnit = units.find((unit: any) => unit.id === aiDecision.unitId);
+        if (actingUnit) {
+          const terrainLabel = TERRAIN_LABELS[getTerrainAt(battlefieldTerrain, aiDecision.moveTo.x, aiDecision.moveTo.y)];
+          setUnits((prev) =>
+            prev.map((unit: any) =>
+              unit.id === actingUnit.id ? { ...unit, x: aiDecision.moveTo.x, y: aiDecision.moveTo.y } : unit
+            )
+          );
+          setLog((existingLog) => [
+            `${actingUnit.name} (${currentTeam}) ${aiDecision.reason}.`,
+            `${actingUnit.name} (${currentTeam}) moved onto ${terrainLabel}`,
+            ...existingLog
+          ]);
+          triggerCellFeedback(`${aiDecision.moveTo.x},${aiDecision.moveTo.y}`, "move", 2000);
+        }
+      }
+
+      advanceAiTurn(currentTeam as TeamName);
+    }, 1000);
+
+    return () => clearTimeout(timeout);
+  }, [turn, units, isSetupMode, gameMode, aiTeams, playerTeam, battlefieldTerrain, terrainEffectMap]);
+
+  useBattlefieldViewport({
+    battlefieldViewportRef,
+    battlefieldPanCleanupRef,
+    showGridNavigation,
+    hoverScrollDirection,
+    isPanningGrid,
+    setIsBattlefieldFullscreen
+  });
+
   // Safety check - don't render if units is not properly initialized
   if (!units || units.length === 0) {
-    return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{
-          backgroundImage: 'linear-gradient(rgba(20, 15, 10, 0.55), rgba(20, 15, 10, 0.68)), url("/gamebkg.png")',
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-          backgroundAttachment: "fixed"
-        }}
-      >
-        <div className="text-white text-xl">Loading formation...</div>
-      </div>
-    );
+    return <FormationLoadingScreen />;
   }
 
   const highlightMove = selected && gameOptions.showMoveHighlights && (isSetupMode ? customUnits : units) ? [...Array(battlefieldSize)].flatMap((_, y) =>
@@ -3291,7 +1250,8 @@ function CodeConq() {
     }
     
     if (!gameStarted || turn !== activeTeam || !units) return;
-    
+    if (battleResolutionPendingRef.current) return;
+
     const clicked = getUnit(x, y);
 
     if (clicked && clicked.id === selectedId && !mergeMode) {
@@ -3392,73 +1352,86 @@ function CodeConq() {
         const nextAmmo = selected.ammo && selected.ammo > 0 ? selected.ammo - 1 : selected.ammo;
         const runsOutOfAmmo = Boolean(selected.ammo && selected.ammo > 0 && nextAmmo === 0);
         const usedProjectileAttack = Boolean(selected.ammo && selected.ammo > 0);
-        
-        // If this is a ranged attack, reduce ammunition
-        if (selected.ammo && selected.ammo > 0) {
-          setLog((prevLog) => [
-            buildAttackLogLine(attackingUnit, clicked, attackOutcome, { remainingAmmo: nextAmmo ?? 0 }),
-            ...prevLog
-          ]);
-          
-          // If out of ammo, switch to melee
-          if (runsOutOfAmmo) {
-            setLog((prevLog) => [`${selected.name} is out of ammo! Switching to melee combat at half attack.`, ...prevLog]);
-          }
-        } else {
-          setLog((prevLog) => [
-            buildAttackLogLine(attackingUnit, clicked, attackOutcome, { closedIn: Boolean(meleeAttackDestination) }),
-            ...prevLog
-          ]);
-        }
+        const resolveDelayMs = getAttackResolutionDelayMs(usedProjectileAttack);
 
-        if (attackOutcome.abilityTags.includes("Charge")) {
-          setLog((prevLog) => [`${attackingUnit.name} (${attackingUnit.team}) crashed into the line with a charge!`, ...prevLog]);
-        }
-
-        if (updatedTargetHp > 0 && updatedTargetHp <= Math.ceil(clicked.maxHp * 0.35)) {
-          setLog((prevLog) => [`${clicked.name} (${clicked.team}) is shaken and losing morale!`, ...prevLog]);
-        }
-
+        battleResolutionPendingRef.current = true;
         setUnits((prev) =>
-          prev
-            .map((unit: any) => {
-              if (unit.id === selected.id) {
-                return {
-                  ...unit,
-                  ...(attackerPosition ?? {}),
-                  ammo: nextAmmo,
-                  range: runsOutOfAmmo ? 1 : unit.range
-                };
-              }
-
-              if (unit.id === clicked.id) {
-                return {
-                  ...unit,
-                  hp: updatedTargetHp
-                };
-              }
-
-              return unit;
-            })
-            .filter((unit: any) => unit.hp > 0)
+          prev.map((unit: any) => {
+            if (unit.id === selected.id) {
+              return {
+                ...unit,
+                ...(attackerPosition ?? {}),
+                ammo: nextAmmo,
+                range: runsOutOfAmmo ? 1 : unit.range
+              };
+            }
+            return unit;
+          })
         );
+
+        if (meleeAttackDestination) {
+          triggerCellFeedback(`${meleeAttackDestination.x},${meleeAttackDestination.y}`, "move", 2000);
+        }
 
         triggerAttackFeedback(attackingUnit, clicked, attackOutcome, {
           attackerPosition,
           updatedTargetHp,
-          isProjectile: usedProjectileAttack
+          isProjectile: usedProjectileAttack,
+          suppressOutcome: true
         });
-        
-        // Check if target was killed
-        if (updatedTargetHp <= 0) {
-          setLog((prevLog) => [`${clicked.name} (${clicked.team}) was killed!`, ...prevLog]);
-        }
-        
-        setSelectedId(null);
-        advanceTurn();
+
+        registerFeedbackTimeout(() => {
+          setUnits((prev) =>
+            prev
+              .map((unit: any) => {
+                if (unit.id === clicked.id) {
+                  return {
+                    ...unit,
+                    hp: updatedTargetHp
+                  };
+                }
+                return unit;
+              })
+              .filter((unit: any) => unit.hp > 0)
+          );
+
+          if (usedProjectileAttack) {
+            setLog((prevLog) => [
+              buildAttackLogLine(attackingUnit, clicked, attackOutcome, { remainingAmmo: nextAmmo ?? 0 }),
+              ...prevLog
+            ]);
+
+            if (runsOutOfAmmo) {
+              setLog((prevLog) => [`${selected.name} is out of ammo! Switching to melee combat at half attack.`, ...prevLog]);
+            }
+          } else {
+            setLog((prevLog) => [
+              buildAttackLogLine(attackingUnit, clicked, attackOutcome, { closedIn: Boolean(meleeAttackDestination) }),
+              ...prevLog
+            ]);
+          }
+
+          if (attackOutcome.abilityTags.includes("Charge")) {
+            setLog((prevLog) => [`${attackingUnit.name} (${attackingUnit.team}) crashed into the line with a charge!`, ...prevLog]);
+          }
+
+          if (updatedTargetHp > 0 && updatedTargetHp <= Math.ceil(clicked.maxHp * 0.35)) {
+            setLog((prevLog) => [`${clicked.name} (${clicked.team}) is shaken and losing morale!`, ...prevLog]);
+          }
+
+          if (updatedTargetHp <= 0) {
+            setLog((prevLog) => [`${clicked.name} (${clicked.team}) was killed!`, ...prevLog]);
+          }
+
+          applyAttackOutcomeFeedback(clicked, updatedTargetHp, 0.35);
+          setSelectedId(null);
+          advanceTurn();
+          battleResolutionPendingRef.current = false;
+        }, resolveDelayMs);
       } else if (!clicked && isInRange(selected, { x, y }, selectedEffectiveMove)) {
         // Move to empty space
         setUnits((prev) => prev.map((u: any) => u.id === selected.id ? { ...u, x, y } : u));
+        triggerCellFeedback(`${x},${y}`, "move", 2000);
         setLog((prevLog) => [`${selected.name} (${selected.team}) moved onto ${TERRAIN_LABELS[getTerrainAt(battlefieldTerrain, x, y)]}`, ...prevLog]);
         setInspectedTile(null);
         setSelectedId(null);
@@ -4105,149 +2078,6 @@ function CodeConq() {
     const dy = Math.abs(troop1.y - troop2.y);
     return (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
   };
-
-  // Automatic movement for AI teams - one unit at a time
-  useEffect(() => {
-    if (isSetupMode || gameMode === "multiplayer" || !aiTeams.includes(turn as TeamName) || !units) return;
-    
-    const timeout = setTimeout(() => {
-      const currentTeam = turn;
-      const aiDecision = decideAiAction(currentTeam as TeamName, units);
-      
-      if (!aiDecision) {
-        advanceAiTurn(currentTeam as TeamName);
-        return;
-      }
-
-      if (aiDecision.type === "attack") {
-        const actingUnit = units.find((unit: any) => unit.id === aiDecision.unitId);
-        const targetUnit = units.find((unit: any) => unit.id === aiDecision.targetId);
-
-        if (!actingUnit || !targetUnit) {
-          advanceAiTurn(currentTeam as TeamName);
-          return;
-        }
-
-        const movedAttacker = aiDecision.moveTo ? { ...actingUnit, ...aiDecision.moveTo } : actingUnit;
-        const attackOutcome = getAttackDamage(movedAttacker, targetUnit, units, terrainEffectMap);
-        const remainingAmmo = actingUnit.ammo && actingUnit.ammo > 0 ? actingUnit.ammo - 1 : actingUnit.ammo;
-        const updatedTargetHp = targetUnit.hp - attackOutcome.damage;
-        const runsOutOfAmmo = Boolean(actingUnit.ammo && actingUnit.ammo > 0 && remainingAmmo === 0);
-        const usedProjectileAttack = Boolean(actingUnit.ammo && actingUnit.ammo > 0);
-
-        setUnits((prev) =>
-          prev
-            .map((unit: any) => {
-              if (unit.id === actingUnit.id) {
-                return {
-                  ...unit,
-                  ...(aiDecision.moveTo ?? {}),
-                  ammo: remainingAmmo,
-                  range: runsOutOfAmmo ? 1 : unit.range
-                };
-              }
-
-              if (unit.id === targetUnit.id) {
-                return {
-                  ...unit,
-                  hp: updatedTargetHp
-                };
-              }
-
-              return unit;
-            })
-            .filter((unit: any) => unit.hp > 0)
-        );
-
-        triggerAttackFeedback(movedAttacker, targetUnit, attackOutcome, {
-          attackerPosition: aiDecision.moveTo ?? null,
-          updatedTargetHp,
-          isProjectile: usedProjectileAttack
-        });
-
-        setLog((existingLog) => {
-          const nextLog = [
-            buildAttackLogLine(movedAttacker, targetUnit, attackOutcome, {
-              closedIn: Boolean(aiDecision.moveTo),
-              remainingAmmo: actingUnit.ammo && actingUnit.ammo > 0 ? remainingAmmo ?? 0 : undefined
-            }),
-            `${actingUnit.name} (${currentTeam}) ${aiDecision.reason}.`,
-            ...existingLog
-          ];
-
-          if (runsOutOfAmmo) {
-            nextLog.unshift(`${actingUnit.name} is out of ammo! Switching to melee combat.`);
-          }
-
-          if (updatedTargetHp <= 0) {
-            nextLog.unshift(`${targetUnit.name} (${targetUnit.team}) was killed!`);
-          }
-
-          return nextLog;
-        });
-
-        if (attackOutcome.abilityTags.includes("Charge")) {
-          setLog((existingLog) => [`${actingUnit.name} (${currentTeam}) crashed into the line with a charge!`, ...existingLog]);
-        }
-
-        if (updatedTargetHp > 0 && updatedTargetHp <= Math.ceil(targetUnit.maxHp * 0.35)) {
-          setLog((existingLog) => [`${targetUnit.name} (${targetUnit.team}) is shaken and losing morale!`, ...existingLog]);
-        }
-      } else if (aiDecision.type === "move" && aiDecision.moveTo) {
-        const actingUnit = units.find((unit: any) => unit.id === aiDecision.unitId);
-        if (actingUnit) {
-          const terrainLabel = TERRAIN_LABELS[getTerrainAt(battlefieldTerrain, aiDecision.moveTo.x, aiDecision.moveTo.y)];
-          setUnits((prev) =>
-            prev.map((unit: any) =>
-              unit.id === actingUnit.id ? { ...unit, x: aiDecision.moveTo.x, y: aiDecision.moveTo.y } : unit
-            )
-          );
-          setLog((existingLog) => [
-            `${actingUnit.name} (${currentTeam}) ${aiDecision.reason}.`,
-            `${actingUnit.name} (${currentTeam}) moved onto ${terrainLabel}`,
-            ...existingLog
-          ]);
-        }
-      }
-
-      advanceAiTurn(currentTeam as TeamName);
-    }, 1000);
-
-    return () => clearTimeout(timeout);
-  }, [turn, units, isSetupMode, gameMode, aiTeams, playerTeam, battlefieldTerrain, terrainEffectMap]);
-
-  useEffect(() => {
-    const onFullscreenChange = () => {
-      setIsBattlefieldFullscreen(Boolean(document.fullscreenElement));
-    };
-
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      battlefieldPanCleanupRef.current?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!showGridNavigation || !hoverScrollDirection || isPanningGrid) return;
-
-    const viewport = battlefieldViewportRef.current;
-    if (!viewport) return;
-
-    const interval = window.setInterval(() => {
-      const verticalAmount = 24;
-      const horizontalAmount = 40;
-      if (hoverScrollDirection === "up") viewport.scrollBy({ top: -verticalAmount });
-      if (hoverScrollDirection === "down") viewport.scrollBy({ top: verticalAmount });
-      if (hoverScrollDirection === "left") viewport.scrollBy({ left: -horizontalAmount });
-      if (hoverScrollDirection === "right") viewport.scrollBy({ left: horizontalAmount });
-    }, 30);
-
-    return () => window.clearInterval(interval);
-  }, [hoverScrollDirection, isPanningGrid, showGridNavigation]);
 
   const checkEnd = () => {
     const currentUnits = isSetupMode ? customUnits : units;
@@ -5481,7 +3311,7 @@ function CodeConq() {
                     <div
                       key={kind}
                       className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${
-                        kind === "hit"
+                        kind === "hit" || kind === "meleeHit"
                           ? "border-orange-400/50 bg-orange-500/10 text-orange-100"
                           : kind === "death"
                             ? "border-red-400/50 bg-red-500/10 text-red-100"
@@ -5489,18 +3319,28 @@ function CodeConq() {
                               ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
                               : kind === "morale"
                                 ? "border-violet-400/50 bg-violet-500/10 text-violet-100"
-                                : "border-cyan-400/50 bg-cyan-500/10 text-cyan-100"
+                                : kind === "ranged"
+                                  ? "border-cyan-400/50 bg-cyan-500/10 text-cyan-100"
+                                  : kind === "siegeFog"
+                                    ? "border-slate-400/50 bg-slate-500/15 text-slate-100"
+                                    : "border-emerald-400/50 bg-emerald-500/10 text-emerald-100"
                       }`}
                     >
                       {kind === "hit"
                         ? "Under Fire"
-                        : kind === "death"
+                        : kind === "meleeHit"
+                          ? "Melee clash"
+                          : kind === "death"
                           ? "Breaking"
                           : kind === "charge"
                             ? "Charging"
                             : kind === "morale"
                               ? "Shaken"
-                              : "Volley"}
+                              : kind === "ranged"
+                                ? "Volley"
+                                : kind === "siegeFog"
+                                  ? "Siege dust"
+                                  : "On The Move"}
                     </div>
                   ))}
                 </div>
@@ -6107,6 +3947,7 @@ function CodeConq() {
                         gridTemplateRows: `repeat(${battlefieldSize}, minmax(0, 1fr))`
                       }}
                     >
+                <LayoutGroup id="battlefield-units">
                 {[...Array(battlefieldSize)].flatMap((_, y) =>
                   [...Array(battlefieldSize)].map((_, x) => {
                 const u = getUnit(x, y);
@@ -6119,10 +3960,24 @@ function CodeConq() {
                 const UnitDisplayIcon = u ? getUnitDisplayIcon(u) : null;
                 const feedbackKinds = cellFeedback[key] ?? [];
                 const hasHitFeedback = feedbackKinds.includes("hit");
+                const hasMeleeHitFeedback = feedbackKinds.includes("meleeHit");
                 const hasDeathFeedback = feedbackKinds.includes("death");
                 const hasChargeFeedback = feedbackKinds.includes("charge");
                 const hasMoraleFeedback = feedbackKinds.includes("morale");
                 const hasRangedFeedback = feedbackKinds.includes("ranged");
+                const hasMoveFeedback = feedbackKinds.includes("move");
+                const hasSiegeFogFeedback = feedbackKinds.includes("siegeFog");
+                const prevGrid = u ? unitPreviousGridRef.current[u.id] : undefined;
+                const tilesMoved =
+                  u && prevGrid != null
+                    ? Math.abs(prevGrid.x - u.x) + Math.abs(prevGrid.y - u.y)
+                    : 0;
+                /** 2s per tile traveled (matches projectile travel duration). */
+                const unitLayoutDuration = reduceUiMotion
+                  ? 0.35
+                  : prevGrid == null || tilesMoved === 0
+                    ? 0.35
+                    : Math.min(24, tilesMoved * 2);
                 const terrainStyle = {
                   backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12)), url(${TERRAIN_ASSETS[terrainType]})`,
                   backgroundSize: "cover",
@@ -6145,7 +4000,7 @@ function CodeConq() {
                         e.dataTransfer.setData('text/plain', u.id);
                       }
                     }}
-                    className={`${isBattlefieldFullscreen ? "w-[76px] h-[84px] sm:w-[84px] sm:h-[100px]" : "w-[84px] h-[100px] sm:w-[100px] sm:h-[116px]"} terrain-cell flex flex-col items-center justify-center text-xs sm:text-sm cursor-pointer transition-all duration-200 relative
+                    className={`${isBattlefieldFullscreen ? "w-[76px] h-[84px] sm:w-[84px] sm:h-[100px]" : "w-[84px] h-[100px] sm:w-[100px] sm:h-[116px]"} terrain-cell ${u ? "terrain-cell--has-unit" : ""} flex flex-col items-center justify-center text-xs sm:text-sm cursor-pointer transition-all duration-300 relative
                     ${isSelected ? "unit-selected" : ""}
                     ${isMove ? "movement-highlight" : ""}
                     ${isAttack ? "attack-highlight" : ""}
@@ -6154,18 +4009,33 @@ function CodeConq() {
                     ${mergeMode && u && u.team === turn && selectedForMerge && u.role === selectedForMerge.role ? "merge-highlight" : ""}
                     ${mergeMode && u && u.team === turn && selectedForMerge && u.id === selectedForMerge.id ? "merge-selected" : ""}
                     ${hasHitFeedback ? "battle-feedback-hit" : ""}
+                    ${hasMeleeHitFeedback ? "battle-feedback-melee-hit" : ""}
                     ${hasDeathFeedback ? "battle-feedback-death" : ""}
                     ${hasChargeFeedback ? "battle-feedback-charge" : ""}
                     ${hasMoraleFeedback ? "battle-feedback-morale" : ""}
                     ${hasRangedFeedback ? "battle-feedback-ranged" : ""}
+                    ${hasMoveFeedback ? "battle-feedback-move" : ""}
+                    ${hasSiegeFogFeedback ? "battle-feedback-siege-fog" : ""}
                     ${!isSetupMode && mergeMode && u && ALL_TEAMS.includes(u.team) ? "cursor-grab active:cursor-grabbing" : ""}`}
                     style={terrainStyle}
                     title={TERRAIN_LABELS[terrainType]}
                   >
                     {u ? (
-                      <div className="relative w-full h-full flex flex-col items-center justify-center">
+                      <motion.div
+                        layoutId={isSetupMode ? undefined : `battle-unit-${u.id}`}
+                        layout={!isSetupMode}
+                        initial={false}
+                        transition={{
+                          layout: {
+                            type: "tween",
+                            duration: unitLayoutDuration,
+                            ease: [0.22, 0.61, 0.36, 1]
+                          }
+                        }}
+                        className="battle-unit-layout-root flex h-full w-full flex-col items-center justify-center will-change-transform [transform:translateZ(0)]"
+                      >
                           {/* Unit Icon */}
-                          <div className="text-2xl mb-0.5">
+                          <div className="text-2xl mb-0.5 drop-shadow-md">
                             {typeof UnitDisplayIcon === "string" ? UnitDisplayIcon : (UnitDisplayIcon ? createElement(UnitDisplayIcon) : "⚔️")}
                           </div>
                           
@@ -6190,9 +4060,9 @@ function CodeConq() {
                           </div>
                           
                           {/* Movement and Attack Indicators */}
-                          {isMove && <div className="text-green-400 text-lg">🚶‍♂️</div>}
-                          {isAttack && <div className="text-red-400 text-lg">⚔️</div>}
-                        </div>
+                          {isMove && <div className="text-green-400 text-lg motion-safe:animate-bounce">🚶‍♂️</div>}
+                          {isAttack && <div className="text-red-400 text-lg motion-safe:animate-pulse">⚔️</div>}
+                        </motion.div>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <div className="text-gray-600 text-xs"></div>
@@ -6202,17 +4072,65 @@ function CodeConq() {
                 );
               })
             )}
+                </LayoutGroup>
                       {projectileFeedback.map((projectile) => (
                         <div
                           key={projectile.id}
-                          className={`battle-projectile-trace battle-projectile-${projectile.variant}`}
+                          className="battle-projectile-wrap"
                           style={{
                             left: `${projectile.startX}px`,
                             top: `${projectile.startY}px`,
                             width: `${projectile.distance}px`,
                             transform: `translateY(-50%) rotate(${projectile.angle}rad)`
                           }}
-                        />
+                        >
+                          {projectile.variant === "siege" ? (
+                            <div className="battle-projectile-volley battle-projectile-volley--siege" aria-hidden>
+                              <div className="battle-rock-salvo">
+                                <span className="battle-rock battle-rock--1" />
+                                <span className="battle-rock battle-rock--2" />
+                                <span className="battle-rock battle-rock--3" />
+                                <span className="battle-rock battle-rock--4" />
+                                <span className="battle-rock battle-rock--5" />
+                              </div>
+                            </div>
+                          ) : projectile.variant === "arrow" ? (
+                            <div className="battle-projectile-volley battle-projectile-volley--arrow" aria-hidden>
+                              <div className="battle-arrow-salvo battle-arrow-salvo--compact">
+                                {(
+                                  [
+                                    "",
+                                    "battle-arrow-unit--dim",
+                                    "battle-arrow-unit--dim2",
+                                    "battle-arrow-unit--dim3",
+                                    "",
+                                    "battle-arrow-unit--dim",
+                                    "battle-arrow-unit--dim2",
+                                    "battle-arrow-unit--dim3"
+                                  ] as const
+                                ).map((dimClass, arrowIndex) => (
+                                  <span
+                                    key={arrowIndex}
+                                    className={["battle-arrow-unit", dimClass].filter(Boolean).join(" ")}
+                                  >
+                                    <span className="battle-arrow-feather" />
+                                    <span className="battle-arrow-stick" />
+                                    <span className="battle-arrow-tip" />
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="battle-projectile-volley battle-projectile-volley--charge" aria-hidden>
+                              <div className="battle-charge-salvo">
+                                <span className="battle-charge-ember battle-charge-ember--1" />
+                                <span className="battle-charge-ember battle-charge-ember--2" />
+                                <span className="battle-charge-ember battle-charge-ember--3" />
+                                <span className="battle-charge-ember battle-charge-ember--4" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       ))}
                     </div>
                     </div>
