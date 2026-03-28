@@ -1514,7 +1514,7 @@ const UNIT_ABILITY_MECHANICS_INFO = [
   {
     icon: "🧱",
     title: "Shield Wall",
-    detail: "Defensive infantry take 10% less damage while standing adjacent to an allied unit, rewarding compact formations."
+    detail: "Defensive infantry take 10% less damage while standing adjacent to at least 1 allied unit."
   },
   {
     icon: "🔥",
@@ -1529,7 +1529,7 @@ const UNIT_ABILITY_MECHANICS_INFO = [
   {
     icon: "🏹",
     title: "Harrier",
-    detail: "Skirmishers and horse archers deal +10% damage while they still have ammo against slow units and siege crews."
+    detail: "Skirmishers and horse archers deal +10% damage while they still have ammo against targets with 1 or less move, and against siege crews."
   },
   {
     icon: "🪖",
@@ -1549,12 +1549,12 @@ const UNIT_ABILITY_MECHANICS_INFO = [
   {
     icon: "🐘",
     title: "Crush",
-    detail: "Elephants and impact troops deal +15% damage into close-combat units and gain extra pressure against defensive formations."
+    detail: "Elephants and impact troops deal +15% damage into close-combat units and gain another +5% against Guarded or Shield Wall defenders."
   },
   {
     icon: "🏴",
     title: "Command Aura",
-    detail: "Allies adjacent to a command unit gain +5% attack, stacking with the normal leader aura when present."
+    detail: "Allies adjacent to a command unit gain +5% attack, stacking with the normal +10% leader aura when present."
   },
   {
     icon: "🏰",
@@ -1569,7 +1569,7 @@ const UNIT_ABILITY_MECHANICS_INFO = [
   {
     icon: "⚡",
     title: "Resolve",
-    detail: "Elite troops gain +10% attack when an adjacent allied unit is wounded and the line begins to break."
+    detail: "Elite troops gain +10% attack when an adjacent allied unit is at or below 50% HP."
   }
 ] as const;
 
@@ -3145,6 +3145,7 @@ function CodeConq() {
   const inspectedEffectiveRange = inspectedUnit
     ? (gameOptions.terrainEffectsEnabled ? getEffectiveRange(inspectedUnit, battlefieldTerrain) : inspectedUnit.range)
     : 0;
+  const inspectedUnitAbilities = inspectedUnit ? getTroopAbilities(inspectedUnit.role) : [];
   const selectedEffectiveMove = selected ? (gameOptions.terrainEffectsEnabled ? getEffectiveMove(selected, battlefieldTerrain) : selected.move) : 0;
   const selectedEffectiveRange = selected ? getRangeForBattle(selected) : 0;
   const inspectedEffectNotes = inspectedUnit
@@ -5049,15 +5050,14 @@ function CodeConq() {
                   <div className="mt-2">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/78">Signature Skills</div>
                     {troopAbilities.length > 0 ? (
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      <div className="mt-1.5 space-y-1.5">
                         {troopAbilities.map((ability) => (
-                          <span
+                          <div
                             key={ability.key}
-                            className="rounded-full border border-cyan-700/50 bg-cyan-950/25 px-2 py-0.5 text-[10px] uppercase tracking-wide text-cyan-100"
-                            title={ability.description}
+                            className="rounded-lg border border-cyan-700/35 bg-cyan-950/20 px-2.5 py-2 text-[11px] leading-relaxed text-cyan-50"
                           >
-                            {ability.name}
-                          </span>
+                            <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                          </div>
                         ))}
                       </div>
                     ) : (
@@ -5418,7 +5418,11 @@ function CodeConq() {
           )}
 
           {!isSetupMode && focusedBattleUnit && (
-            <div className="game-ui pointer-events-auto w-[18rem] rounded-2xl border border-amber-700/70 bg-black/20 p-3 text-left text-yellow-100 shadow-[0_12px_35px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+            <div
+              className={`game-ui pointer-events-auto absolute right-0 w-[18rem] rounded-2xl border border-amber-700/70 bg-black/20 p-3 text-left text-yellow-100 shadow-[0_12px_35px_rgba(0,0,0,0.35)] backdrop-blur-sm ${
+                isBattlefieldFullscreen ? "top-[4.75rem]" : "top-[3.4rem]"
+              }`}
+            >
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/10 text-2xl">
@@ -6321,6 +6325,20 @@ function CodeConq() {
                     Troop Type: {getTroopTypeDisplay(inspectedUnit).label}
                   </p>
                   <p><span className="text-lime-300">🗺️</span> Terrain: <strong>{TERRAIN_LABELS[inspectedTerrainType ?? "plain"]}</strong></p>
+                  <div className="rounded-lg border border-cyan-700 bg-black/20 px-3 py-2">
+                    <div className="text-cyan-300 text-sm font-semibold mb-1">Signature Skills</div>
+                    {inspectedUnitAbilities.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {inspectedUnitAbilities.map((ability) => (
+                          <p key={ability.key} className="text-xs text-yellow-100 leading-relaxed">
+                            <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-yellow-100/75">No signature skills.</p>
+                    )}
+                  </div>
                   {!gameOptions.terrainEffectsEnabled && (
                     <p className="text-xs text-yellow-100 opacity-90">Terrain effects are disabled in Graphics.</p>
                   )}
@@ -6502,15 +6520,14 @@ function CodeConq() {
                         <div className="mt-2">
                           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/78">Signature Skills</div>
                           {troopAbilities.length > 0 ? (
-                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            <div className="mt-1.5 space-y-1.5">
                               {troopAbilities.map((ability) => (
-                                <span
+                                <div
                                   key={ability.key}
-                                  className="rounded-full border border-cyan-700/50 bg-cyan-950/25 px-2 py-0.5 text-[10px] uppercase tracking-wide text-cyan-100"
-                                  title={ability.description}
+                                  className="rounded-lg border border-cyan-700/35 bg-cyan-950/20 px-2.5 py-2 text-[11px] leading-relaxed text-cyan-50"
                                 >
-                                  {ability.name}
-                                </span>
+                                  <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                                </div>
                               ))}
                             </div>
                           ) : (

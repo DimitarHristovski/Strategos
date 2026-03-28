@@ -48,67 +48,67 @@ const TROOP_ABILITY_DEFINITIONS: Record<TroopAbilityKey, TroopAbilityDefinition>
   brace: {
     key: "brace",
     name: "Brace",
-    description: "Stronger against mounted attackers and gains bonus damage when countering cavalry charges."
+    description: "+15% attack against mounted targets, and takes 15% less damage from mounted attackers."
   },
   shieldWall: {
     key: "shieldWall",
     name: "Shield Wall",
-    description: "Takes less damage while holding formation next to allied troops."
+    description: "-10% incoming damage while adjacent to at least 1 allied unit."
   },
   shock: {
     key: "shock",
     name: "Shock Assault",
-    description: "Deals extra damage to enemies that are already wounded."
+    description: "+20% attack against targets at or below 50% HP."
   },
   charge: {
     key: "charge",
     name: "Charge",
-    description: "Mounted attackers hit harder on open ground and punish exposed ranged or siege units."
+    description: "+15% attack on plains for mounted units, plus +10% attack against ranged or siege targets."
   },
   harrier: {
     key: "harrier",
     name: "Harrier",
-    description: "Missile skirmishers excel at chipping away at slow or exposed targets from distance."
+    description: "+10% attack while ammo remains against targets with 1 or less move, and against siege units."
   },
   guarded: {
     key: "guarded",
     name: "Guarded",
-    description: "Disciplined defenders take less damage while they still have the strength to hold formation."
+    description: "-10% incoming damage while above 50% HP."
   },
   ferocity: {
     key: "ferocity",
     name: "Ferocity",
-    description: "Aggressive attackers hit harder when fighting without adjacent allied support."
+    description: "+10% attack while not adjacent to any allied unit."
   },
   deadeye: {
     key: "deadeye",
     name: "Deadeye",
-    description: "Precision archers gain extra reach from hills and punish exposed missile troops."
+    description: "+1 range on hills, and +10% attack against unsupported ranged or siege targets."
   },
   crush: {
     key: "crush",
     name: "Crush",
-    description: "Heavy impact troops hit infantry harder and can break through defensive formations."
+    description: "+15% attack against close-combat targets, plus +5% attack against Guarded or Shield Wall defenders."
   },
   command: {
     key: "command",
     name: "Command Aura",
-    description: "Nearby allies fight with better discipline and gain a small attack bonus near this unit."
+    description: "Adjacent allies gain +5% attack. This stacks with the normal +10% leader aura when both apply."
   },
   siegeMastery: {
     key: "siegeMastery",
     name: "Siege Mastery",
-    description: "Siege crews fire harder from stable ground and gain extra range from high ground."
+    description: "+10% attack on plains or hills, and +1 range on hills."
   },
   skirmishStep: {
     key: "skirmishStep",
     name: "Skirmish Step",
-    description: "Light skirmish troops gain extra mobility while they still have ammunition."
+    description: "+1 move while ammo remains."
   },
   resolve: {
     key: "resolve",
     name: "Resolve",
-    description: "Elite troops fight harder when nearby allies are wounded and the line starts to bend."
+    description: "+10% attack while adjacent to an allied unit at or below 50% HP."
   }
 };
 
