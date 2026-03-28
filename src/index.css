@@ -165,13 +165,11 @@
 
 /* Battlefield container */
 .battlefield-container {
-    background: 
-        linear-gradient(135deg, #2d5016 0%, #4a7c59 50%, #6b8e23 100%);
+    background: transparent;
     border-radius: 15px;
-    padding: 20px;
-    box-shadow: 
-        0 10px 30px rgba(0,0,0,0.5),
-        inset 0 2px 4px rgba(255,255,255,0.1);
+    padding: 0;
+    box-shadow: none;
+    overflow: hidden;
 }
 
 .battlefield-scroll-viewport {
@@ -185,24 +183,24 @@
 }
 
 .battlefield-scroll-viewport-8x8 {
-    width: calc((8 * 4rem) + (7 * 0.25rem) + 3rem);
-    height: calc((8 * 5rem) + (7 * 0.25rem) + 3rem);
+    width: min(calc(100vw - 1.5rem), calc((9 * 76px) + (9 * 0.25rem) + 3rem));
+    height: calc((8 * 92px) + (8 * 0.25rem) + 3rem);
     max-width: 100%;
-    max-height: calc(100vh - 14rem);
+    max-height: calc(120vh - 14rem);
     touch-action: none;
     user-select: none;
 }
 
 @media (min-width: 640px) {
     .battlefield-scroll-viewport-8x8 {
-        width: calc((8 * 5rem) + (7 * 0.25rem) + 3rem);
-        height: calc((8 * 6rem) + (7 * 0.25rem) + 3rem);
-        max-height: calc(100vh - 16rem);
+        width: min(calc(100vw - 3rem), calc((10 * 92px) + (10 * 0.25rem) + 3rem));
+        height: calc((8 * 108px) + (8 * 0.25rem) + 3rem);
+        max-height: calc(120vh - 16rem);
     }
 }
 
 .battlefield-scroll-viewport-fullscreen-large {
-    width: min(calc(100vw - 6rem), 1200px);
+    width: min(calc(100vw - 4rem), 1440px);
     height: calc(100vh - 14rem);
     max-width: 100%;
     max-height: 100%;

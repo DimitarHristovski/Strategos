@@ -1,853 +1,148 @@
 // CodeConq - Grid Strategy Game with Highlights and Expanded Features
 // Now includes: Health Bars, Kill Counters, Special Ability Tooltips, and Custom Drag & Drop Setup
 
-import { useState, useEffect, useRef } from "react";
-import { formations } from "./Units/InitialUnits";
+import { createElement, useState, useEffect, useRef } from "react";
+import { levels } from "./Units/InitialUnits";
+import { generateTroopStats } from "./Units/troopStats";
 
 // Available troop types for custom setup - using existing definitions
 const AVAILABLE_TROOPS = {
   Romans: [
     { role: "Roman King", name: "Roman King", Icon: "👑" },
     { role: "Legionary", name: "Legionary", Icon: "⚔️" },
-    { role: "Centurion", name: "Centurion", Icon: "🪖" },
-    { role: "Archer", name: "Archer", Icon: "🏹" },
-    { role: "Cavalry", name: "Cavalry", Icon: "🐎" },
-    { role: "Praetorian", name: "Praetorian", Icon: "🪖" },
-    { role: "Ballista", name: "Ballista", Icon: "⚔️" },
-    { role: "Scorpion", name: "Scorpion", Icon: "⚔️" },
+    { role: "Centurion", name: "Centurion", Icon: "⚔️" },
+    { role: "Praetorian", name: "Praetorian", Icon: "⚔️" },
     { role: "Auxiliary", name: "Auxiliary", Icon: "⚔️" },
-    { role: "Velites", name: "Velites", Icon: "🏹" },
     { role: "Triarii", name: "Triarii", Icon: "⚔️" },
     { role: "Hastati", name: "Hastati", Icon: "⚔️" },
     { role: "Principes", name: "Principes", Icon: "⚔️" },
+    { role: "Cavalry", name: "Cavalry", Icon: "🐎" },
     { role: "Equites", name: "Equites", Icon: "🐎" },
-    { role: "Onager", name: "Onager", Icon: "⚔️" }
+    { role: "Archer", name: "Archer", Icon: "🏹" },
+    { role: "Velites", name: "Velites", Icon: "🏹" },
+    { role: "Ballista", name: "Ballista", Icon: "⚙️" },
+    { role: "Scorpion", name: "Scorpion", Icon: "⚙️" },
+    { role: "Onager", name: "Onager", Icon: "⚙️" }
   ],
   Barbarians: [
-    { role: "Barbarian Warrior", name: "Barbarian Warrior", Icon: "🪓" },
-    { role: "Barbarian Archer", name: "Barbarian Archer", Icon: "🏹" },
     { role: "Barbarian Chief", name: "Barbarian Chief", Icon: "👑" },
+    { role: "Barbarian Warrior", name: "Barbarian Warrior", Icon: "⚔️" },
     { role: "Barbarian Berserker", name: "Barbarian Berserker", Icon: "⚔️" },
-    { role: "Barbarian Scout", name: "Barbarian Scout", Icon: "🐎" },
-    { role: "Barbarian Shaman", name: "Barbarian Shaman", Icon: "🏹" },
     { role: "Barbarian Axeman", name: "Barbarian Axeman", Icon: "⚔️" },
     { role: "Barbarian Spearman", name: "Barbarian Spearman", Icon: "⚔️" },
     { role: "Barbarian Raider", name: "Barbarian Raider", Icon: "⚔️" },
-    { role: "Barbarian Warlord", name: "Barbarian Warlord", Icon: "🪓" },
+    { role: "Barbarian Warlord", name: "Barbarian Warlord", Icon: "⚔️" },
     { role: "Falxman", name: "Falxman", Icon: "⚔️" },
-    { role: "Barbarian Noble Rider", name: "Barbarian Noble Rider", Icon: "🐎" },
-    { role: "Barbarian Slinger", name: "Barbarian Slinger", Icon: "🏹" },
     { role: "Chosen Spearman", name: "Chosen Spearman", Icon: "⚔️" },
-    { role: "Oathsworn", name: "Oathsworn", Icon: "⚔️" }
+    { role: "Oathsworn", name: "Oathsworn", Icon: "⚔️" },
+    { role: "Barbarian Scout", name: "Barbarian Scout", Icon: "🐎" },
+    { role: "Barbarian Noble Rider", name: "Barbarian Noble Rider", Icon: "🐎" },
+    { role: "Barbarian Archer", name: "Barbarian Archer", Icon: "🏹" },
+    { role: "Barbarian Shaman", name: "Barbarian Shaman", Icon: "🏹" },
+    { role: "Barbarian Slinger", name: "Barbarian Slinger", Icon: "🏹" }
   ],
   Greeks: [
+    { role: "Macedonian King", name: "Macedonian King", Icon: "👑" },
     { role: "Hoplite", name: "Hoplite", Icon: "⚔️" },
     { role: "Phalangite", name: "Phalangite", Icon: "⚔️" },
     { role: "Hypaspist", name: "Hypaspist", Icon: "⚔️" },
+    { role: "Thureophoroi", name: "Thureophoroi", Icon: "⚔️" },
+    { role: "Agema", name: "Agema", Icon: "⚔️" },
     { role: "Companion Cavalry", name: "Companion Cavalry", Icon: "🐎" },
     { role: "Thessalian Cavalry", name: "Thessalian Cavalry", Icon: "🐎" },
+    { role: "Xystophoroi", name: "Xystophoroi", Icon: "🐎" },
     { role: "Peltast", name: "Peltast", Icon: "🏹" },
-    { role: "Thureophoroi", name: "Thureophoroi", Icon: "⚔️" },
     { role: "Cretan Archer", name: "Cretan Archer", Icon: "🏹" },
     { role: "Rhodian Slinger", name: "Rhodian Slinger", Icon: "🏹" },
-    { role: "Greek Catapult", name: "Greek Catapult", Icon: "⚔️" },
-    { role: "Polybolos", name: "Polybolos", Icon: "⚔️" },
-    { role: "Agema", name: "Agema", Icon: "⚔️" },
-    { role: "Macedonian King", name: "Macedonian King", Icon: "👑" },
     { role: "Psiloi", name: "Psiloi", Icon: "🏹" },
-    { role: "Xystophoroi", name: "Xystophoroi", Icon: "🐎" }
+    { role: "Greek Catapult", name: "Greek Catapult", Icon: "⚙️" },
+    { role: "Polybolos", name: "Polybolos", Icon: "⚙️" }
   ],
   Celts: [
     { role: "Celtic King", name: "Celtic King", Icon: "👑" },
     { role: "Celtic Warrior", name: "Celtic Warrior", Icon: "⚔️" },
-    { role: "Celtic Berserker", name: "Celtic Berserker", Icon: "🪓" },
+    { role: "Celtic Berserker", name: "Celtic Berserker", Icon: "⚔️" },
     { role: "Celtic Spearman", name: "Celtic Spearman", Icon: "⚔️" },
-    { role: "Celtic Archer", name: "Celtic Archer", Icon: "🏹" },
-    { role: "Celtic Skirmisher", name: "Celtic Skirmisher", Icon: "🏹" },
-    { role: "Celtic Cavalry", name: "Celtic Cavalry", Icon: "🐎" },
-    { role: "Celtic Chariot", name: "Celtic Chariot", Icon: "🐎" },
     { role: "Celtic Oathsworn", name: "Celtic Oathsworn", Icon: "⚔️" },
     { role: "Gaesatae", name: "Gaesatae", Icon: "⚔️" },
+    { role: "Fianna", name: "Fianna", Icon: "⚔️" },
+    { role: "Noble Spearman", name: "Noble Spearman", Icon: "⚔️" },
+    { role: "Celtic Cavalry", name: "Celtic Cavalry", Icon: "🐎" },
+    { role: "Celtic Chariot", name: "Celtic Chariot", Icon: "🐎" },
     { role: "Celtic Noble Horseman", name: "Celtic Noble Horseman", Icon: "🐎" },
-    { role: "Celtic Slinger", name: "Celtic Slinger", Icon: "🏹" },
     { role: "Chariot Noble", name: "Chariot Noble", Icon: "🐎" },
-    { role: "Fianna", name: "Fianna", Icon: "🪓" },
-    { role: "Noble Spearman", name: "Noble Spearman", Icon: "⚔️" }
+    { role: "Celtic Archer", name: "Celtic Archer", Icon: "🏹" },
+    { role: "Celtic Skirmisher", name: "Celtic Skirmisher", Icon: "🏹" },
+    { role: "Celtic Slinger", name: "Celtic Slinger", Icon: "🏹" },
   ],
   Germanic: [
     { role: "Germanic King", name: "Germanic King", Icon: "👑" },
-    { role: "Germanic Warrior", name: "Germanic Warrior", Icon: "🪓" },
+    { role: "Germanic Warrior", name: "Germanic Warrior", Icon: "⚔️" },
     { role: "Germanic Spearman", name: "Germanic Spearman", Icon: "⚔️" },
     { role: "Germanic Berserker", name: "Germanic Berserker", Icon: "⚔️" },
     { role: "Germanic Raider", name: "Germanic Raider", Icon: "⚔️" },
-    { role: "Germanic Archer", name: "Germanic Archer", Icon: "🏹" },
-    { role: "Germanic Wolf Rider", name: "Germanic Wolf Rider", Icon: "🐎" },
-    { role: "Chosen Axeman", name: "Chosen Axeman", Icon: "🪓" },
-    { role: "Tribal Slinger", name: "Tribal Slinger", Icon: "🏹" },
-    { role: "Suebi Rider", name: "Suebi Rider", Icon: "🐎" },
+    { role: "Chosen Axeman", name: "Chosen Axeman", Icon: "⚔️" },
     { role: "Cherusci Spearman", name: "Cherusci Spearman", Icon: "⚔️" },
     { role: "Marcomanni Raider", name: "Marcomanni Raider", Icon: "⚔️" },
+    { role: "Hearthguard", name: "Hearthguard", Icon: "⚔️" },
+    { role: "Germanic Wolf Rider", name: "Germanic Wolf Rider", Icon: "🐎" },
+    { role: "Suebi Rider", name: "Suebi Rider", Icon: "🐎" },
     { role: "Gothic Lancer", name: "Gothic Lancer", Icon: "🐎" },
+    { role: "Germanic Archer", name: "Germanic Archer", Icon: "🏹" },
+    { role: "Tribal Slinger", name: "Tribal Slinger", Icon: "🏹" },
     { role: "Lombard Archer", name: "Lombard Archer", Icon: "🏹" },
-    { role: "Hearthguard", name: "Hearthguard", Icon: "🛡️" }
   ],
   Carthage: [
     { role: "Carthaginian General", name: "Carthaginian General", Icon: "👑" },
     { role: "Libyan Infantry", name: "Libyan Infantry", Icon: "⚔️" },
-    { role: "Numidian Cavalry", name: "Numidian Cavalry", Icon: "🐎" },
-    { role: "War Elephant", name: "War Elephant", Icon: "🐘" },
-    { role: "Elephant Archer", name: "Elephant Archer", Icon: "🐘" },
-    { role: "Balearic Slinger", name: "Balearic Slinger", Icon: "🏹" },
-    { role: "Carthaginian Archer", name: "Carthaginian Archer", Icon: "🏹" },
-    { role: "Sacred Band", name: "Sacred Band", Icon: "🛡️" },
+    { role: "Sacred Band", name: "Sacred Band", Icon: "⚔️" },
     { role: "Liby-Phoenician Infantry", name: "Liby-Phoenician Infantry", Icon: "⚔️" },
-    { role: "Numidian Skirmisher", name: "Numidian Skirmisher", Icon: "🏹" },
     { role: "Iberian Swordsman", name: "Iberian Swordsman", Icon: "⚔️" },
     { role: "African Pikeman", name: "African Pikeman", Icon: "⚔️" },
     { role: "Punic Spearman", name: "Punic Spearman", Icon: "⚔️" },
     { role: "Campanian Mercenary", name: "Campanian Mercenary", Icon: "⚔️" },
-    { role: "Phoenician Militia", name: "Phoenician Militia", Icon: "⚔️" }
+    { role: "Phoenician Militia", name: "Phoenician Militia", Icon: "⚔️" },
+    { role: "Numidian Cavalry", name: "Numidian Cavalry", Icon: "🐎" },
+    { role: "War Elephant", name: "War Elephant", Icon: "🐘" },
+    { role: "Balearic Slinger", name: "Balearic Slinger", Icon: "🏹" },
+    { role: "Carthaginian Archer", name: "Carthaginian Archer", Icon: "🏹" },
+    { role: "Numidian Skirmisher", name: "Numidian Skirmisher", Icon: "🏹" },
+    { role: "Elephant Archer", name: "Elephant Archer", Icon: "🐘🏹" }
   ],
   Vikings: [
     { role: "Jarl", name: "Jarl", Icon: "👑" },
-    { role: "Viking Raider", name: "Viking Raider", Icon: "🪓" },
+    { role: "Viking Raider", name: "Viking Raider", Icon: "⚔️" },
     { role: "Berserker", name: "Berserker", Icon: "⚔️" },
-    { role: "Shieldmaiden", name: "Shieldmaiden", Icon: "🛡️" },
-    { role: "Viking Archer", name: "Viking Archer", Icon: "🏹" },
-    { role: "Scout", name: "Scout", Icon: "🐎" },
-    { role: "Huscarl", name: "Huscarl", Icon: "🛡️" },
+    { role: "Shieldmaiden", name: "Shieldmaiden", Icon: "⚔️" },
+    { role: "Huscarl", name: "Huscarl", Icon: "⚔️" },
     { role: "Bondi Spearman", name: "Bondi Spearman", Icon: "⚔️" },
     { role: "Hirdman", name: "Hirdman", Icon: "⚔️" },
-    { role: "Ulfhednar", name: "Ulfhednar", Icon: "🪓" },
-    { role: "Varangian Guard", name: "Varangian Guard", Icon: "🛡️" },
+    { role: "Ulfhednar", name: "Ulfhednar", Icon: "⚔️" },
+    { role: "Varangian Guard", name: "Varangian Guard", Icon: "⚔️" },
     { role: "Jomsviking", name: "Jomsviking", Icon: "⚔️" },
     { role: "Viking Spearman", name: "Viking Spearman", Icon: "⚔️" },
-    { role: "Viking Skirmisher", name: "Viking Skirmisher", Icon: "🏹" },
-    { role: "Karl Warrior", name: "Karl Warrior", Icon: "⚔️" }
+    { role: "Karl Warrior", name: "Karl Warrior", Icon: "⚔️" },
+    { role: "Scout", name: "Scout", Icon: "🐎" },
+    { role: "Viking Archer", name: "Viking Archer", Icon: "🏹" },
+    { role: "Viking Skirmisher", name: "Viking Skirmisher", Icon: "🏹" }
   ],
   Teutons: [
     { role: "King", name: "King", Icon: "👑" },
-    { role: "Knight", name: "Knight", Icon: "🐎" },
+    { role: "Teutonic Marshal", name: "Teutonic Marshal", Icon: "👑" },
     { role: "Man-at-Arms", name: "Man-at-Arms", Icon: "⚔️" },
     { role: "Spearman", name: "Spearman", Icon: "⚔️" },
-    { role: "Longbowman", name: "Longbowman", Icon: "🏹" },
-    { role: "Crossbowman", name: "Crossbowman", Icon: "🏹" },
-    { role: "Trebuchet", name: "Trebuchet", Icon: "⚔️" },
-    { role: "Teutonic Marshal", name: "Teutonic Marshal", Icon: "👑" },
-    { role: "Ritterbruder", name: "Ritterbruder", Icon: "🐎" },
     { role: "Sergeant", name: "Sergeant", Icon: "⚔️" },
     { role: "Halberdier", name: "Halberdier", Icon: "⚔️" },
-    { role: "Pavise Crossbowman", name: "Pavise Crossbowman", Icon: "🏹" },
+    { role: "Foot Sergeant", name: "Foot Sergeant", Icon: "⚔️" },
+    { role: "Knight", name: "Knight", Icon: "🐎" },
+    { role: "Ritterbruder", name: "Ritterbruder", Icon: "🐎" },
     { role: "Turcopole", name: "Turcopole", Icon: "🐎" },
-    { role: "Bombard", name: "Bombard", Icon: "⚔️" },
-    { role: "Foot Sergeant", name: "Foot Sergeant", Icon: "⚔️" }
+    { role: "Longbowman", name: "Longbowman", Icon: "🏹" },
+    { role: "Crossbowman", name: "Crossbowman", Icon: "🏹" },
+    { role: "Pavise Crossbowman", name: "Pavise Crossbowman", Icon: "🏹" },
+    { role: "Trebuchet", name: "Trebuchet", Icon: "⚙️" },
+    { role: "Bombard", name: "Bombard", Icon: "⚙️" }
   ]
-};
-
-type CustomTroopStatTemplate = {
-  hp: [number, number];
-  attack: [number, number];
-  ammo: number;
-  range: number;
-  move: number;
-};
-
-const EXTRA_CUSTOM_TROOP_STATS: Record<string, CustomTroopStatTemplate> = {
-  Hastati: { hp: [260, 310], attack: [115, 145], ammo: 0, range: 1, move: 1 },
-  Principes: { hp: [300, 350], attack: [130, 160], ammo: 0, range: 1, move: 1 },
-  Equites: { hp: [220, 270], attack: [135, 165], ammo: 0, range: 1, move: 3 },
-  Onager: { hp: [60, 90], attack: [150, 190], ammo: 6, range: 6, move: 0 },
-  Falxman: { hp: [240, 300], attack: [180, 220], ammo: 0, range: 1, move: 1 },
-  "Barbarian Noble Rider": { hp: [230, 280], attack: [145, 175], ammo: 0, range: 1, move: 3 },
-  "Barbarian Slinger": { hp: [140, 180], attack: [75, 100], ammo: 12, range: 4, move: 1 },
-  "Chosen Spearman": { hp: [250, 300], attack: [120, 150], ammo: 0, range: 1, move: 1 },
-  Oathsworn: { hp: [300, 360], attack: [190, 230], ammo: 0, range: 1, move: 2 },
-  Psiloi: { hp: [130, 170], attack: [70, 95], ammo: 10, range: 2, move: 2 },
-  Xystophoroi: { hp: [240, 290], attack: [160, 190], ammo: 0, range: 1, move: 3 },
-  "Celtic Oathsworn": { hp: [300, 360], attack: [185, 225], ammo: 0, range: 1, move: 1 },
-  Gaesatae: { hp: [270, 330], attack: [200, 240], ammo: 0, range: 1, move: 2 },
-  "Celtic Noble Horseman": { hp: [220, 280], attack: [150, 180], ammo: 0, range: 1, move: 3 },
-  "Celtic Slinger": { hp: [140, 180], attack: [70, 95], ammo: 12, range: 4, move: 1 },
-  "Chariot Noble": { hp: [220, 270], attack: [160, 190], ammo: 0, range: 1, move: 4 },
-  Fianna: { hp: [240, 290], attack: [155, 185], ammo: 0, range: 1, move: 2 },
-  "Noble Spearman": { hp: [240, 290], attack: [120, 145], ammo: 0, range: 1, move: 1 },
-  "Chosen Axeman": { hp: [300, 350], attack: [180, 220], ammo: 0, range: 1, move: 1 },
-  "Tribal Slinger": { hp: [140, 180], attack: [70, 95], ammo: 10, range: 3, move: 1 },
-  "Suebi Rider": { hp: [220, 270], attack: [150, 180], ammo: 0, range: 1, move: 3 },
-  "Cherusci Spearman": { hp: [240, 290], attack: [120, 145], ammo: 0, range: 1, move: 1 },
-  "Marcomanni Raider": { hp: [220, 270], attack: [150, 185], ammo: 0, range: 1, move: 2 },
-  "Gothic Lancer": { hp: [250, 300], attack: [165, 195], ammo: 0, range: 1, move: 3 },
-  "Lombard Archer": { hp: [150, 190], attack: [80, 105], ammo: 10, range: 3, move: 1 },
-  Hearthguard: { hp: [320, 380], attack: [170, 210], ammo: 0, range: 1, move: 1 },
-  "Sacred Band": { hp: [340, 400], attack: [170, 205], ammo: 0, range: 1, move: 1 },
-  "Liby-Phoenician Infantry": { hp: [260, 320], attack: [125, 155], ammo: 0, range: 1, move: 1 },
-  "Numidian Skirmisher": { hp: [150, 190], attack: [80, 105], ammo: 10, range: 3, move: 2 },
-  "Elephant Archer": { hp: [320, 380], attack: [120, 150], ammo: 8, range: 3, move: 2 },
-  "Iberian Swordsman": { hp: [230, 290], attack: [145, 180], ammo: 0, range: 1, move: 1 },
-  "African Pikeman": { hp: [260, 320], attack: [120, 145], ammo: 0, range: 1, move: 1 },
-  "Punic Spearman": { hp: [250, 300], attack: [120, 145], ammo: 0, range: 1, move: 1 },
-  "Punic Marine": { hp: [230, 280], attack: [130, 160], ammo: 0, range: 1, move: 1 },
-  "Campanian Mercenary": { hp: [280, 340], attack: [150, 180], ammo: 0, range: 1, move: 1 },
-  "Phoenician Militia": { hp: [210, 260], attack: [100, 125], ammo: 0, range: 1, move: 1 },
-  Huscarl: { hp: [320, 380], attack: [170, 205], ammo: 0, range: 1, move: 1 },
-  "Bondi Spearman": { hp: [220, 270], attack: [110, 135], ammo: 0, range: 1, move: 1 },
-  Hirdman: { hp: [280, 340], attack: [145, 175], ammo: 0, range: 1, move: 1 },
-  Ulfhednar: { hp: [260, 320], attack: [210, 250], ammo: 0, range: 1, move: 2 },
-  "Varangian Guard": { hp: [340, 400], attack: [175, 215], ammo: 0, range: 1, move: 1 },
-  Jomsviking: { hp: [300, 360], attack: [160, 195], ammo: 0, range: 1, move: 2 },
-  "Viking Spearman": { hp: [230, 280], attack: [115, 140], ammo: 0, range: 1, move: 1 },
-  "Viking Skirmisher": { hp: [150, 190], attack: [75, 100], ammo: 10, range: 3, move: 2 },
-  "Karl Warrior": { hp: [210, 260], attack: [110, 140], ammo: 0, range: 1, move: 1 },
-  "Teutonic Marshal": { hp: [420, 470], attack: [240, 280], ammo: 0, range: 1, move: 1 },
-  Ritterbruder: { hp: [310, 360], attack: [170, 205], ammo: 0, range: 1, move: 3 },
-  Sergeant: { hp: [250, 300], attack: [125, 155], ammo: 0, range: 1, move: 1 },
-  Halberdier: { hp: [240, 290], attack: [130, 160], ammo: 0, range: 1, move: 1 },
-  "Pavise Crossbowman": { hp: [180, 220], attack: [95, 125], ammo: 8, range: 4, move: 1 },
-  Turcopole: { hp: [210, 260], attack: [110, 140], ammo: 6, range: 3, move: 3 },
-  Bombard: { hp: [70, 100], attack: [170, 210], ammo: 5, range: 7, move: 0 },
-  "Foot Sergeant": { hp: [260, 320], attack: [130, 160], ammo: 0, range: 1, move: 1 }
-};
-
-const generateTemplateStats = (template: CustomTroopStatTemplate) => ({
-  hp: Math.floor(Math.random() * (template.hp[1] - template.hp[0]) + template.hp[0]),
-  attack: Math.floor(Math.random() * (template.attack[1] - template.attack[0]) + template.attack[0]),
-  ammo: template.ammo,
-  range: template.range,
-  move: template.move
-});
-
-// Function to generate stats for custom troops (similar to InitialUnits.tsx)
-const generateCustomTroopStats = (role: string) => {
-  let hp, maxHp, attack, ammo, range, move;
-  const extraTemplate = EXTRA_CUSTOM_TROOP_STATS[role];
-
-  if (extraTemplate) {
-    const templateStats = generateTemplateStats(extraTemplate);
-    hp = templateStats.hp;
-    maxHp = hp;
-    attack = templateStats.attack;
-    ammo = templateStats.ammo;
-    range = templateStats.range;
-    move = templateStats.move;
-    return ensureRangedAmmo({ hp, maxHp, attack, ammo, range, move });
-  }
-
-  switch (role) {
-    // Roman Units
-    case "Roman King":
-      hp = Math.floor(Math.random() * (450 - 420) + 420);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (270 - 240) + 240);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-      case "Legionary":
-        hp = Math.floor(Math.random() * (340 - 280) + 280);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (140 - 110) + 110);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 1;
-        break;
-    case "Centurion":
-      hp = Math.floor(Math.random() * (420 - 340) + 340);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (180 - 150) + 150);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-    case "Archer":
-      hp = Math.floor(Math.random() * (200 - 150) + 150);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (90 - 65) + 65);
-      ammo = 10; // Ranged unit with 10 shots
-      range = 3;
-      move = 1;
-      break;
-    case "Cavalry":
-      hp = Math.floor(Math.random() * (260 - 220) + 220);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (150 - 120) + 120);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 3;
-      break;
-    case "Praetorian":
-      hp = Math.floor(Math.random() * (520 - 440) + 440);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (220 - 180) + 180);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-    case "Ballista":
-      hp = Math.floor(Math.random() * (50 - 10) + 10);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (100 - 50) + 50);
-      ammo = 10; // Ranged unit with 10 shots
-      range = 6;
-      move = 0;
-      break;
-    case "Scorpion":
-      hp = Math.floor(Math.random() * (20 - 10) + 10);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (80 - 30) + 30);
-      ammo = 10; // Ranged unit with 10 shots
-      range = 3;
-      move = 1;
-      break;
-    case "Auxiliary":
-      hp = Math.floor(Math.random() * (220 - 170) + 170);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (120 - 90) + 90);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-    case "Velites":
-      hp = Math.floor(Math.random() * (130 - 90) + 90);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (75 - 50) + 50);
-      ammo = 10; // Ranged unit with 10 shots
-      range = 3;
-      move = 2;
-      break;
-    case "Triarii":
-      hp = Math.floor(Math.random() * (380 - 320) + 320);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (150 - 120) + 120);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-      // Barbarian Units
-    case "Barbarian Warrior":
-      hp = Math.floor(Math.random() * (270 - 220) + 220);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (170 - 130) + 130);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-      case "Barbarian Archer":
-        hp = Math.floor(Math.random() * (140 - 90) + 90);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (85 - 60) + 60);
-        ammo = 10; // Ranged unit with 10 shots
-        range = 2;
-        move = 1;
-        break;
-      case "Barbarian Chief":
-        hp = Math.floor(Math.random() * (420 - 360) + 360);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (290 - 250) + 250);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 1;
-        break;
-        case "Barbarian Berserker":
-          hp = Math.floor(Math.random() * (310 - 240) + 240);
-          maxHp = hp;
-          attack = Math.floor(Math.random() * (260 - 220) + 220);
-          ammo = 0; // Melee unit
-          range = 1;
-          move = 2;
-          break;
-       
-      case "Barbarian Scout":
-        hp = Math.floor(Math.random() * (220 - 170) + 170);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (150 - 120) + 120);
-        ammo = 0;
-        range = 1;
-        move = 3;
-        break;
-      case "Barbarian Shaman":
-        hp = Math.floor(Math.random() * (170 - 120) + 120);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (150 - 110) + 110);
-        ammo = 10; // Ranged unit with 10 shots
-        range = 2;
-        move = 1;
-        break;
-      case "Barbarian Axeman":
-        hp = Math.floor(Math.random() * (340 - 260) + 260);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (210 - 170) + 170);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 1;
-        break;
-      case "Barbarian Spearman":
-        hp = Math.floor(Math.random() * (230 - 180) + 180);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (120 - 90) + 90);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 1;
-        break;
-      case "Barbarian Raider":
-        hp = Math.floor(Math.random() * (190 - 140) + 140);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (165 - 130) + 130);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 2;
-        break;
-      case "Barbarian Warlord":
-        hp = Math.floor(Math.random() * (520 - 420) + 420);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (290 - 240) + 240);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 1;
-        break;
-        // === Greek / Macedonian Units ===
-case "Hoplite":
-  hp = Math.floor(Math.random() * (360 - 300) + 300);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (140 - 110) + 110);
-  ammo = 0;        // spear + shield wall
-  range = 1;
-  move = 1;
-  break;
-
-case "Phalangite": // sarissa phalanx
-  hp = Math.floor(Math.random() * (400 - 340) + 340);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (155 - 125) + 125);
-  ammo = 0;
-  range = 1;
-  move = 1;        // slow formation
-  break;
-
-case "Hypaspist":
-  hp = Math.floor(Math.random() * (340 - 280) + 280);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (175 - 140) + 140);
-  ammo = 0;        // elite guard, flexible
-  range = 1;
-  move = 1;
-  break;
-
-case "Companion Cavalry":
-  hp = Math.floor(Math.random() * (300 - 240) + 240);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (210 - 170) + 170);
-  ammo = 0;        // shock cavalry
-  range = 1;
-  move = 3;
-  break;
-
-case "Thessalian Cavalry":
-  hp = Math.floor(Math.random() * (280 - 230) + 230);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (175 - 145) + 145);
-  ammo = 0;
-  range = 1;
-  move = 3;
-  break;
-
-case "Peltast":
-  hp = Math.floor(Math.random() * (180 - 140) + 140);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (100 - 75) + 75);
-  ammo = 12;       // javelins
-  range = 3;
-  move = 2;
-  break;
-
-case "Thureophoroi":
-  hp = Math.floor(Math.random() * (250 - 200) + 200);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (125 - 95) + 95);
-  ammo = 6;        // mixed javelin + spear
-  range = 2;
-  move = 2;
-  break;
-
-case "Cretan Archer":
-  hp = Math.floor(Math.random() * (170 - 130) + 130);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (120 - 90) + 90);
-  ammo = 12;       // elite archers
-  range = 4;
-  move = 1;
-  break;
-
-case "Rhodian Slinger":
-  hp = Math.floor(Math.random() * (160 - 120) + 120);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (105 - 80) + 80);
-  ammo = 14;       // high ammo, long arc
-  range = 4;
-  move = 1;
-  break;
-
-case "Greek Catapult":
-  hp = Math.floor(Math.random() * (60 - 30) + 30);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (160 - 110) + 110);
-  ammo = 8;        // heavy stones/bolts
-  range = 6;
-  move = 0;        // static
-  break;
-
-case "Polybolos":
-  hp = Math.floor(Math.random() * (70 - 40) + 40);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (140 - 90) + 90);
-  ammo = 16;       // repeating ballista
-  range = 5;
-  move = 0;
-  break;
-
-case "Agema":
-  hp = Math.floor(Math.random() * (380 - 320) + 320);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (200 - 160) + 160);
-  ammo = 0;        // elite assault infantry
-  range = 1;
-  move = 1;
-  break;
-
-
-
-  case "Macedonian King":
-  hp = Math.floor(Math.random() * (440 - 400) + 400);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (285 - 250) + 250);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Celtic King":
-  hp = Math.floor(Math.random() * (390 - 340) + 340);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (255 - 220) + 220);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Celtic Warrior":
-  hp = Math.floor(Math.random() * (250 - 200) + 200);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (145 - 115) + 115);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Celtic Berserker":
-  hp = Math.floor(Math.random() * (280 - 220) + 220);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (220 - 180) + 180);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Celtic Spearman":
-  hp = Math.floor(Math.random() * (230 - 180) + 180);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (125 - 95) + 95);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Celtic Archer":
-  hp = Math.floor(Math.random() * (160 - 120) + 120);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (100 - 75) + 75);
-  ammo = 10;
-  range = 3;
-  move = 1;
-  break;
-
-case "Celtic Skirmisher":
-  hp = Math.floor(Math.random() * (150 - 110) + 110);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (90 - 65) + 65);
-  ammo = 12;
-  range = 3;
-  move = 1;
-  break;
-
-case "Celtic Cavalry":
-  hp = Math.floor(Math.random() * (230 - 180) + 180);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (150 - 120) + 120);
-  ammo = 0;
-  range = 1;
-  move = 4;
-  break;
-
-case "Celtic Chariot":
-  hp = Math.floor(Math.random() * (220 - 170) + 170);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (160 - 130) + 130);
-  ammo = 0;
-  range = 1;
-  move = 4;
-  break;
-
-case "Germanic King":
-  hp = Math.floor(Math.random() * (440 - 400) + 400);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (305 - 270) + 270);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Germanic Warrior":
-  hp = Math.floor(Math.random() * (320 - 260) + 260);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (170 - 135) + 135);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Germanic Spearman":
-  hp = Math.floor(Math.random() * (290 - 240) + 240);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (130 - 100) + 100);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Germanic Berserker":
-  hp = Math.floor(Math.random() * (330 - 270) + 270);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (245 - 205) + 205);
-  ammo = 0;
-  range = 1;
-  move = 2;
-  break;
-
-case "Germanic Raider":
-  hp = Math.floor(Math.random() * (230 - 180) + 180);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (170 - 135) + 135);
-  ammo = 0;
-  range = 1;
-  move = 2;
-  break;
-
-case "Germanic Archer":
-  hp = Math.floor(Math.random() * (190 - 150) + 150);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (95 - 70) + 70);
-  ammo = 10;
-  range = 2;
-  move = 1;
-  break;
-
-case "Germanic Wolf Rider":
-  hp = Math.floor(Math.random() * (260 - 220) + 220);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (175 - 140) + 140);
-  ammo = 0;
-  range = 1;
-  move = 2;
-  break;
-
-case "Carthaginian General":
-  hp = Math.floor(Math.random() * (430 - 390) + 390);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (265 - 230) + 230);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Libyan Infantry":
-  hp = Math.floor(Math.random() * (290 - 240) + 240);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (140 - 110) + 110);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-
-
-case "Numidian Cavalry":
-  hp = Math.floor(Math.random() * (230 - 180) + 180);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (140 - 110) + 110);
-  ammo = 0;
-  range = 1;
-  move = 3;
-  break;
-
-case "War Elephant":
-  hp = Math.floor(Math.random() * (560 - 480) + 480);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (270 - 220) + 220);
-  ammo = 0;
-  range = 1;
-  move = 2;
-  break;
-
-case "Balearic Slinger":
-  hp = Math.floor(Math.random() * (170 - 130) + 130);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (100 - 75) + 75);
-  ammo = 12;
-  range = 4;
-  move = 1;
-  break;
-
-case "Carthaginian Archer":
-  hp = Math.floor(Math.random() * (170 - 130) + 130);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (100 - 75) + 75);
-  ammo = 10;
-  range = 3;
-  move = 1;
-  break;
-
-case "Jarl":
-  hp = Math.floor(Math.random() * (410 - 360) + 360);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (290 - 250) + 250);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Viking Raider":
-  hp = Math.floor(Math.random() * (240 - 190) + 190);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (185 - 150) + 150);
-  ammo = 0;
-  range = 1;
-  move = 2;
-  break;
-
-case "Berserker":
-  hp = Math.floor(Math.random() * (280 - 220) + 220);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (250 - 210) + 210);
-  ammo = 0;
-  range = 1;
-  move = 2;
-  break;
-
-case "Shieldmaiden":
-  hp = Math.floor(Math.random() * (260 - 210) + 210);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (155 - 125) + 125);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Viking Archer":
-  hp = Math.floor(Math.random() * (160 - 120) + 120);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (95 - 70) + 70);
-  ammo = 10;
-  range = 3;
-  move = 1;
-  break;
-
-case "Scout":
-  hp = Math.floor(Math.random() * (200 - 150) + 150);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (140 - 110) + 110);
-  ammo = 0;
-  range = 1;
-  move = 3;
-  break;
-
-
-
-case "King":
-  hp = Math.floor(Math.random() * (470 - 430) + 430);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (250 - 220) + 220);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Knight":
-  hp = Math.floor(Math.random() * (330 - 280) + 280);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (160 - 130) + 130);
-  ammo = 0;
-  range = 1;
-  move = 3;
-  break;
-
-case "Man-at-Arms":
-  hp = Math.floor(Math.random() * (380 - 320) + 320);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (145 - 115) + 115);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Spearman":
-  hp = Math.floor(Math.random() * (340 - 290) + 290);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (120 - 90) + 90);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-case "Longbowman":
-  hp = Math.floor(Math.random() * (200 - 150) + 150);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (110 - 85) + 85);
-  ammo = 10;
-  range = 5;
-  move = 1;
-  break;
-
-case "Crossbowman":
-  hp = Math.floor(Math.random() * (220 - 170) + 170);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (125 - 100) + 100);
-  ammo = 8;
-  range = 4;
-  move = 1;
-  break;
-
-
-
-
-
-case "Trebuchet":
-  hp = Math.floor(Math.random() * (90 - 60) + 60);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (190 - 150) + 150);
-  ammo = 6;
-  range = 7;
-  move = 0;
-  break;
-
-    default:
-      hp = 1;
-      maxHp = 1;
-      attack = 1;
-      ammo = 0;
-      range = 1;
-      move = 1;
-  }
-
-  return ensureRangedAmmo({ hp, maxHp, attack, ammo, range, move });
 };
 
 // Icon mapping
@@ -862,15 +157,15 @@ const ICON_MAP = {
   FaCrown: "👑"
 };
 
-const FORMATION_LEVEL_LABELS: Record<keyof typeof formations, string> = {
-  Phalanx: "Romans vs Barbarians",
-  Arch: "Greeks vs Celts",
-  Testudo: "Carthage vs Vikings",
-  Circle: "Germanic vs Teutons",
-  Staggered: "Romans vs Carthage",
-  Delta: "Greeks vs Germanic",
-  Tercio: "Celts vs Vikings",
-  Pincer: "Barbarians vs Teutons"
+const LEVEL_MATCHUP_LABELS: Record<keyof typeof levels, string> = {
+  Level1: "Romans vs Barbarians",
+  Level2: "Greeks vs Celts",
+  Level3: "Carthage vs Vikings",
+  Level4: "Germanic vs Teutons",
+  Level5: "Romans vs Carthage",
+  Level6: "Greeks vs Germanic",
+  Level7: "Celts vs Vikings",
+  Level8: "Barbarians vs Teutons"
 };
 
 const BACKGROUND_MUSIC_SRC = "/Crown%20of%20Ashes.mp3";
@@ -923,12 +218,12 @@ const renderTeamSelectOptions = (
     );
   });
 
-const getFormationTeams = (formationKey: keyof typeof formations): TeamName[] =>
-  Array.from(new Set(formations[formationKey].map((unit: any) => unit.team))) as TeamName[];
+const getLevelTeams = (levelKey: keyof typeof levels): TeamName[] =>
+  Array.from(new Set(levels[levelKey].map((unit: any) => unit.team))) as TeamName[];
 
-const getValidFormationPlayerTeam = (formationKey: keyof typeof formations, preferredTeam: TeamName): TeamName => {
-  const formationTeams = getFormationTeams(formationKey);
-  return formationTeams.includes(preferredTeam) ? preferredTeam : formationTeams[0] ?? "Romans";
+const getValidLevelPlayerTeam = (levelKey: keyof typeof levels, preferredTeam: TeamName): TeamName => {
+  const levelTeams = getLevelTeams(levelKey);
+  return levelTeams.includes(preferredTeam) ? preferredTeam : levelTeams[0] ?? "Romans";
 };
 
 const getAliveTeams = (battleUnits: any[]): TeamName[] =>
@@ -2200,7 +1495,7 @@ const TROOP_MECHANIC_ICONS: Record<TroopMechanicType, string> = {
   closecombat: "⚔️",
   mounted: "🐎",
   ranged: "🏹",
-  sieged: "🏰"
+  sieged: "⚙️"
 };
 
 const TROOP_MECHANIC_ADVANTAGE_MULTIPLIER = 1.1;
@@ -2222,6 +1517,11 @@ const ROLE_ICON_LOOKUP = Object.values(AVAILABLE_TROOPS).flat().reduce((lookup, 
   lookup[troop.role] = troop.Icon;
   return lookup;
 }, {} as Record<string, string>);
+
+const getUnitDisplayIcon = (unit: any) => {
+  if (!unit) return "⚔️";
+  return ROLE_ICON_LOOKUP[unit.role] ?? unit.Icon ?? "⚔️";
+};
 
 const adjustStatPercent = (value: number, percent: number) => Math.max(0, Math.round(value * (1 + percent)));
 const adjustMovePercent = (value: number, percent: number) => {
@@ -2271,7 +1571,7 @@ const restoreUnitFromStorage = (unit: any) => {
   if (!unit) return null;
   return {
     ...unit,
-    Icon: typeof unit.Icon === "string" ? unit.Icon : (ROLE_ICON_LOOKUP[unit.role] ?? "⚔️")
+    Icon: getUnitDisplayIcon(unit)
   };
 };
 
@@ -2336,16 +1636,38 @@ const applyCivilizationPassive = (unit: any) => {
   return ensureRangedAmmo(normalizedUnit);
 };
 
-const prepareUnitsForBattle = (units: any[]) => units.map((unit) => applyCivilizationPassive({ ...unit }));
+const prepareUnitsForBattle = (units: any[]) =>
+  units.map((unit) =>
+    applyCivilizationPassive({
+      ...unit,
+      Icon: getUnitDisplayIcon(unit)
+    })
+  );
+
+const rerollUnitStats = (unit: any) => {
+  const rerolledStats = generateTroopStats(unit.role);
+
+  return applyCivilizationPassive({
+    ...unit,
+    ...rerolledStats,
+    Icon: getUnitDisplayIcon(unit),
+    civPassiveApplied: false,
+    civPassiveName: undefined,
+    civPassiveEffect: undefined
+  });
+};
+
+const rerollUnits = (units: any[]) => units.map((unit) => rerollUnitStats(unit));
 
 function CodeConq() {
-  const [currentFormation, setCurrentFormation] = useState<keyof typeof formations>("Phalanx");
+  const [currentLevel, setCurrentLevel] = useState<keyof typeof levels>("Level1");
   const [terrainPreset, setTerrainPreset] = useState<TerrainPreset>("mixed");
   const [terrainGenerationSettings, setTerrainGenerationSettings] = useState<TerrainGenerationSettings>(DEFAULT_TERRAIN_GENERATION_SETTINGS);
-  const [units, setUnits] = useState(() => prepareUnitsForBattle(formations["Phalanx"]));
+  const [units, setUnits] = useState(() => prepareUnitsForBattle(levels["Level1"]));
   const [battlefieldTerrain, setBattlefieldTerrain] = useState<TerrainType[][]>(() => generateTerrainMap(DEFAULT_GAME_OPTIONS.battlefieldSize, "mixed", DEFAULT_TERRAIN_GENERATION_SETTINGS));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedUnitId, setInspectedUnitId] = useState<string | null>(null);
+  const [inspectedTile, setInspectedTile] = useState<TerrainPoint | null>(null);
   const [turn, setTurn] = useState("Romans");
   const [log, setLog] = useState<string[]>([]);
   const [round, setRound] = useState(1);
@@ -2381,16 +1703,16 @@ function CodeConq() {
   const [isPanningGrid, setIsPanningGrid] = useState(false);
   const [hoverScrollDirection, setHoverScrollDirection] = useState<HoverScrollDirection>(null);
 
-  // Update units when formation changes
+  // Update units when level changes
   useEffect(() => {
     if (isRestoringSavedGameRef.current) {
       isRestoringSavedGameRef.current = false;
       return;
     }
 
-    if (formations[currentFormation]) {
-      const nextPlayerTeam = getValidFormationPlayerTeam(currentFormation, playerTeam);
-      setUnits(prepareUnitsForBattle(formations[currentFormation]));
+    if (levels[currentLevel]) {
+      const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
+      setUnits(prepareUnitsForBattle(levels[currentLevel]));
       setSelectedId(null);
       setPlayerTeam(nextPlayerTeam);
       setTurn(nextPlayerTeam);
@@ -2405,7 +1727,7 @@ function CodeConq() {
       setGridOrientation("north");
       setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
     }
-  }, [currentFormation]);
+  }, [currentLevel]);
 
   useEffect(() => {
     if (!units.length) return;
@@ -2446,21 +1768,21 @@ function CodeConq() {
       }
 
       const savedState = JSON.parse(savedStateRaw);
-      const savedFormation = savedState.currentFormation;
+      const savedLevel = savedState.currentLevel ?? savedState.currentFormation;
       const mergedOptions = savedState.gameOptions ? { ...DEFAULT_GAME_OPTIONS, ...savedState.gameOptions } : DEFAULT_GAME_OPTIONS;
       const restoredBattlefieldSize = BATTLEFIELD_SIZE_OPTIONS.includes(mergedOptions.battlefieldSize)
         ? mergedOptions.battlefieldSize
         : DEFAULT_GAME_OPTIONS.battlefieldSize;
 
-      if (savedFormation && savedFormation in formations) {
+      if (savedLevel && savedLevel in levels) {
         isRestoringSavedGameRef.current = true;
-        setCurrentFormation(savedFormation as keyof typeof formations);
+        setCurrentLevel(savedLevel as keyof typeof levels);
       }
 
       setUnits(
         Array.isArray(savedState.units)
           ? savedState.units.map(restoreUnitFromStorage).map(applyCivilizationPassive)
-          : prepareUnitsForBattle(formations["Phalanx"])
+          : prepareUnitsForBattle(levels["Level1"])
       );
       setSelectedId(savedState.selectedId ?? null);
       setTurn(savedState.turn ?? "Romans");
@@ -2515,7 +1837,7 @@ function CodeConq() {
     if (!hasLoadedSavedGameRef.current || typeof window === "undefined") return;
 
     const savedState = {
-      currentFormation,
+      currentLevel,
       units: units.map(stripUnitForStorage),
       selectedId,
       turn,
@@ -2540,7 +1862,7 @@ function CodeConq() {
 
     window.localStorage.setItem(GAME_STATE_STORAGE_KEY, JSON.stringify(savedState));
   }, [
-    currentFormation,
+    currentLevel,
     units,
     selectedId,
     turn,
@@ -2594,13 +1916,13 @@ function CodeConq() {
   useEffect(() => {
     if (gameMode !== "single-player") return;
 
-    const validPlayerTeam = getValidFormationPlayerTeam(currentFormation, playerTeam);
+    const validPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
     if (validPlayerTeam === playerTeam) return;
 
     setPlayerTeam(validPlayerTeam);
     setTurn(validPlayerTeam);
     setSelectedId(null);
-  }, [currentFormation, gameMode, playerTeam]);
+  }, [currentLevel, gameMode, playerTeam]);
 
   useEffect(() => {
     if (isSetupMode || gameMode === "multiplayer" || !gameStarted) return;
@@ -2658,6 +1980,10 @@ function CodeConq() {
   const visibleBattleLog = Array.isArray(log) ? log.filter(isCombatLogEntry) : [];
   const terrainEffectMap = gameOptions.terrainEffectsEnabled ? battlefieldTerrain : [];
   const inspectedTerrainType = inspectedUnit ? getTerrainAt(battlefieldTerrain, inspectedUnit.x, inspectedUnit.y) : null;
+  const inspectedTileTerrainType = inspectedTile ? getTerrainAt(battlefieldTerrain, inspectedTile.x, inspectedTile.y) : null;
+  const inspectedTileInfo = inspectedTileTerrainType
+    ? TERRAIN_MECHANICS_INFO.find((terrainInfo) => terrainInfo.terrain === inspectedTileTerrainType) ?? null
+    : null;
   const inspectedEffectiveAttack = inspectedUnit ? getDisplayedAttack(inspectedUnit, currentBattleUnits, terrainEffectMap) : 0;
   const selectedEffectiveAttack = selected ? getDisplayedAttack(selected, currentBattleUnits, terrainEffectMap) : 0;
   const selectedTerrainType = selected ? getTerrainAt(battlefieldTerrain, selected.x, selected.y) : null;
@@ -2671,13 +1997,13 @@ function CodeConq() {
   const useEightByEightViewport = !isBattlefieldFullscreen;
   const useFullscreenNavigationViewport = isBattlefieldFullscreen && battlefieldSize > 14;
   const showGridNavigation = (!isBattlefieldFullscreen && battlefieldSize > 8) || useFullscreenNavigationViewport;
-  const formationTeams = getFormationTeams(currentFormation);
+  const levelTeams = getLevelTeams(currentLevel);
   const aliveBattleTeams = getAliveTeams(units);
   const aiTeams = aliveBattleTeams.filter((team) => team !== playerTeam) as TeamName[];
   const activeTeam = gameMode === "multiplayer" ? turn : playerTeam;
   const setupTeamsInPlay = (() => {
     if (gameMode === "multiplayer") return multiplayerTeams;
-    if (gameMode === "single-player") return formationTeams;
+    if (gameMode === "single-player") return levelTeams;
 
     const customScenarioTeams = getAliveTeams(customUnits);
     return customScenarioTeams.length > 0 ? customScenarioTeams : [playerTeam];
@@ -2762,6 +2088,7 @@ function CodeConq() {
     const clicked = getUnit(x, y);
 
     if (clicked && clicked.id === selectedId && !mergeMode) {
+      setInspectedTile(null);
       setInspectedUnitId(clicked.id);
       return;
     }
@@ -2828,6 +2155,7 @@ function CodeConq() {
         }
       } else {
         // Normal selection mode
+        setInspectedTile(null);
         setSelectedId(clicked.id);
       }
     } else if (selected) {
@@ -2885,9 +2213,16 @@ function CodeConq() {
         // Move to empty space
         setUnits((prev) => prev.map((u: any) => u.id === selected.id ? { ...u, x, y } : u));
         setLog((prevLog) => [`${selected.name} (${selected.team}) moved onto ${TERRAIN_LABELS[getTerrainAt(battlefieldTerrain, x, y)]}`, ...prevLog]);
+        setInspectedTile(null);
         setSelectedId(null);
         advanceTurn();
+      } else if (!clicked) {
+        setInspectedUnitId(null);
+        setInspectedTile({ x, y });
       }
+    } else if (!clicked) {
+      setInspectedUnitId(null);
+      setInspectedTile({ x, y });
     }
   };
 
@@ -2899,7 +2234,7 @@ function CodeConq() {
         // Check team limits
         const teamCount = customUnits.filter(u => u.team === selectedTeam).length;
         if (teamCount < 16) {
-          const stats = generateCustomTroopStats(draggedTroop.role);
+          const stats = generateTroopStats(draggedTroop.role);
           const newTroop = {
             ...draggedTroop,
             ...stats,
@@ -2912,6 +2247,7 @@ function CodeConq() {
           
           setCustomUnits(prev => [...prev, applyCivilizationPassive(newTroop)]);
           setDraggedTroop(null);
+          setInspectedTile(null);
         }
       }
     } else {
@@ -2919,6 +2255,9 @@ function CodeConq() {
       const existingUnit = getUnit(x, y);
       if (existingUnit) {
         setCustomUnits(prev => prev.filter(u => u.id !== existingUnit.id));
+      } else {
+        setInspectedUnitId(null);
+        setInspectedTile({ x, y });
       }
     }
   };
@@ -2936,7 +2275,7 @@ function CodeConq() {
         // Check team limits
         const teamCount = customUnits.filter(u => u.team === selectedTeam).length;
         if (teamCount < 16) {
-          const stats = generateCustomTroopStats(draggedTroop.role);
+          const stats = generateTroopStats(draggedTroop.role);
           const newTroop = {
             ...draggedTroop,
             ...stats,
@@ -3037,7 +2376,7 @@ function CodeConq() {
   };
 
   const startSinglePlayerBattle = () => {
-    const nextPlayerTeam = getValidFormationPlayerTeam(currentFormation, playerTeam);
+    const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
     setPlayerTeam(nextPlayerTeam);
     setTurn(nextPlayerTeam);
     setRound(1);
@@ -3063,10 +2402,10 @@ function CodeConq() {
     setIsInGameGraphicsOpen(false);
     setGridOrientation("north");
     setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
-    const nextPlayerTeam = getValidFormationPlayerTeam(currentFormation, playerTeam);
+    const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
     setGameMode("single-player");
     setIsSetupMode(false);
-    setUnits(prepareUnitsForBattle(formations[currentFormation]));
+    setUnits(prepareUnitsForBattle(levels[currentLevel]));
     setPlayerTeam(nextPlayerTeam);
     setTurn(nextPlayerTeam);
     setRound(1);
@@ -3087,7 +2426,7 @@ function CodeConq() {
     setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
     setGameMode("multiplayer");
     setIsSetupMode(true);
-    setUnits(prepareUnitsForBattle(formations[currentFormation]));
+    setUnits(prepareUnitsForBattle(levels[currentLevel]));
     setCustomUnits([]);
     setSelectedTeam(multiplayerTeams[0]);
     setTurn(multiplayerTeams[0]);
@@ -3145,8 +2484,8 @@ function CodeConq() {
     setIsInGameGraphicsOpen(false);
     setGameMode(null);
     setIsSetupMode(false);
-    setCurrentFormation("Phalanx");
-    setUnits(prepareUnitsForBattle(formations["Phalanx"]));
+    setCurrentLevel("Level1");
+    setUnits(prepareUnitsForBattle(levels["Level1"]));
     setCustomUnits([]);
     setDraggedTroop(null);
     setSelectedTeam("Romans");
@@ -3169,17 +2508,67 @@ function CodeConq() {
 
   const restartCurrentGame = () => {
     if (gameMode === "single-player") {
-      startSinglePlayerMode();
+      const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
+      setIsGameMenuOpen(false);
+      setIsInGameOptionsOpen(false);
+      setIsInGameMechanicsOpen(false);
+      setIsInGameGraphicsOpen(false);
+      setGridOrientation("north");
+      setGameMode("single-player");
+      setIsSetupMode(false);
+      setUnits(rerollUnits(levels[currentLevel]));
+      setPlayerTeam(nextPlayerTeam);
+      setTurn(nextPlayerTeam);
+      setRound(1);
+      setSelectedId(null);
+      setLog([]);
+      setGameStarted(false);
+      setMergeCount(0);
+      setMergeMode(false);
+      setSelectedForMerge(null);
       return;
     }
 
     if (gameMode === "multiplayer") {
-      startMultiplayerMode();
+      const rerolledCustomUnits = rerollUnits(customUnits);
+      setIsGameMenuOpen(false);
+      setIsInGameOptionsOpen(false);
+      setIsInGameMechanicsOpen(false);
+      setIsInGameGraphicsOpen(false);
+      setGridOrientation("north");
+      setGameMode("multiplayer");
+      setIsSetupMode(true);
+      setUnits(rerollUnits(levels[currentLevel]));
+      setCustomUnits(rerolledCustomUnits);
+      setSelectedTeam(multiplayerTeams[0]);
+      setTurn(multiplayerTeams[0]);
+      setRound(1);
+      setSelectedId(null);
+      setLog(["Multiplayer setup: choose 2 teams, place troops, then start."]);
+      setGameStarted(false);
+      setMergeCount(0);
+      setMergeMode(false);
+      setSelectedForMerge(null);
       return;
     }
 
     if (gameMode === "custom-scenario") {
-      startCustomScenarioMode();
+      setIsGameMenuOpen(false);
+      setIsInGameOptionsOpen(false);
+      setIsInGameMechanicsOpen(false);
+      setIsInGameGraphicsOpen(false);
+      setGridOrientation("north");
+      setGameMode("custom-scenario");
+      setIsSetupMode(true);
+      setCustomUnits(rerollUnits(customUnits));
+      setTurn(playerTeam);
+      setRound(1);
+      setSelectedId(null);
+      setLog([]);
+      setGameStarted(false);
+      setMergeCount(0);
+      setMergeMode(false);
+      setSelectedForMerge(null);
     }
   };
 
@@ -3239,7 +2628,7 @@ function CodeConq() {
     const slots = getCompactDeploymentSlots(chosenTroops.length, size, side);
 
     return chosenTroops.map((troop, index) => {
-      const stats = generateCustomTroopStats(troop.role);
+      const stats = generateTroopStats(troop.role);
       const slot = slots[index];
 
       return applyCivilizationPassive({
@@ -3967,29 +3356,29 @@ function CodeConq() {
                 ? (isSetupMode ? `Custom Setup (${playerTeam})` : `Mode: Custom Scenario (${playerTeam} vs AI)`)
                 : gameMode === "multiplayer"
                   ? `Mode: Multiplayer (${multiplayerTeams[0]} vs ${multiplayerTeams[1]})`
-                  : `Level: ${FORMATION_LEVEL_LABELS[currentFormation]} (${playerTeam})`}
+                  : `Level: ${LEVEL_MATCHUP_LABELS[currentLevel]} (${playerTeam})`}
             </span>
             {!isSetupMode && <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-3 py-1">Round {round}</span>}
 
             {!isSetupMode && gameMode !== "custom-scenario" && (
               <div className="flex flex-wrap items-center gap-2">
-                <label htmlFor="formation-select" className="text-xs uppercase tracking-wide text-yellow-100">
-                  Matchup
+                <label htmlFor="level-select" className="text-xs uppercase tracking-wide text-yellow-100">
+                  Level
                 </label>
                 <select
-                  id="formation-select"
-                  value={currentFormation}
-                  onChange={(e) => setCurrentFormation(e.target.value as keyof typeof formations)}
+                  id="level-select"
+                  value={currentLevel}
+                  onChange={(e) => setCurrentLevel(e.target.value as keyof typeof levels)}
                   className="bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-2 py-1 text-xs sm:text-sm focus:outline-none focus:border-yellow-400"
                 >
-                  <option value="Phalanx">Level 1: Romans vs Barbarians</option>
-                  <option value="Arch">Level 2: Greeks vs Celts</option>
-                  <option value="Testudo">Level 3: Carthage vs Vikings</option>
-                  <option value="Circle">Level 4: Germanic vs Teutons</option>
-                  <option value="Staggered">Level 5: Romans vs Carthage</option>
-                  <option value="Delta">Level 6: Greeks vs Germanic</option>
-                  <option value="Tercio">Level 7: Celts vs Vikings</option>
-                  <option value="Pincer">Level 8: Barbarians vs Teutons</option>
+                  <option value="Level1">Level 1: Romans vs Barbarians</option>
+                  <option value="Level2">Level 2: Greeks vs Celts</option>
+                  <option value="Level3">Level 3: Carthage vs Vikings</option>
+                  <option value="Level4">Level 4: Germanic vs Teutons</option>
+                  <option value="Level5">Level 5: Romans vs Carthage</option>
+                  <option value="Level6">Level 6: Greeks vs Germanic</option>
+                  <option value="Level7">Level 7: Celts vs Vikings</option>
+                  <option value="Level8">Level 8: Barbarians vs Teutons</option>
                 </select>
                 {gameMode === "single-player" && (
                   <div className="flex flex-wrap items-center gap-2">
@@ -4002,7 +3391,7 @@ function CodeConq() {
                       onChange={(e) => {
                         const nextTeam = e.target.value as TeamName;
                         setPlayerTeam(nextTeam);
-                        setUnits(prepareUnitsForBattle(formations[currentFormation]));
+                        setUnits(prepareUnitsForBattle(levels[currentLevel]));
                         setTurn(nextTeam);
                         setRound(1);
                         setSelectedId(null);
@@ -4015,7 +3404,7 @@ function CodeConq() {
                       }}
                       className="bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-2 py-1 text-xs sm:text-sm focus:outline-none focus:border-yellow-400"
                     >
-                      {formationTeams.map((team) => (
+                      {levelTeams.map((team) => (
                         <option key={team} value={team}>{team}</option>
                       ))}
                     </select>
@@ -4419,70 +3808,70 @@ function CodeConq() {
       <div className={`flex gap-3 w-full ${isBattlefieldFullscreen ? "flex-row max-w-none items-stretch" : "flex-col xl:flex-row max-w-8xl"}`}>
         {/* Left Side: Turn Info + Battle Log */}
         {!isSetupMode && (gameOptions.showTurnBanner || gameOptions.showBattleLog) && (
-          <div className={`flex-shrink-0 space-y-3 ${isBattlefieldFullscreen ? "w-56" : "xl:w-80"}`}>
-            {gameOptions.showTurnBanner && (
-              <div className="game-ui p-4 text-center relative">
+          <div className={`flex-shrink-0 ${isBattlefieldFullscreen ? "w-56" : "xl:w-80"}`}>
+            <div className={`game-ui p-4 relative ${isBattlefieldFullscreen ? "max-h-[72vh] overflow-y-auto" : ""}`}>
+              {gameOptions.showTurnBanner && (
+                <div className="text-center relative">
                 {/* Decorative crown for turn display */}
-                <svg className="absolute -top-2 left-4 w-8 h-8 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 8l3 4h2l-3 4-3-4H9l3-4z"/>
-                </svg>
-                
-                <div className="text-2xl font-bold text-yellow-200">
-                  {checkEnd() || `${turn.toUpperCase()} TURN`}
-                </div>
-                <div className="text-sm text-yellow-100 mt-1">
-                  {gameMode === "multiplayer"
-                    ? `${turn} player's turn`
-                    : turn === playerTeam ? "Your turn - Click to select and move/attack"
-                      : turn === "Barbarians" ? "Barbarians are thinking..."
+                  <svg className="absolute -top-2 left-4 w-8 h-8 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 8l3 4h2l-3 4-3-4H9l3-4z"/>
+                  </svg>
+                  
+                  <div className="text-2xl font-bold text-yellow-200">
+                    {checkEnd() || `${turn.toUpperCase()} TURN`}
+                  </div>
+                  <div className="text-sm text-yellow-100 mt-1">
+                    {gameMode === "multiplayer"
+                      ? `${turn} player's turn`
+                      : turn === playerTeam ? "Your turn - Click to select and move/attack"
+                        : turn === "Barbarians" ? "Barbarians are thinking..."
                         : turn === "Greeks" ? "Greeks are thinking..."
-                          : turn === "Celts" ? "Celts are thinking..."
-                          : turn === "Germanic" ? "Germanic tribes are thinking..."
-                          : turn === "Carthage" ? "Carthage is thinking..."
-                          : turn === "Vikings" ? "Vikings are thinking..."
-                          : turn === "Teutons" ? "Teutons are thinking..." : ""}
+                        : turn === "Celts" ? "Celts are thinking..."
+                        : turn === "Germanic" ? "Germanic tribes are thinking..."
+                        : turn === "Carthage" ? "Carthage is thinking..."
+                        : turn === "Vikings" ? "Vikings are thinking..."
+                        : turn === "Teutons" ? "Teutons are thinking..." : ""}
+                  </div>
+                  
+                  {/* Decorative sword */}
+                  <svg className="absolute -bottom-2 right-4 w-8 h-8 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6.92 5H5.14c-.47 0-.92.21-1.18.56L3.04 7H2v1h1.04l.92 1.44c.26.35.71.56 1.18.56h1.78c.47 0 .92-.21 1.18-.56L9.96 7H11V6H9.96L8.1 4.56C7.84 4.21 7.39 4 6.92 4z"/>
+                  </svg>
                 </div>
-                
-                {/* Decorative sword */}
-                <svg className="absolute -bottom-2 right-4 w-8 h-8 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6.92 5H5.14c-.47 0-.92.21-1.18.56L3.04 7H2v1h1.04l.92 1.44c.26.35.71.56 1.18.56h1.78c.47 0 .92-.21 1.18-.56L9.96 7H11V6H9.96L8.1 4.56C7.84 4.21 7.39 4 6.92 4z"/>
-                </svg>
-              </div>
-            )}
+              )}
 
-            {gameOptions.showBattleLog && (
-              <div className={`game-ui p-4 relative ${isBattlefieldFullscreen ? "max-h-[72vh] overflow-y-auto" : ""}`}>
+              {gameOptions.showTurnBanner && gameOptions.showBattleLog && (
+                <div className="my-3 border-t border-yellow-600/50" />
+              )}
+
+              {gameOptions.showBattleLog && (
+                <div className="relative">
                 {/* Decorative scroll */}
-                <svg className="absolute -top-2 left-2 w-6 h-6 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/>
-                </svg>
-                
-                <h3 className="text-yellow-200 font-bold mb-3 text-lg border-b border-yellow-600 pb-2">Battle Log</h3>
-                <div className={`${isBattlefieldFullscreen ? "max-h-[58vh]" : "max-h-96"} overflow-y-auto space-y-1`}>
-                  {visibleBattleLog.map((line, i) => (
-                    <div key={i} className="text-green-200 text-sm bg-black bg-opacity-30 p-2 rounded border-l-2 border-yellow-600">
-                      {line}
-                    </div>
-                  ))}
+                  <svg className="absolute -top-2 left-2 w-6 h-6 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/>
+                  </svg>
+                  
+                  <h3 className="text-yellow-200 font-bold mb-3 text-lg border-b border-yellow-600 pb-2">Battle Log</h3>
+                  <div className={`${isBattlefieldFullscreen ? "max-h-[58vh]" : "max-h-96"} overflow-y-auto space-y-1`}>
+                    {visibleBattleLog.map((line, i) => (
+                      <div key={i} className="text-green-200 text-sm bg-black bg-opacity-30 p-2 rounded border-l-2 border-yellow-600">
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Decorative quill */}
+                  <svg className="absolute -bottom-2 right-2 w-6 h-6 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                  </svg>
                 </div>
-                
-                {/* Decorative quill */}
-                <svg className="absolute -bottom-2 right-2 w-6 h-6 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-                </svg>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
         
         {/* Battlefield Grid - Center */}
-        <div className={`battlefield-container relative flex-1 ${isBattlefieldFullscreen ? "min-w-0 flex items-center justify-center" : ""}`}>
-          {/* Decorative battlefield elements */}
-          <div className="absolute -top-4 -left-4 w-8 h-8 bg-yellow-600 rounded-full opacity-60"></div>
-          <div className="absolute -top-4 -right-4 w-6 h-6 bg-yellow-600 rounded-full opacity-60"></div>
-          <div className="absolute -bottom-4 -left-4 w-6 h-6 bg-yellow-600 rounded-full opacity-60"></div>
-          <div className="absolute -bottom-4 -right-4 w-8 h-8 bg-yellow-600 rounded-full opacity-60"></div>
-
+        <div className={`battlefield-container relative flex-1 ${isBattlefieldFullscreen ? "min-w-0 flex items-center justify-center" : "mt-3 sm:mt-4"}`}>
           <div className="relative mx-auto w-fit max-w-full">
             {showGridNavigation && (
               <>
@@ -4530,7 +3919,7 @@ function CodeConq() {
               style={showGridNavigation ? { cursor: isPanningGrid ? "grabbing" : "grab" } : undefined}
             >
               <div
-                className={`battlefield-grid inline-grid gap-1 ${isBattlefieldFullscreen ? "p-2" : "p-6"} rounded-lg`}
+                className="battlefield-grid inline-grid gap-1 rounded-lg"
                 style={{
                   width: "max-content",
                   gridTemplateColumns: `repeat(${battlefieldSize}, minmax(0, 1fr))`,
@@ -4546,6 +3935,7 @@ function CodeConq() {
                 const isAttack = highlightAttack && highlightAttack.includes(key);
                 const percent = u ? (u.hp / u.maxHp) * 100 : 0;
                 const terrainType = getTerrainAt(battlefieldTerrain, x, y);
+                const UnitDisplayIcon = u ? getUnitDisplayIcon(u) : null;
                 const terrainStyle = {
                   backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12)), url(${TERRAIN_ASSETS[terrainType]})`,
                   backgroundSize: "cover",
@@ -4565,7 +3955,7 @@ function CodeConq() {
                         e.dataTransfer.setData('text/plain', u.id);
                       }
                     }}
-                    className={`${isBattlefieldFullscreen ? "w-14 h-16 sm:w-16 sm:h-20" : "w-16 h-20 sm:w-20 sm:h-24"} terrain-cell flex flex-col items-center justify-center text-xs sm:text-sm cursor-pointer transition-all duration-200 relative
+                    className={`${isBattlefieldFullscreen ? "w-[68px] h-[76px] sm:w-[76px] sm:h-[92px]" : "w-[76px] h-[92px] sm:w-[92px] sm:h-[108px]"} terrain-cell flex flex-col items-center justify-center text-xs sm:text-sm cursor-pointer transition-all duration-200 relative
                     ${isSelected ? "unit-selected" : ""}
                     ${isMove ? "movement-highlight" : ""}
                     ${isAttack ? "attack-highlight" : ""}
@@ -4581,7 +3971,7 @@ function CodeConq() {
                       <div className="relative w-full h-full flex flex-col items-center justify-center">
                           {/* Unit Icon */}
                           <div className="text-2xl mb-1">
-                            {typeof u.Icon === 'string' ? u.Icon : <u.Icon />}
+                            {typeof UnitDisplayIcon === "string" ? UnitDisplayIcon : (UnitDisplayIcon ? createElement(UnitDisplayIcon) : "⚔️")}
                           </div>
                           
                           {/* Unit Name */}
@@ -4650,9 +4040,14 @@ function CodeConq() {
 
                 <div className="space-y-3 text-sm sm:text-base text-yellow-200">
                   <div className="flex items-center gap-3">
+                    {(() => {
+                      const InspectedUnitIcon = getUnitDisplayIcon(inspectedUnit);
+                      return (
                     <div className="text-3xl">
-                      {typeof inspectedUnit.Icon === "string" ? inspectedUnit.Icon : <inspectedUnit.Icon />}
+                      {typeof InspectedUnitIcon === "string" ? InspectedUnitIcon : (InspectedUnitIcon ? createElement(InspectedUnitIcon) : "⚔️")}
                     </div>
+                      );
+                    })()}
                     <div>
                       <div className="text-lg font-bold text-yellow-100">{inspectedUnit.name}</div>
                       <div className="text-xs sm:text-sm text-yellow-300">{inspectedUnit.role}</div>
@@ -4710,9 +4105,48 @@ function CodeConq() {
           </div>
         )}
 
+        {inspectedTile && inspectedTileTerrainType && inspectedTileInfo && (
+          <div className="fixed inset-0 z-40 bg-black/65 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
+            <div className="w-full max-w-lg mx-auto mt-8 sm:mt-12 mb-6">
+              <div className="game-ui p-4 sm:p-6 relative">
+                <div className="flex items-center justify-between gap-4 mb-4">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-yellow-200">Terrain Details</h2>
+                  <button
+                    onClick={() => setInspectedTile(null)}
+                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-sm sm:text-base text-yellow-200">
+                  <p>
+                    <span className="text-lime-300">🗺️</span> Terrain: <strong>{TERRAIN_LABELS[inspectedTileTerrainType]}</strong>
+                  </p>
+                  <p>
+                    <span className="text-sky-300">📍</span> Tile: {inspectedTile.x + 1}, {inspectedTile.y + 1}
+                  </p>
+                  <p className="text-yellow-100 leading-relaxed">{inspectedTileInfo.summary}</p>
+                  {!gameOptions.terrainEffectsEnabled && (
+                    <p className="text-xs text-yellow-100 opacity-90">Terrain effects are currently disabled in Graphics.</p>
+                  )}
+                  <div className="rounded-lg border border-lime-700 bg-black/20 px-3 py-3">
+                    <div className="text-lime-300 text-sm font-semibold mb-2">Terrain Effects</div>
+                    <div className="space-y-1">
+                      {inspectedTileInfo.effects.map((effect) => (
+                        <p key={effect} className="text-xs text-yellow-100 leading-relaxed">{effect}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Right Side Panel */}
         {gameOptions.showUnitPanel && (
-        <div className={`game-ui p-4 flex-shrink-0 relative ${isBattlefieldFullscreen ? "w-56 max-h-[72vh] overflow-y-auto" : "xl:w-80"}`}>
+        <div className={`game-ui p-4 flex-shrink-0 relative ${isBattlefieldFullscreen ? "w-56 max-h-[72vh] overflow-y-auto" : "xl:w-60"}`}>
           {/* Decorative shield */}
           <svg className="absolute -top-2 left-2 w-6 h-6 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 1L3 5v6c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V5l-9-4z"/>
@@ -4829,7 +4263,7 @@ function CodeConq() {
             ) : (
               <>
                 <h2 className="text-yellow-200 font-bold mb-3 text-xl border-b border-yellow-600 pb-2">No Unit Selected</h2>
-                <p className="text-green-200 text-sm opacity-70">Click on a unit to select it. Click the same troop again to inspect full stats.</p>
+                <p className="text-green-200 text-sm opacity-70">Click on a unit to select it. Click the same troop again to inspect full stats. Click an empty tile to inspect terrain effects.</p>
               </>
             )
           )}
