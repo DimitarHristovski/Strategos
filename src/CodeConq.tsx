@@ -1,9 +1,10 @@
 // CodeConq - Grid Strategy Game with Highlights and Expanded Features
 // Now includes: Health Bars, Kill Counters, Special Ability Tooltips, and Custom Drag & Drop Setup
 
-import { createElement, useState, useEffect, useRef } from "react";
+import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { levels } from "./Units/InitialUnits";
-import { generateTroopStats } from "./Units/troopStats";
+import { generateTroopStats, getTroopAbilities, getTroopReferenceStats, type TroopReferenceStats } from "./Units/troopStats";
+import { createBattleSfxController, getTurnCueForTeam, type BattleSfxKey } from "./audio/battleSfx";
 
 // Available troop types for custom setup - using existing definitions
 const AVAILABLE_TROOPS = {
@@ -14,10 +15,7 @@ const AVAILABLE_TROOPS = {
     { role: "Praetorian", name: "Praetorian", Icon: "⚔️" },
     { role: "Auxiliary", name: "Auxiliary", Icon: "⚔️" },
     { role: "Triarii", name: "Triarii", Icon: "⚔️" },
-    { role: "Hastati", name: "Hastati", Icon: "⚔️" },
-    { role: "Principes", name: "Principes", Icon: "⚔️" },
     { role: "Cavalry", name: "Cavalry", Icon: "🐎" },
-    { role: "Equites", name: "Equites", Icon: "🐎" },
     { role: "Archer", name: "Archer", Icon: "🏹" },
     { role: "Velites", name: "Velites", Icon: "🏹" },
     { role: "Ballista", name: "Ballista", Icon: "⚙️" },
@@ -32,14 +30,11 @@ const AVAILABLE_TROOPS = {
     { role: "Barbarian Spearman", name: "Barbarian Spearman", Icon: "⚔️" },
     { role: "Barbarian Raider", name: "Barbarian Raider", Icon: "⚔️" },
     { role: "Barbarian Warlord", name: "Barbarian Warlord", Icon: "⚔️" },
-    { role: "Falxman", name: "Falxman", Icon: "⚔️" },
-    { role: "Chosen Spearman", name: "Chosen Spearman", Icon: "⚔️" },
     { role: "Oathsworn", name: "Oathsworn", Icon: "⚔️" },
-    { role: "Barbarian Scout", name: "Barbarian Scout", Icon: "🐎" },
+    { role: "Barbarian Scout", name: "Barbarian Scout", Icon: "🐎🏹" },
     { role: "Barbarian Noble Rider", name: "Barbarian Noble Rider", Icon: "🐎" },
     { role: "Barbarian Archer", name: "Barbarian Archer", Icon: "🏹" },
     { role: "Barbarian Shaman", name: "Barbarian Shaman", Icon: "🏹" },
-    { role: "Barbarian Slinger", name: "Barbarian Slinger", Icon: "🏹" }
   ],
   Greeks: [
     { role: "Macedonian King", name: "Macedonian King", Icon: "👑" },
@@ -50,30 +45,24 @@ const AVAILABLE_TROOPS = {
     { role: "Agema", name: "Agema", Icon: "⚔️" },
     { role: "Companion Cavalry", name: "Companion Cavalry", Icon: "🐎" },
     { role: "Thessalian Cavalry", name: "Thessalian Cavalry", Icon: "🐎" },
-    { role: "Xystophoroi", name: "Xystophoroi", Icon: "🐎" },
     { role: "Peltast", name: "Peltast", Icon: "🏹" },
     { role: "Cretan Archer", name: "Cretan Archer", Icon: "🏹" },
-    { role: "Rhodian Slinger", name: "Rhodian Slinger", Icon: "🏹" },
-    { role: "Psiloi", name: "Psiloi", Icon: "🏹" },
     { role: "Greek Catapult", name: "Greek Catapult", Icon: "⚙️" },
     { role: "Polybolos", name: "Polybolos", Icon: "⚙️" }
   ],
-  Celts: [
-    { role: "Celtic King", name: "Celtic King", Icon: "👑" },
-    { role: "Celtic Warrior", name: "Celtic Warrior", Icon: "⚔️" },
-    { role: "Celtic Berserker", name: "Celtic Berserker", Icon: "⚔️" },
-    { role: "Celtic Spearman", name: "Celtic Spearman", Icon: "⚔️" },
-    { role: "Celtic Oathsworn", name: "Celtic Oathsworn", Icon: "⚔️" },
+  Gauls: [
+    { role: "Gallic King", name: "Gallic King", Icon: "👑" },
+    { role: "Gallic Warrior", name: "Gallic Warrior", Icon: "⚔️" },
+    { role: "Gallic Berserker", name: "Gallic Berserker", Icon: "⚔️" },
+    { role: "Gallic Spearman", name: "Gallic Spearman", Icon: "⚔️" },
+    { role: "Gallic Oathsworn", name: "Gallic Oathsworn", Icon: "⚔️" },
     { role: "Gaesatae", name: "Gaesatae", Icon: "⚔️" },
     { role: "Fianna", name: "Fianna", Icon: "⚔️" },
-    { role: "Noble Spearman", name: "Noble Spearman", Icon: "⚔️" },
-    { role: "Celtic Cavalry", name: "Celtic Cavalry", Icon: "🐎" },
-    { role: "Celtic Chariot", name: "Celtic Chariot", Icon: "🐎" },
-    { role: "Celtic Noble Horseman", name: "Celtic Noble Horseman", Icon: "🐎" },
-    { role: "Chariot Noble", name: "Chariot Noble", Icon: "🐎" },
-    { role: "Celtic Archer", name: "Celtic Archer", Icon: "🏹" },
-    { role: "Celtic Skirmisher", name: "Celtic Skirmisher", Icon: "🏹" },
-    { role: "Celtic Slinger", name: "Celtic Slinger", Icon: "🏹" },
+    { role: "Gallic Cavalry", name: "Gallic Cavalry", Icon: "🐎" },
+    { role: "Gallic Chariot", name: "Gallic Chariot", Icon: "🐎🏹" },
+    { role: "Gallic Noble Horseman", name: "Gallic Noble Horseman", Icon: "🐎" },
+    { role: "Gallic Archer", name: "Gallic Archer", Icon: "🏹" },
+    { role: "Gallic Skirmisher", name: "Gallic Skirmisher", Icon: "🏹" },
   ],
   Germanic: [
     { role: "Germanic King", name: "Germanic King", Icon: "👑" },
@@ -82,15 +71,12 @@ const AVAILABLE_TROOPS = {
     { role: "Germanic Berserker", name: "Germanic Berserker", Icon: "⚔️" },
     { role: "Germanic Raider", name: "Germanic Raider", Icon: "⚔️" },
     { role: "Chosen Axeman", name: "Chosen Axeman", Icon: "⚔️" },
-    { role: "Cherusci Spearman", name: "Cherusci Spearman", Icon: "⚔️" },
-    { role: "Marcomanni Raider", name: "Marcomanni Raider", Icon: "⚔️" },
     { role: "Hearthguard", name: "Hearthguard", Icon: "⚔️" },
     { role: "Germanic Wolf Rider", name: "Germanic Wolf Rider", Icon: "🐎" },
     { role: "Suebi Rider", name: "Suebi Rider", Icon: "🐎" },
     { role: "Gothic Lancer", name: "Gothic Lancer", Icon: "🐎" },
     { role: "Germanic Archer", name: "Germanic Archer", Icon: "🏹" },
     { role: "Tribal Slinger", name: "Tribal Slinger", Icon: "🏹" },
-    { role: "Lombard Archer", name: "Lombard Archer", Icon: "🏹" },
   ],
   Carthage: [
     { role: "Carthaginian General", name: "Carthaginian General", Icon: "👑" },
@@ -100,17 +86,85 @@ const AVAILABLE_TROOPS = {
     { role: "Iberian Swordsman", name: "Iberian Swordsman", Icon: "⚔️" },
     { role: "African Pikeman", name: "African Pikeman", Icon: "⚔️" },
     { role: "Punic Spearman", name: "Punic Spearman", Icon: "⚔️" },
-    { role: "Campanian Mercenary", name: "Campanian Mercenary", Icon: "⚔️" },
-    { role: "Phoenician Militia", name: "Phoenician Militia", Icon: "⚔️" },
     { role: "Numidian Cavalry", name: "Numidian Cavalry", Icon: "🐎" },
     { role: "War Elephant", name: "War Elephant", Icon: "🐘" },
     { role: "Balearic Slinger", name: "Balearic Slinger", Icon: "🏹" },
     { role: "Carthaginian Archer", name: "Carthaginian Archer", Icon: "🏹" },
-    { role: "Numidian Skirmisher", name: "Numidian Skirmisher", Icon: "🏹" },
     { role: "Elephant Archer", name: "Elephant Archer", Icon: "🐘🏹" }
   ],
+  Egypt: [
+    { role: "Pharaoh", name: "Pharaoh", Icon: "👑" },
+    { role: "Egyptian Warrior", name: "Egyptian Warrior", Icon: "⚔️" },
+    { role: "Medjay", name: "Medjay", Icon: "⚔️" },
+    { role: "Khopesh Warrior", name: "Khopesh Warrior", Icon: "⚔️" },
+    { role: "Shield Bearer", name: "Shield Bearer", Icon: "⚔️" },
+    { role: "Royal Guard", name: "Royal Guard", Icon: "⚔️" },
+    { role: "Egyptian Archer", name: "Egyptian Archer", Icon: "🏹" },
+    { role: "Nubian Archer", name: "Nubian Archer", Icon: "🏹" },
+    { role: "War Chariot", name: "War Chariot", Icon: "🐎" },
+    { role: "Royal Chariot", name: "Royal Chariot", Icon: "🐎🏹" },
+    { role: "Desert Scout", name: "Desert Scout", Icon: "🐎🏹" },
+    { role: "Egyptian Catapult", name: "Egyptian Catapult", Icon: "⚙️" }
+  ],
+  Thracians: [
+    { role: "Thracian King", name: "Thracian King", Icon: "👑" },
+    { role: "Thracian Warrior", name: "Thracian Warrior", Icon: "⚔️" },
+    { role: "Rhomphaia Fighter", name: "Rhomphaia Fighter", Icon: "⚔️" },
+    { role: "Falx Warrior", name: "Falx Warrior", Icon: "⚔️" },
+    { role: "Thracian Spearman", name: "Thracian Spearman", Icon: "⚔️" },
+    { role: "Thracian Guard", name: "Thracian Guard", Icon: "⚔️" },
+    { role: "Thracian Peltast", name: "Thracian Peltast", Icon: "🏹" },
+    { role: "Thracian Archer", name: "Thracian Archer", Icon: "🏹" },
+    { role: "Thracian Rider", name: "Thracian Rider", Icon: "🐎" },
+    { role: "Thracian Noble Rider", name: "Thracian Noble Rider", Icon: "🐎" },
+    { role: "War Drummer", name: "War Drummer", Icon: "🥁" },
+    { role: "Thracian Catapult", name: "Thracian Catapult", Icon: "⚙️" }
+  ],
+  Dacians: [
+    { role: "Dacian King", name: "Dacian King", Icon: "👑" },
+    { role: "Dacian Warrior", name: "Dacian Warrior", Icon: "⚔️" },
+    { role: "Falxman", name: "Falxman", Icon: "⚔️" },
+    { role: "Dacian Spearman", name: "Dacian Spearman", Icon: "⚔️" },
+    { role: "Dacian Shield Bearer", name: "Dacian Shield Bearer", Icon: "⚔️" },
+    { role: "Dacian Guard", name: "Dacian Guard", Icon: "⚔️" },
+    { role: "Dacian Slinger", name: "Dacian Slinger", Icon: "🏹" },
+    { role: "Dacian Archer", name: "Dacian Archer", Icon: "🏹" },
+    { role: "Dacian Rider", name: "Dacian Rider", Icon: "🐎" },
+    { role: "Dacian Noble Rider", name: "Dacian Noble Rider", Icon: "🐎" },
+    { role: "War Horn", name: "War Horn", Icon: "📯" },
+    { role: "Dacian Catapult", name: "Dacian Catapult", Icon: "⚙️" }
+  ],
+  Parthians: [
+    { role: "Parthian King", name: "Parthian King", Icon: "👑" },
+    { role: "Parthian Warrior", name: "Parthian Warrior", Icon: "⚔️" },
+    { role: "Parthian Spearman", name: "Parthian Spearman", Icon: "⚔️" },
+    { role: "Parthian Cataphract", name: "Cataphract", Icon: "🐎" },
+    { role: "Parthian Noble Rider", name: "Parthian Noble Rider", Icon: "🐎" },
+    { role: "Horse Archer", name: "Horse Archer", Icon: "🏹🐎" },
+    { role: "Elite Horse Archer", name: "Elite Horse Archer", Icon: "🏹🐎" },
+    { role: "Parthian Archer", name: "Parthian Archer", Icon: "🏹" },
+    { role: "Scout Rider", name: "Scout Rider", Icon: "🐎" },
+    { role: "Camel Rider", name: "Camel Rider", Icon: "🐪" },
+    { role: "Camel Rider Archer", name: "Camel Rider Archer", Icon: "🐪🏹" },
+    { role: "Parthian Ballista", name: "Parthian Ballista", Icon: "⚙️" }
+  ],
+  Seleucids: [
+    { role: "Seleucid King", name: "Seleucid King", Icon: "👑" },
+    { role: "Seleucid Phalangite", name: "Phalangite", Icon: "⚔️" },
+    { role: "Silver Shield Infantry", name: "Silver Shield Infantry", Icon: "⚔️" },
+    { role: "Thorakitai", name: "Thorakitai", Icon: "⚔️" },
+    { role: "Eastern Spearman", name: "Eastern Spearman", Icon: "⚔️" },
+    { role: "Seleucid War Elephant", name: "War Elephant", Icon: "🐘" },
+    { role: "Seleucid Cataphract", name: "Cataphract", Icon: "🐎" },
+    { role: "Seleucid Light Cavalry", name: "Light Cavalry", Icon: "🐎" },
+    { role: "Eastern Archer", name: "Eastern Archer", Icon: "🏹" },
+    { role: "Seleucid Slinger", name: "Slinger", Icon: "🏹" },
+    { role: "Seleucid Elephant Archer", name: "Seleucid Elephant Archer", Icon: "🐘🏹" },
+
+    { role: "Seleucid Catapult", name: "Seleucid Catapult", Icon: "⚙️" }
+  ],
   Vikings: [
-    { role: "Jarl", name: "Jarl", Icon: "👑" },
+    { role: "Jarl", name: "Viking Jarl", Icon: "👑" },
     { role: "Viking Raider", name: "Viking Raider", Icon: "⚔️" },
     { role: "Berserker", name: "Berserker", Icon: "⚔️" },
     { role: "Shieldmaiden", name: "Shieldmaiden", Icon: "⚔️" },
@@ -120,28 +174,8 @@ const AVAILABLE_TROOPS = {
     { role: "Ulfhednar", name: "Ulfhednar", Icon: "⚔️" },
     { role: "Varangian Guard", name: "Varangian Guard", Icon: "⚔️" },
     { role: "Jomsviking", name: "Jomsviking", Icon: "⚔️" },
-    { role: "Viking Spearman", name: "Viking Spearman", Icon: "⚔️" },
-    { role: "Karl Warrior", name: "Karl Warrior", Icon: "⚔️" },
-    { role: "Scout", name: "Scout", Icon: "🐎" },
-    { role: "Viking Archer", name: "Viking Archer", Icon: "🏹" },
-    { role: "Viking Skirmisher", name: "Viking Skirmisher", Icon: "🏹" }
-  ],
-  Teutons: [
-    { role: "King", name: "King", Icon: "👑" },
-    { role: "Teutonic Marshal", name: "Teutonic Marshal", Icon: "👑" },
-    { role: "Man-at-Arms", name: "Man-at-Arms", Icon: "⚔️" },
-    { role: "Spearman", name: "Spearman", Icon: "⚔️" },
-    { role: "Sergeant", name: "Sergeant", Icon: "⚔️" },
-    { role: "Halberdier", name: "Halberdier", Icon: "⚔️" },
-    { role: "Foot Sergeant", name: "Foot Sergeant", Icon: "⚔️" },
-    { role: "Knight", name: "Knight", Icon: "🐎" },
-    { role: "Ritterbruder", name: "Ritterbruder", Icon: "🐎" },
-    { role: "Turcopole", name: "Turcopole", Icon: "🐎" },
-    { role: "Longbowman", name: "Longbowman", Icon: "🏹" },
-    { role: "Crossbowman", name: "Crossbowman", Icon: "🏹" },
-    { role: "Pavise Crossbowman", name: "Pavise Crossbowman", Icon: "🏹" },
-    { role: "Trebuchet", name: "Trebuchet", Icon: "⚙️" },
-    { role: "Bombard", name: "Bombard", Icon: "⚙️" }
+    { role: "Scout", name: "Scout", Icon: "🐎🏹" },
+    { role: "Viking Archer", name: "Viking Archer", Icon: "🏹" }
   ]
 };
 
@@ -157,28 +191,138 @@ const ICON_MAP = {
   FaCrown: "👑"
 };
 
+const halveAmmo = (ammo: number) => {
+  if (ammo <= 0) return 0;
+  return Math.max(1, Math.ceil(ammo / 2));
+};
+
+const usesAmmoRole = (unit: any) => {
+  const normalizedRole = String(unit?.role ?? unit?.name ?? "").toLowerCase();
+  return [
+    "archer",
+    "longbow",
+    "slinger",
+    "crossbow",
+    "velites",
+    "shaman",
+    "skirmisher",
+    "peltast",
+    "psiloi",
+    "turcopole",
+    "thureophoroi",
+    "ballista",
+    "scorpion",
+    "catapult",
+    "trebuchet",
+    "polybolos",
+    "onager",
+    "bombard",
+    "barbarian scout",
+    "gallic chariot",
+    "royal chariot",
+    "desert scout",
+    "scout",
+    "horse archer"
+  ].some((keyword) => normalizedRole.includes(keyword));
+};
+
+const hasNoAmmoPenalty = (unit: any) => usesAmmoRole(unit) && (unit?.ammo ?? 0) <= 0;
+
+const isHybridMountedRangedUnit = (unit: any) => {
+  const normalizedRole = String(unit?.role ?? unit?.name ?? "").toLowerCase();
+  const mountedKeywords = ["cavalry", "chariot", "rider", "scout", "knight", "elephant", "horse", "camel", "cataphract"];
+  const hasMountedTrait = mountedKeywords.some((keyword) => normalizedRole.includes(keyword));
+  return hasMountedTrait && (unit?.ammo ?? 0) > 0 && (unit?.range ?? 1) > 1;
+};
+
+const getTroopTypeDisplay = (unit: any) => {
+  if (isHybridMountedRangedUnit(unit)) {
+    return {
+      icon: "🐎🏹",
+      label: "Hybrid",
+      type: "hybrid"
+    } as const;
+  }
+
+  const troopType = getTroopMechanicType(unit);
+  return {
+    icon: TROOP_MECHANIC_ICONS[troopType],
+    label: TROOP_MECHANIC_LABELS[troopType],
+    type: troopType
+  } as const;
+};
+
+const getTroopSearchKeywords = (unit: any, team?: TeamName) => {
+  const troopTypeDisplay = getTroopTypeDisplay(unit);
+  const abilityKeywords = getTroopAbilities(String(unit?.role ?? unit?.name ?? ""))
+    .flatMap((ability) => [ability.name.toLowerCase(), ability.key.toLowerCase(), "skill", "skills", "ability", "abilities", "passive", "passives"]);
+  const keywords = [
+    String(unit?.name ?? "").toLowerCase(),
+    String(unit?.role ?? "").toLowerCase(),
+    String(team ?? unit?.team ?? "").toLowerCase(),
+    troopTypeDisplay.label.toLowerCase(),
+    troopTypeDisplay.type.toLowerCase(),
+    ...abilityKeywords
+  ];
+
+  if (troopTypeDisplay.type === "hybrid") {
+    keywords.push("mounted", "ranged", "mounted ranged", "mounted+ranged", "horse archer", "hybrid");
+  }
+
+  if (troopTypeDisplay.type === "ranged") {
+    keywords.push("archer", "projectile", "missile");
+  }
+
+  if (troopTypeDisplay.type === "mounted") {
+    keywords.push("cavalry", "horse", "mobile");
+  }
+
+  if (troopTypeDisplay.type === "closecombat") {
+    keywords.push("melee", "close combat", "infantry");
+  }
+
+  if (troopTypeDisplay.type === "sieged") {
+    keywords.push("siege", "artillery", "engine");
+  }
+
+  if (isLeaderRole(String(unit?.role ?? unit?.name ?? ""))) {
+    keywords.push("leader", "commander", "king", "general");
+  }
+
+  return Array.from(new Set(keywords.filter(Boolean)));
+};
+
 const LEVEL_MATCHUP_LABELS: Record<keyof typeof levels, string> = {
   Level1: "Romans vs Barbarians",
-  Level2: "Greeks vs Celts",
+  Level2: "Greeks vs Gauls",
   Level3: "Carthage vs Vikings",
-  Level4: "Germanic vs Teutons",
+  Level4: "Germanic vs Egypt",
   Level5: "Romans vs Carthage",
   Level6: "Greeks vs Germanic",
-  Level7: "Celts vs Vikings",
-  Level8: "Barbarians vs Teutons"
+  Level7: "Gauls vs Vikings",
+  Level8: "Barbarians vs Egypt",
+  Level9: "Egypt vs Romans",
+  Level10: "Egypt vs Greeks",
+  Level11: "Gauls vs Carthage",
+  Level12: "Vikings vs Egypt",
+  Level13: "Thracians vs Dacians",
+  Level14: "Parthians vs Seleucids",
+  Level15: "Thracians vs Parthians",
+  Level16: "Dacians vs Seleucids"
 };
 
 const BACKGROUND_MUSIC_SRC = "/Crown%20of%20Ashes.mp3";
-const ALL_TEAMS = ["Romans", "Barbarians", "Greeks", "Celts", "Germanic", "Carthage", "Vikings", "Teutons"] as const;
+const ALL_TEAMS = ["Romans", "Barbarians", "Greeks", "Gauls", "Germanic", "Carthage", "Egypt", "Thracians", "Dacians", "Parthians", "Seleucids", "Vikings"] as const;
 const GRID_ORIENTATIONS = ["north", "east", "south", "west"] as const;
 const TEAM_SELECT_GROUPS = [
-  { label: "Ancient Powers", teams: ["Romans", "Greeks", "Carthage"] as TeamName[] },
-  { label: "Tribal Realms", teams: ["Barbarians", "Celts", "Germanic", "Vikings"] as TeamName[] },
-  { label: "Medieval Orders", teams: ["Teutons"] as TeamName[] }
+  { label: "Ancient Powers", teams: ["Romans", "Greeks", "Carthage", "Egypt", "Seleucids"] as TeamName[] },
+  { label: "Border Kingdoms", teams: ["Thracians", "Dacians", "Parthians"] as TeamName[] },
+  { label: "Tribal Realms", teams: ["Barbarians", "Gauls", "Germanic", "Vikings"] as TeamName[] }
 ] as const;
 
 type GameMode = "single-player" | "multiplayer" | "custom-scenario";
-type TeamName = "Romans" | "Barbarians" | "Greeks" | "Celts" | "Germanic" | "Carthage" | "Vikings" | "Teutons";
+type TeamName = "Romans" | "Barbarians" | "Greeks" | "Gauls" | "Germanic" | "Carthage" | "Egypt" | "Thracians" | "Dacians" | "Parthians" | "Seleucids" | "Vikings";
+type UnitsReferenceScope = TeamName | "All";
 type BattlefieldSize = 8 | 10 | 12 | 14 | 16 | 18 | 20;
 type GridOrientation = typeof GRID_ORIENTATIONS[number];
 type HoverScrollDirection = "up" | "down" | "left" | "right" | null;
@@ -190,13 +334,24 @@ type TerrainPoint = { x: number; y: number };
 type ScalarField = number[][];
 type GameOptions = {
   musicEnabled: boolean;
+  sfxEnabled: boolean;
   showMoveHighlights: boolean;
   showAttackHighlights: boolean;
   showBattleLog: boolean;
   showTurnBanner: boolean;
-  showUnitPanel: boolean;
   terrainEffectsEnabled: boolean;
   battlefieldSize: BattlefieldSize;
+};
+
+type BattleFeedbackKind = "hit" | "death" | "charge" | "morale" | "ranged";
+
+type ProjectileFeedback = {
+  id: string;
+  variant: "arrow" | "siege" | "charge";
+  startX: number;
+  startY: number;
+  angle: number;
+  distance: number;
 };
 
 const renderTeamSelectOptions = (
@@ -923,9 +1078,55 @@ const getTerrainAt = (terrainMap: TerrainType[][], x: number, y: number): Terrai
   return terrainMap?.[y]?.[x] ?? "plain";
 };
 
-const isCombatLogEntry = (entry: string) => {
+const getBattleLogAppearance = (entry: string) => {
   const normalizedEntry = String(entry ?? "").toLowerCase();
-  return normalizedEntry.includes(" attacked ") || normalizedEntry.includes(" was killed");
+  if (normalizedEntry.includes(" was killed")) {
+    return {
+      accent: "border-red-500/70",
+      text: "text-red-100",
+      bg: "bg-red-950/45"
+    };
+  }
+  if (normalizedEntry.includes(" attacked ")) {
+    return {
+      accent: "border-orange-400/70",
+      text: "text-orange-100",
+      bg: "bg-orange-950/35"
+    };
+  }
+  if (normalizedEntry.includes("charge") || normalizedEntry.includes("crashed into")) {
+    return {
+      accent: "border-amber-400/70",
+      text: "text-amber-100",
+      bg: "bg-amber-950/35"
+    };
+  }
+  if (normalizedEntry.includes("shaken") || normalizedEntry.includes("morale")) {
+    return {
+      accent: "border-violet-400/70",
+      text: "text-violet-100",
+      bg: "bg-violet-950/35"
+    };
+  }
+  if (normalizedEntry.includes("moved onto") || normalizedEntry.includes("repositioned") || normalizedEntry.includes("advanced")) {
+    return {
+      accent: "border-sky-400/70",
+      text: "text-sky-100",
+      bg: "bg-sky-950/35"
+    };
+  }
+  if (normalizedEntry.includes("merge")) {
+    return {
+      accent: "border-fuchsia-400/70",
+      text: "text-fuchsia-100",
+      bg: "bg-fuchsia-950/35"
+    };
+  }
+  return {
+    accent: "border-yellow-500/60",
+    text: "text-yellow-100",
+    bg: "bg-black/25"
+  };
 };
 
 const ensureRangedAmmo = (unit: any) => {
@@ -935,6 +1136,7 @@ const ensureRangedAmmo = (unit: any) => {
   const normalizedRole = String(normalizedUnit.role ?? normalizedUnit.name ?? "").toLowerCase();
   const projectileKeywords = [
     "archer",
+    "longbow",
     "slinger",
     "crossbow",
     "velites",
@@ -950,7 +1152,14 @@ const ensureRangedAmmo = (unit: any) => {
     "trebuchet",
     "polybolos",
     "onager",
-    "bombard"
+    "bombard",
+    "barbarian scout",
+    "gallic chariot",
+    "royal chariot",
+    "desert scout",
+    "scout",
+    "horse archer",
+    "elephant archer"
   ];
   const isProjectileUnit = projectileKeywords.some((keyword) => normalizedRole.includes(keyword));
 
@@ -966,12 +1175,18 @@ const ensureRangedAmmo = (unit: any) => {
   const isLongbowUnit = normalizedRole.includes("longbow");
   const isCrossbowUnit = normalizedRole.includes("crossbow");
   const isSlingerUnit = normalizedRole.includes("slinger");
+  const isHybridMountedRangedUnit = ["barbarian scout", "gallic chariot", "royal chariot", "desert scout", "scout", "horse archer", "camel rider archer", "elephant archer"].some((keyword) =>
+    normalizedRole.includes(keyword)
+  );
 
   let minimumRange = 4;
   let minimumAmmo = 12;
 
   if (isSiegeUnit) {
     minimumRange = 6;
+    minimumAmmo = 8;
+  } else if (isHybridMountedRangedUnit) {
+    minimumRange = 3;
     minimumAmmo = 8;
   } else if (isLongbowUnit) {
     minimumRange = 6;
@@ -985,7 +1200,7 @@ const ensureRangedAmmo = (unit: any) => {
   }
 
   normalizedUnit.range = Math.max(minimumRange, normalizedUnit.range ?? 1);
-  normalizedUnit.ammo = Math.max(minimumAmmo, normalizedUnit.ammo ?? 0);
+  normalizedUnit.ammo = halveAmmo(Math.max(minimumAmmo, normalizedUnit.ammo ?? 0));
 
   return normalizedUnit;
 };
@@ -995,10 +1210,14 @@ const getTroopMechanicType = (unit: any): TroopMechanicType => {
 
   const role = String(unit.role ?? "").toLowerCase();
   const siegeKeywords = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "siege tower", "onager", "bombard"];
-  const mountedKeywords = ["cavalry", "chariot", "rider", "scout", "knight", "elephant"];
+  const mountedKeywords = ["cavalry", "chariot", "rider", "scout", "knight", "elephant", "horse", "camel", "cataphract"];
 
   if (siegeKeywords.some((keyword) => role.includes(keyword))) {
     return "sieged";
+  }
+
+  if (usesAmmoRole(unit) && (unit.ammo ?? 0) <= 0) {
+    return "closecombat";
   }
 
   if ((unit.ammo ?? 0) > 0 && (unit.range ?? 1) > 1) {
@@ -1016,7 +1235,7 @@ const LEADER_AURA_ATTACK_MULTIPLIER = 1.1;
 
 const isLeaderRole = (role: string) => {
   const normalizedRole = String(role ?? "").toLowerCase();
-  return ["king", "jarl", "general", "leader", "marshal"].some((keyword) => normalizedRole.includes(keyword));
+  return ["king", "jarl", "general", "leader", "marshal", "pharaoh"].some((keyword) => normalizedRole.includes(keyword));
 };
 
 const isNearKing = (unit: any, allUnits: any[]) => {
@@ -1037,9 +1256,14 @@ const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = [], ter
   const hasAdvantage = TROOP_MECHANIC_ADVANTAGE[attackerType].includes(defenderType);
   const hasLeaderAura = isNearKing(attacker, allUnits);
   const attackerTerrain = getTerrainAt(terrainMap, attacker?.x ?? 0, attacker?.y ?? 0);
+  const defenderTerrain = getTerrainAt(terrainMap, defender?.x ?? 0, defender?.y ?? 0);
   const terrainModifiers = getTerrainModifiers(attacker, attackerTerrain);
   const hasTerrainModifier = terrainModifiers.attackMultiplier !== 1;
   let damage = attacker.attack;
+
+  if (hasNoAmmoPenalty(attacker)) {
+    damage = Math.round(damage * 0.5);
+  }
 
   if (hasLeaderAura) {
     damage = Math.round(damage * LEADER_AURA_ATTACK_MULTIPLIER);
@@ -1049,8 +1273,17 @@ const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = [], ter
     damage = Math.round(damage * terrainModifiers.attackMultiplier);
   }
 
+  const abilityEffects = getAbilityEffects(attacker, defender, allUnits, attackerTerrain, defenderTerrain);
+  if (abilityEffects.attackMultiplier !== 1) {
+    damage = Math.round(damage * abilityEffects.attackMultiplier);
+  }
+
   if (hasAdvantage) {
     damage = Math.round(damage * TROOP_MECHANIC_ADVANTAGE_MULTIPLIER);
+  }
+
+  if (abilityEffects.damageTakenMultiplier !== 1) {
+    damage = Math.round(damage * abilityEffects.damageTakenMultiplier);
   }
 
   return {
@@ -1061,7 +1294,8 @@ const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = [], ter
     hasLeaderAura,
     hasTerrainModifier,
     terrainType: attackerTerrain,
-    terrainLabel: terrainModifiers.terrainLabel
+    terrainLabel: terrainModifiers.terrainLabel,
+    abilityTags: [...abilityEffects.attackerTags, ...abilityEffects.defenderTags]
   };
 };
 
@@ -1070,6 +1304,10 @@ const getDisplayedAttack = (unit: any, allUnits: any[] = [], terrainMap: Terrain
 
   let displayedAttack = unit.attack;
   const terrainModifiers = getTerrainModifiers(unit, getTerrainAt(terrainMap, unit.x, unit.y));
+
+  if (hasNoAmmoPenalty(unit)) {
+    displayedAttack = Math.round(displayedAttack * 0.5);
+  }
 
   if (isNearKing(unit, allUnits)) {
     displayedAttack = Math.round(displayedAttack * LEADER_AURA_ATTACK_MULTIPLIER);
@@ -1102,14 +1340,94 @@ const getUnitEffectNotes = (
     notes.push("Leader Aura: +10% attack");
   }
 
+  if (getAdjacentCommanders(unit, allUnits).length > 0) {
+    notes.push("Command Aura: +5% attack from an adjacent commander");
+  }
+
   if (unit.roleHealthBuffActive) {
     notes.push(`Formation Buff: +${Math.round(((unit.roleHealthBuffMultiplier ?? 1) - 1) * 100)}% max health`);
+  }
+
+  if (hasNoAmmoPenalty(unit)) {
+    notes.push("Out of Ammo: -50% attack");
   }
 
   if (terrainEffectsEnabled) {
     const terrainNotes = getTerrainModifiers(unit, getTerrainAt(terrainMap, unit.x, unit.y)).notes;
     terrainNotes.forEach((note) => notes.push(`Terrain: ${note}`));
   }
+
+  getTroopAbilities(unit.role).forEach((ability) => {
+    switch (ability.key) {
+      case "shieldWall":
+        if (getAdjacentAllies(unit, allUnits).length > 0) {
+          notes.push(`${ability.name}: active while holding formation next to an ally`);
+        } else {
+          notes.push(`${ability.name}: ${ability.description}`);
+        }
+        break;
+      case "charge":
+        if (getTerrainAt(terrainMap, unit.x, unit.y) === "plain") {
+          notes.push(`${ability.name}: active on open ground`);
+        } else {
+          notes.push(`${ability.name}: ${ability.description}`);
+        }
+        break;
+      case "guarded":
+        if ((unit?.hp ?? 0) > Math.ceil((unit?.maxHp ?? 0) * 0.5)) {
+          notes.push(`${ability.name}: active while above half health`);
+        } else {
+          notes.push(`${ability.name}: ${ability.description}`);
+        }
+        break;
+      case "ferocity":
+        if (getAdjacentAllies(unit, allUnits).length === 0) {
+          notes.push(`${ability.name}: active while fighting away from allied support`);
+        } else {
+          notes.push(`${ability.name}: ${ability.description}`);
+        }
+        break;
+      case "deadeye":
+        if (getTerrainAt(terrainMap, unit.x, unit.y) === "hill") {
+          notes.push(`${ability.name}: active high-ground range bonus`);
+        } else {
+          notes.push(`${ability.name}: ${ability.description}`);
+        }
+        break;
+      case "crush":
+        notes.push(`${ability.name}: extra damage against close-combat and defensive units`);
+        break;
+      case "command":
+        notes.push(`${ability.name}: adjacent allies gain +5% attack`);
+        break;
+      case "siegeMastery":
+        if (getTerrainAt(terrainMap, unit.x, unit.y) === "hill") {
+          notes.push(`${ability.name}: active elevated range and damage bonus`);
+        } else if (getTerrainAt(terrainMap, unit.x, unit.y) === "plain") {
+          notes.push(`${ability.name}: active stable-ground damage bonus`);
+        } else {
+          notes.push(`${ability.name}: ${ability.description}`);
+        }
+        break;
+      case "skirmishStep":
+        if ((unit?.ammo ?? 0) > 0) {
+          notes.push(`${ability.name}: active +1 move while ammunition lasts`);
+        } else {
+          notes.push(`${ability.name}: ${ability.description}`);
+        }
+        break;
+      case "resolve":
+        if (hasAdjacentWoundedAlly(unit, allUnits)) {
+          notes.push(`${ability.name}: active near a wounded ally`);
+        } else {
+          notes.push(`${ability.name}: ${ability.description}`);
+        }
+        break;
+      default:
+        notes.push(`${ability.name}: ${ability.description}`);
+        break;
+    }
+  });
 
   return notes;
 };
@@ -1118,29 +1436,150 @@ const ROLE_HEALTH_BUFF_PER_EXTRA_UNIT = 0.05;
 const ROLE_HEALTH_BUFF_MIN_GROUP_SIZE = 2;
 const GAME_MECHANICS_INFO = [
   {
+    icon: "⚔️",
     title: "Troop Type Matchups",
     description: "Only mounted troops get a type advantage. They deal +10% attack damage against ranged and sieged units."
   },
   {
+    icon: "🧱",
     title: "Role Formation Buff",
     description: "Adjacent allied troops with the same role gain scaling max health: 2 units = +5%, 3 = +10%, 4 = +15%, and larger groups keep scaling while connected."
   },
   {
+    icon: "👑",
     title: "Leader Aura",
     description: "Troops directly next to a King, Jarl, General, or Leader gain +10% attack."
   },
   {
+    icon: "🏹",
     title: "Ranged Shots",
     description: "Ranged and sieged troops have limited shots. When they run dry, they can no longer fire effectively."
   },
   {
+    icon: "🧬",
     title: "Merge Limit",
     description: "You can merge adjacent same-role troops into elite units a limited number of times each battle."
   },
   {
+    icon: "🗺️",
     title: "Dynamic Terrain",
-    description: "Every new battle generates fresh terrain. Forests, hills, rivers, plains, and deserts can buff or weaken troops depending on their type and faction."
+    description: "Every new battle generates fresh terrain. Forests add cover, hills extend firing lanes, rivers punish heavy crossings, plains favor charges, and deserts wear down non-native armies."
   }
+] as const;
+
+const ADDITIONAL_MECHANICS_INFO = [
+  {
+    icon: "🐎🏹",
+    title: "Hybrid Troops",
+    description: "Mounted-ranged units are shown as Hybrid in the UI. While they still have ammo, they fight as ranged attackers and keep their two-icon identity."
+  },
+  {
+    icon: "🪫",
+    title: "Ammo Exhaustion",
+    description: "Every shot spends 1 ammo. At 0 ammo, the unit drops to range 1 and attacks at half power, turning ranged hybrids into close-combat fighters."
+  },
+  {
+    icon: "🏴",
+    title: "Civilization Passives",
+    description: "Each faction applies a passive bonus before battle starts, which can change movement, health, range, or attack depending on the civilization."
+  },
+  {
+    icon: "✨",
+    title: "Signature Unit Abilities",
+    description: "Selected roles now carry passive signature abilities like Brace, Shield Wall, Charge, Harrier, Shock Assault, Guarded, Deadeye, Crush, Command Aura, Siege Mastery, Skirmish Step, and Resolve that trigger automatically during combat."
+  },
+  {
+    icon: "🎺",
+    title: "Battle Sound Cues",
+    description: "Music and battle SFX are now separated. Turn stingers, impact sounds, charge hits, projectile releases, and morale breaks help you read combat momentum by ear."
+  },
+  {
+    icon: "💥",
+    title: "Battlefield Feedback",
+    description: "Temporary hit, death, ranged, charge, projectile, and morale effects pulse directly on the grid so critical events stand out without slowing the battle down."
+  },
+  {
+    icon: "🔒",
+    title: "Terrain Lock",
+    description: "Terrain settings and regeneration are only available before combat starts. Once the battle begins, the battlefield is locked for the rest of the match."
+  }
+] as const;
+
+const UNIT_ABILITY_MECHANICS_INFO = [
+  {
+    icon: "🛡️",
+    title: "Brace",
+    detail: "Spear and phalanx troops deal +15% damage into mounted enemies and take 15% less damage when receiving a mounted charge."
+  },
+  {
+    icon: "🧱",
+    title: "Shield Wall",
+    detail: "Defensive infantry take 10% less damage while standing adjacent to an allied unit, rewarding compact formations."
+  },
+  {
+    icon: "🔥",
+    title: "Shock Assault",
+    detail: "Berserker and falx-style shock troops hit 20% harder against targets already at or below half health."
+  },
+  {
+    icon: "🐎",
+    title: "Charge",
+    detail: "Mounted shock troops gain +15% damage on plains and gain another +10% when crashing into ranged or siege units."
+  },
+  {
+    icon: "🏹",
+    title: "Harrier",
+    detail: "Skirmishers and horse archers deal +10% damage while they still have ammo against slow units and siege crews."
+  },
+  {
+    icon: "🪖",
+    title: "Guarded",
+    detail: "Heavy line troops take 10% less damage while they stay above half health."
+  },
+  {
+    icon: "🪓",
+    title: "Ferocity",
+    detail: "Aggressive fighters gain +10% attack when they are not standing next to an allied unit."
+  },
+  {
+    icon: "🎯",
+    title: "Deadeye",
+    detail: "Precision archers gain +1 range on hills and deal +10% damage into unsupported ranged or siege targets."
+  },
+  {
+    icon: "🐘",
+    title: "Crush",
+    detail: "Elephants and impact troops deal +15% damage into close-combat units and gain extra pressure against defensive formations."
+  },
+  {
+    icon: "🏴",
+    title: "Command Aura",
+    detail: "Allies adjacent to a command unit gain +5% attack, stacking with the normal leader aura when present."
+  },
+  {
+    icon: "🏰",
+    title: "Siege Mastery",
+    detail: "Siege engines gain +10% attack from plains or hills and gain +1 extra range on hills."
+  },
+  {
+    icon: "🪶",
+    title: "Skirmish Step",
+    detail: "Mobile skirmish troops gain +1 move while they still have ammunition."
+  },
+  {
+    icon: "⚡",
+    title: "Resolve",
+    detail: "Elite troops gain +10% attack when an adjacent allied unit is wounded and the line begins to break."
+  }
+] as const;
+
+const AI_MECHANICS_INFO = [
+  "Front-line melee units now push harder and value moves that create an immediate attack on the next turn.",
+  "The AI focuses wounded enemies, exposed ranged units, siege crews, and isolated leaders more aggressively.",
+  "Ranged and siege troops still prefer safer firing ground, but they now step into pressure range sooner instead of drifting too far back.",
+  "Mounted units prefer flank lanes, open ground, and fast collapses onto fragile back-line targets.",
+  "Leaders stay more disciplined than other roles, but the army as a whole is less hesitant and avoids sideways stalling.",
+  "If the advanced scorer cannot find a premium action, the AI still falls back to a nearest-target attack or direct advance."
 ] as const;
 
 const TROOP_MECHANICS_INFO: Array<{ type: TroopMechanicType; summary: string; pros: string[]; cons: string[] }> = [
@@ -1184,21 +1623,22 @@ const TERRAIN_MECHANICS_INFO: Array<{ terrain: TerrainType; summary: string; eff
     terrain: "forest",
     summary: "Wet, dense terrain that rewards cover and punishes fast movement.",
     effects: [
-      "Ranged troops gain +10% attack in forest cover.",
-      "Mounted troops suffer -1 move and -10% attack in dense woods.",
+      "Ranged troops gain +5% attack in forest cover.",
+      "Mounted troops suffer -1 move and -15% attack in dense woods.",
       "Sieged troops suffer -1 move and -10% attack in forests.",
-      "Celts and Germanic troops gain +10% attack and +1 move in forests."
+      "Non-mounted defenders take 8% less incoming damage in forest cover.",
+      "Gauls and Germanic troops gain +10% attack and +1 move in forests."
     ]
   },
   {
     terrain: "hill",
     summary: "Elevated ground that improves firing positions and slows rapid troops.",
     effects: [
-      "Ranged troops gain +15% attack from high ground.",
+      "Ranged troops gain +15% attack and +1 range from high ground.",
       "Closecombat troops gain +5% attack on hills.",
       "Mounted troops lose 1 move climbing hills.",
-      "Sieged troops gain +10% attack from elevated positions.",
-      "Greeks and Teutons gain +10% attack on hills."
+      "Sieged troops gain +10% attack and +1 range from elevated positions.",
+      "Greeks and Egypt gain +10% attack on hills."
     ]
   },
   {
@@ -1206,8 +1646,8 @@ const TERRAIN_MECHANICS_INFO: Array<{ terrain: TerrainType; summary: string; eff
     summary: "Water lanes disrupt combat flow unless a faction is good at crossing.",
     effects: [
       "Closecombat troops suffer -10% attack while fighting through water.",
-      "Mounted troops suffer -1 move and -10% attack in rivers.",
-      "Sieged troops suffer -1 move and -15% attack in rivers.",
+      "Mounted troops suffer -2 move and -10% attack in rivers.",
+      "Sieged troops suffer -2 move and -15% attack in rivers.",
       "Romans and Carthage gain +5% attack and +1 move in rivers."
     ]
   },
@@ -1216,9 +1656,9 @@ const TERRAIN_MECHANICS_INFO: Array<{ terrain: TerrainType; summary: string; eff
     summary: "Dry, punishing terrain that drains movement and weakens ranged fire.",
     effects: [
       "All non-mounted troops lose 1 move in desert terrain.",
-      "Ranged troops suffer -10% attack from dust and heat.",
-      "Sieged troops suffer an extra -10% attack in desert sand.",
-      "Carthage and Barbarians gain +10% attack and +1 move in deserts."
+      "Ranged troops suffer -15% attack from dust and heat.",
+      "Sieged troops suffer -15% attack in desert sand.",
+      "Carthage, Barbarians, Egypt, and Parthians gain +10% attack and +1 move in deserts."
     ]
   }
 ] as const;
@@ -1256,26 +1696,32 @@ const rotateUnitCoordinates = (units: any[], steps: number, battlefieldSize: Bat
 const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
   const troopType = getTroopMechanicType(unit);
   let attackMultiplier = 1;
+  let damageTakenMultiplier = 1;
   let moveDelta = 0;
+  let rangeBonus = 0;
   const notes: string[] = [];
 
   switch (terrainType) {
     case "forest":
       if (troopType === "ranged") {
-        attackMultiplier *= 1.1;
-        notes.push("+10% attack for ranged cover");
+        attackMultiplier *= 1.05;
+        notes.push("+5% attack for ranged cover");
       }
       if (troopType === "mounted") {
         moveDelta -= 1;
-        attackMultiplier *= 0.9;
-        notes.push("-1 move and -10% attack for mounted troops in dense woods");
+        attackMultiplier *= 0.85;
+        notes.push("-1 move and -15% attack for mounted troops in dense woods");
       }
       if (troopType === "sieged") {
         moveDelta -= 1;
         attackMultiplier *= 0.9;
         notes.push("-1 move and -10% attack for siege engines in forests");
       }
-      if (unit.team === "Celts" || unit.team === "Germanic") {
+      if (troopType !== "mounted") {
+        damageTakenMultiplier *= 0.92;
+        notes.push("-8% incoming damage from forest cover");
+      }
+      if (unit.team === "Gauls" || unit.team === "Germanic") {
         attackMultiplier *= 1.1;
         moveDelta += 1;
         notes.push("+10% attack and +1 move for woodland factions");
@@ -1284,7 +1730,8 @@ const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
     case "hill":
       if (troopType === "ranged") {
         attackMultiplier *= 1.15;
-        notes.push("+15% attack from high ground");
+        rangeBonus += 1;
+        notes.push("+15% attack and +1 range from high ground");
       } else if (troopType === "closecombat") {
         attackMultiplier *= 1.05;
         notes.push("+5% attack from elevated footing");
@@ -1295,9 +1742,10 @@ const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
       }
       if (troopType === "sieged") {
         attackMultiplier *= 1.1;
-        notes.push("+10% attack from elevated siege positions");
+        rangeBonus += 1;
+        notes.push("+10% attack and +1 range from elevated siege positions");
       }
-      if (unit.team === "Greeks" || unit.team === "Teutons") {
+      if (unit.team === "Greeks" || unit.team === "Egypt") {
         attackMultiplier *= 1.1;
         notes.push("+10% attack for disciplined hill fighters");
       }
@@ -1308,14 +1756,14 @@ const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
         notes.push("-10% attack while fighting through water");
       }
       if (troopType === "mounted") {
-        moveDelta -= 1;
+        moveDelta -= 2;
         attackMultiplier *= 0.9;
-        notes.push("-1 move and -10% attack for mounted troops in rivers");
+        notes.push("-2 move and -10% attack for mounted troops in rivers");
       }
       if (troopType === "sieged") {
-        moveDelta -= 1;
+        moveDelta -= 2;
         attackMultiplier *= 0.85;
-        notes.push("-1 move and -15% attack for siege engines in rivers");
+        notes.push("-2 move and -15% attack for siege engines in rivers");
       }
       if (unit.team === "Romans" || unit.team === "Carthage") {
         attackMultiplier *= 1.05;
@@ -1329,14 +1777,14 @@ const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
         notes.push("-1 move in harsh desert terrain");
       }
       if (troopType === "ranged") {
-        attackMultiplier *= 0.9;
-        notes.push("-10% attack from dust and heat");
+        attackMultiplier *= 0.85;
+        notes.push("-15% attack from dust and heat");
       }
       if (troopType === "sieged") {
-        attackMultiplier *= 0.9;
-        notes.push("-10% attack for siege engines in shifting sand");
+        attackMultiplier *= 0.85;
+        notes.push("-15% attack for siege engines in shifting sand");
       }
-      if (unit.team === "Carthage" || unit.team === "Barbarians") {
+      if (unit.team === "Carthage" || unit.team === "Barbarians" || unit.team === "Egypt" || unit.team === "Parthians") {
         attackMultiplier *= 1.1;
         moveDelta += 1;
         notes.push("+10% attack and +1 move for desert-adapted factions");
@@ -1363,7 +1811,9 @@ const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
     terrainType,
     terrainLabel: TERRAIN_LABELS[terrainType],
     attackMultiplier,
+    damageTakenMultiplier,
     moveDelta,
+    rangeBonus,
     notes
   };
 };
@@ -1372,7 +1822,177 @@ const getEffectiveMove = (unit: any, terrainMap: TerrainType[][]) => {
   if (!unit) return 0;
   const terrainType = getTerrainAt(terrainMap, unit.x, unit.y);
   const modifiers = getTerrainModifiers(unit, terrainType);
-  return Math.max(1, unit.move + modifiers.moveDelta);
+  const skirmishStepBonus = getTroopAbilities(unit.role).some((ability) => ability.key === "skirmishStep") && (unit?.ammo ?? 0) > 0 ? 1 : 0;
+  return Math.max(1, unit.move + modifiers.moveDelta + skirmishStepBonus);
+};
+
+const getEffectiveRange = (unit: any, terrainMap: TerrainType[][]) => {
+  if (!unit) return 0;
+  const terrainType = getTerrainAt(terrainMap, unit.x, unit.y);
+  const modifiers = getTerrainModifiers(unit, terrainType);
+  const abilities = getTroopAbilities(unit.role);
+  let abilityRangeBonus = 0;
+  if (terrainType === "hill" && abilities.some((ability) => ability.key === "deadeye")) {
+    abilityRangeBonus += 1;
+  }
+  if (terrainType === "hill" && abilities.some((ability) => ability.key === "siegeMastery")) {
+    abilityRangeBonus += 1;
+  }
+  return Math.max(1, unit.range + modifiers.rangeBonus + abilityRangeBonus);
+};
+
+const getAdjacentAllies = (unit: any, allUnits: any[] = []) =>
+  allUnits.filter((candidate) => {
+    if (!unit || !candidate || candidate.id === unit.id || candidate.hp <= 0) return false;
+    if (candidate.team !== unit.team) return false;
+    return Math.abs(candidate.x - unit.x) + Math.abs(candidate.y - unit.y) === 1;
+  });
+
+const unitHasAbility = (unit: any, abilityKey: string) =>
+  getTroopAbilities(unit?.role ?? "").some((ability) => ability.key === abilityKey);
+
+const getAdjacentCommanders = (unit: any, allUnits: any[] = []) =>
+  getAdjacentAllies(unit, allUnits).filter((candidate) => unitHasAbility(candidate, "command"));
+
+const hasAdjacentWoundedAlly = (unit: any, allUnits: any[] = []) =>
+  getAdjacentAllies(unit, allUnits).some((candidate) => candidate.hp <= Math.ceil(candidate.maxHp * 0.5));
+
+const getAbilityEffects = (
+  attacker: any,
+  defender: any,
+  allUnits: any[] = [],
+  attackerTerrain: TerrainType,
+  defenderTerrain: TerrainType
+) => {
+  const attackerAbilities = getTroopAbilities(attacker?.role ?? "");
+  const defenderAbilities = getTroopAbilities(defender?.role ?? "");
+  const attackerType = getTroopMechanicType(attacker);
+  const defenderType = getTroopMechanicType(defender);
+  const attackerTags: string[] = [];
+  const defenderTags: string[] = [];
+  let attackMultiplier = 1;
+  let damageTakenMultiplier = 1;
+
+  attackerAbilities.forEach((ability) => {
+    switch (ability.key) {
+      case "brace":
+        if (defenderType === "mounted") {
+          attackMultiplier *= 1.15;
+          attackerTags.push("Brace");
+        }
+        break;
+      case "shieldWall":
+        break;
+      case "shock":
+        if ((defender?.hp ?? 0) <= Math.ceil((defender?.maxHp ?? 0) * 0.5)) {
+          attackMultiplier *= 1.2;
+          attackerTags.push("Shock Assault");
+        }
+        break;
+      case "charge":
+        if (attackerTerrain === "plain" && attackerType === "mounted") {
+          attackMultiplier *= 1.15;
+          attackerTags.push("Charge");
+        }
+        if (defenderType === "ranged" || defenderType === "sieged") {
+          attackMultiplier *= 1.1;
+          if (!attackerTags.includes("Charge")) attackerTags.push("Charge");
+        }
+        break;
+      case "harrier":
+        if ((attacker?.ammo ?? 0) > 0 && ((defender?.move ?? 0) <= 1 || defenderType === "sieged")) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Harrier");
+        }
+        break;
+      case "guarded":
+        break;
+      case "ferocity":
+        if (getAdjacentAllies(attacker, allUnits).length === 0) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Ferocity");
+        }
+        break;
+      case "deadeye":
+        if (
+          (defenderType === "ranged" || defenderType === "sieged") &&
+          getAdjacentAllies(defender, allUnits).length === 0
+        ) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Deadeye");
+        }
+        break;
+      case "crush":
+        if (defenderType === "closecombat") {
+          attackMultiplier *= 1.15;
+          attackerTags.push("Crush");
+        }
+        if (defenderAbilities.some((defenderAbility) => defenderAbility.key === "shieldWall" || defenderAbility.key === "guarded")) {
+          attackMultiplier *= 1.05;
+          if (!attackerTags.includes("Crush")) attackerTags.push("Crush");
+        }
+        break;
+      case "command":
+        break;
+      case "siegeMastery":
+        if (attackerType === "sieged" && (attackerTerrain === "plain" || attackerTerrain === "hill")) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Siege Mastery");
+        }
+        break;
+      case "skirmishStep":
+        break;
+      case "resolve":
+        if (hasAdjacentWoundedAlly(attacker, allUnits)) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Resolve");
+        }
+        break;
+    }
+  });
+
+  if (getAdjacentCommanders(attacker, allUnits).length > 0) {
+    attackMultiplier *= 1.05;
+    attackerTags.push("Command Aura");
+  }
+
+  defenderAbilities.forEach((ability) => {
+    switch (ability.key) {
+      case "brace":
+        if (attackerType === "mounted") {
+          damageTakenMultiplier *= 0.85;
+          defenderTags.push("Brace");
+        }
+        break;
+      case "shieldWall":
+        if (getAdjacentAllies(defender, allUnits).length > 0) {
+          damageTakenMultiplier *= 0.9;
+          defenderTags.push("Shield Wall");
+        }
+        break;
+      case "guarded":
+        if ((defender?.hp ?? 0) > Math.ceil((defender?.maxHp ?? 0) * 0.5)) {
+          damageTakenMultiplier *= 0.9;
+          defenderTags.push("Guarded");
+        }
+        break;
+      default:
+        break;
+    }
+  });
+
+  const defenderTerrainModifiers = getTerrainModifiers(defender, defenderTerrain);
+  if (defenderTerrainModifiers.damageTakenMultiplier !== 1) {
+    damageTakenMultiplier *= defenderTerrainModifiers.damageTakenMultiplier;
+    defenderTags.push(`${defenderTerrainModifiers.terrainLabel} Cover`);
+  }
+
+  return {
+    attackMultiplier,
+    damageTakenMultiplier,
+    attackerTags,
+    defenderTags
+  };
 };
 
 const applyRoleHealthBuffs = (units: any[]) => {
@@ -1458,23 +2078,31 @@ const didRoleHealthBuffStateChange = (currentUnits: any[], updatedUnits: any[]) 
 const CIV_PASSIVES: Record<TeamName, { name: string; effect: string }> = {
   Romans: { name: "Roman Discipline", effect: "+10% hp, +10% attack" },
   Barbarians: { name: "Barbarian Fury", effect: "+20% attack, -10% hp" },
-  Greeks: { name: "Phalanx Mastery", effect: "+1 range (infantry), -1 move" },
-  Celts: { name: "Swift Warriors", effect: "+1 move, -10% hp" },
+  Greeks: { name: "Phalanx Mastery", effect: "+1 range (infantry), -1 move (infantry)" },
+  Gauls: { name: "Swift Warriors", effect: "+1 move, -10% hp" },
   Germanic: { name: "Brutal Strength", effect: "+15% attack" },
-  Carthage: { name: "Mercenary Tactics", effect: "+10% hp, +10% attack, -1 move" },
-  Vikings: { name: "Relentless Raiders", effect: "+1 move, +10% attack, -10% hp" },
-  Teutons: { name: "Heavy Armor", effect: "+25% hp, -1 move" }
+  Carthage: { name: "Mercenary Tactics", effect: "+10% hp, +10% attack, -10% move" },
+  Egypt: { name: "Chariot Kingdom", effect: "+1 move (mounted), +10% attack (ranged)" },
+  Thracians: { name: "Hill Raiders", effect: "+10% attack (infantry), +1 move (ranged)" },
+  Dacians: { name: "Falx Discipline", effect: "+10% hp, +10% attack" },
+  Parthians: { name: "Parthian Shot", effect: "+1 move (mounted), +10% attack (ranged)" },
+  Seleucids: { name: "Imperial Arms", effect: "+10% hp (infantry), +10% attack (siege and elephants)" },
+  Vikings: { name: "Relentless Raiders", effect: "+1 move, +10% attack, -10% hp" }
 };
 
 const PASSIVE_ICONS: Record<TeamName, string> = {
   Romans: "🛡️",
   Barbarians: "🔥",
   Greeks: "🗡️",
-  Celts: "🍃",
+  Gauls: "🍃",
   Germanic: "🪓",
   Carthage: "🐘",
-  Vikings: "⛵",
-  Teutons: "🏰"
+  Egypt: "☀️",
+  Thracians: "🗡️",
+  Dacians: "🐺",
+  Parthians: "🏹",
+  Seleucids: "🏺",
+  Vikings: "⛵"
 };
 
 const TROOP_MECHANIC_ADVANTAGE: Record<TroopMechanicType, TroopMechanicType[]> = {
@@ -1501,14 +2129,16 @@ const TROOP_MECHANIC_ICONS: Record<TroopMechanicType, string> = {
 const TROOP_MECHANIC_ADVANTAGE_MULTIPLIER = 1.1;
 
 const GAME_STATE_STORAGE_KEY = "battlecry-game-state";
+const GAME_VERSION = "0.0.0";
+const GAME_BUILD_LABEL = "Battle Feedback Pass";
 const BATTLEFIELD_SIZE_OPTIONS: BattlefieldSize[] = [8, 10, 12, 14, 16, 18, 20];
 const DEFAULT_GAME_OPTIONS: GameOptions = {
   musicEnabled: true,
+  sfxEnabled: true,
   showMoveHighlights: true,
   showAttackHighlights: true,
   showBattleLog: true,
   showTurnBanner: true,
-  showUnitPanel: true,
   terrainEffectsEnabled: true,
   battlefieldSize: 8
 };
@@ -1521,6 +2151,14 @@ const ROLE_ICON_LOOKUP = Object.values(AVAILABLE_TROOPS).flat().reduce((lookup, 
 const getUnitDisplayIcon = (unit: any) => {
   if (!unit) return "⚔️";
   return ROLE_ICON_LOOKUP[unit.role] ?? unit.Icon ?? "⚔️";
+};
+
+const getBattlefieldUnitLabel = (unit: any) => {
+  const baseLabel = String(unit?.name ?? unit?.role ?? "").trim();
+  if (!baseLabel) return "Unit";
+
+  const compactLabel = baseLabel.split(" ").slice(0, 2).join(" ");
+  return compactLabel.length > 14 ? `${compactLabel.slice(0, 13)}...` : compactLabel;
 };
 
 const adjustStatPercent = (value: number, percent: number) => Math.max(0, Math.round(value * (1 + percent)));
@@ -1552,6 +2190,9 @@ const isInfantryRole = (role: string) => {
     "turcopole",
     "scout",
     "knight",
+    "horse",
+    "camel",
+    "cataphract",
     "king",
     "jarl",
     "general",
@@ -1602,7 +2243,7 @@ const applyCivilizationPassive = (unit: any) => {
         normalizedUnit.move = Math.max(0, normalizedUnit.move - 1);
       }
       break;
-    case "Celts":
+    case "Gauls":
       normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, -0.1);
       normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, -0.1);
       normalizedUnit.move += 1;
@@ -1616,16 +2257,55 @@ const applyCivilizationPassive = (unit: any) => {
       normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
       normalizedUnit.move = adjustMovePercent(normalizedUnit.move, -0.1);
       break;
+    case "Egypt": {
+      const troopType = getTroopMechanicType(normalizedUnit);
+      if (troopType === "mounted") {
+        normalizedUnit.move += 1;
+      }
+      if (troopType === "ranged") {
+        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      }
+      break;
+    }
+    case "Thracians":
+      if (isInfantryRole(normalizedUnit.role)) {
+        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      }
+      if (getTroopMechanicType(normalizedUnit) === "ranged") {
+        normalizedUnit.move += 1;
+      }
+      break;
+    case "Dacians":
+      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
+      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
+      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      break;
+    case "Parthians": {
+      const normalizedRole = String(normalizedUnit.role ?? "").toLowerCase();
+      if (["cavalry", "rider", "horse", "camel", "cataphract", "scout"].some((keyword) => normalizedRole.includes(keyword))) {
+        normalizedUnit.move += 1;
+      }
+      if (getTroopMechanicType(normalizedUnit) === "ranged") {
+        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      }
+      break;
+    }
+    case "Seleucids": {
+      const normalizedRole = String(normalizedUnit.role ?? "").toLowerCase();
+      if (isInfantryRole(normalizedUnit.role)) {
+        normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
+        normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
+      }
+      if (normalizedRole.includes("elephant") || getTroopMechanicType(normalizedUnit) === "sieged") {
+        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      }
+      break;
+    }
     case "Vikings":
       normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, -0.1);
       normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, -0.1);
       normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
       normalizedUnit.move += 1;
-      break;
-    case "Teutons":
-      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.25);
-      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.25);
-      normalizedUnit.move = Math.max(0, normalizedUnit.move - 1);
       break;
   }
 
@@ -1688,20 +2368,33 @@ function CodeConq() {
   const [isBattlefieldFullscreen, setIsBattlefieldFullscreen] = useState(false);
   const battlefieldRef = useRef<HTMLDivElement | null>(null);
   const battlefieldViewportRef = useRef<HTMLDivElement | null>(null);
+  const battlefieldGridRef = useRef<HTMLDivElement | null>(null);
+  const battlefieldCellRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const battlefieldPanStateRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number; moved: boolean } | null>(null);
   const battlefieldPanCleanupRef = useRef<(() => void) | null>(null);
   const skipNextGridClickRef = useRef(false);
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
+  const battleSfxRef = useRef<ReturnType<typeof createBattleSfxController> | null>(null);
+  const lastTurnCueRef = useRef<string | null>(null);
+  const feedbackTimeoutsRef = useRef<number[]>([]);
   const isRestoringSavedGameRef = useRef(false);
   const hasLoadedSavedGameRef = useRef(false);
-  const [startScreen, setStartScreen] = useState<"menu" | "options">("menu");
+  const [startScreen, setStartScreen] = useState<"menu" | "options" | "about">("menu");
   const [isGameMenuOpen, setIsGameMenuOpen] = useState(false);
   const [isInGameOptionsOpen, setIsInGameOptionsOpen] = useState(false);
   const [isInGameMechanicsOpen, setIsInGameMechanicsOpen] = useState(false);
+  const [activeMechanicsSlide, setActiveMechanicsSlide] = useState(0);
   const [isInGameGraphicsOpen, setIsInGameGraphicsOpen] = useState(false);
+  const [isInGameUnitsOpen, setIsInGameUnitsOpen] = useState(false);
+  const [unitsReferenceTeam, setUnitsReferenceTeam] = useState<UnitsReferenceScope>("All");
+  const [unitsReferenceQuery, setUnitsReferenceQuery] = useState("");
+  const [isBattleLogPanelOpen, setIsBattleLogPanelOpen] = useState(false);
+  const [isUnitPanelOpen, setIsUnitPanelOpen] = useState(false);
   const [gameOptions, setGameOptions] = useState<GameOptions>(DEFAULT_GAME_OPTIONS);
   const [isPanningGrid, setIsPanningGrid] = useState(false);
   const [hoverScrollDirection, setHoverScrollDirection] = useState<HoverScrollDirection>(null);
+  const [cellFeedback, setCellFeedback] = useState<Record<string, BattleFeedbackKind[]>>({});
+  const [projectileFeedback, setProjectileFeedback] = useState<ProjectileFeedback[]>([]);
 
   // Update units when level changes
   useEffect(() => {
@@ -1899,6 +2592,17 @@ function CodeConq() {
   }, []);
 
   useEffect(() => {
+    const controller = createBattleSfxController(0.55);
+    controller.preload();
+    battleSfxRef.current = controller;
+
+    return () => {
+      controller.dispose();
+      battleSfxRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     const audio = backgroundMusicRef.current;
     if (!audio) return;
 
@@ -1912,6 +2616,13 @@ function CodeConq() {
       // Ignore autoplay rejections; the user can start music with the toggle.
     });
   }, [gameMode, gameOptions.musicEnabled]);
+
+  useEffect(() => {
+    return () => {
+      feedbackTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      feedbackTimeoutsRef.current = [];
+    };
+  }, []);
 
   useEffect(() => {
     if (gameMode !== "single-player") return;
@@ -1938,6 +2649,18 @@ function CodeConq() {
     const nextAiTeam = aliveTeams.find((team) => team !== playerTeam);
     if (nextAiTeam) setTurn(nextAiTeam);
   }, [gameMode, gameStarted, isSetupMode, playerTeam, turn, units]);
+
+  useEffect(() => {
+    if (!gameStarted || isSetupMode || !gameMode) {
+      lastTurnCueRef.current = null;
+      return;
+    }
+
+    if (lastTurnCueRef.current === turn) return;
+    lastTurnCueRef.current = turn;
+
+    playBattleSfx(getTurnCueForTeam(turn), { cooldownMs: 350, volumeMultiplier: turn === playerTeam ? 1.08 : 0.82 });
+  }, [gameMode, gameStarted, isSetupMode, playerTeam, turn]);
 
   const getUnit = (x: number, y: number) => {
     const currentUnits = isSetupMode ? customUnits : units;
@@ -1973,11 +2696,445 @@ function CodeConq() {
 
     return candidates[0] ?? null;
   };
+  const registerFeedbackTimeout = (callback: () => void, delayMs: number) => {
+    const timeoutId = window.setTimeout(() => {
+      feedbackTimeoutsRef.current = feedbackTimeoutsRef.current.filter((trackedId) => trackedId !== timeoutId);
+      callback();
+    }, delayMs);
+    feedbackTimeoutsRef.current.push(timeoutId);
+  };
+  const triggerCellFeedback = (cellKey: string, kind: BattleFeedbackKind, durationMs: number) => {
+    setCellFeedback((prev) => {
+      const existingKinds = prev[cellKey] ?? [];
+      if (existingKinds.includes(kind)) return prev;
+      return {
+        ...prev,
+        [cellKey]: [...existingKinds, kind]
+      };
+    });
+
+    registerFeedbackTimeout(() => {
+      setCellFeedback((prev) => {
+        const nextKinds = (prev[cellKey] ?? []).filter((currentKind) => currentKind !== kind);
+        if (nextKinds.length === 0) {
+          const { [cellKey]: _removed, ...rest } = prev;
+          return rest;
+        }
+
+        return {
+          ...prev,
+          [cellKey]: nextKinds
+        };
+      });
+    }, durationMs);
+  };
+  const triggerProjectileFeedback = (
+    from: TerrainPoint,
+    to: TerrainPoint,
+    variant: ProjectileFeedback["variant"],
+    durationMs = 420
+  ) => {
+    const gridRect = battlefieldGridRef.current?.getBoundingClientRect();
+    const fromRect = battlefieldCellRefs.current[`${from.x},${from.y}`]?.getBoundingClientRect();
+    const toRect = battlefieldCellRefs.current[`${to.x},${to.y}`]?.getBoundingClientRect();
+    if (!gridRect || !fromRect || !toRect) return;
+
+    const startX = fromRect.left - gridRect.left + fromRect.width / 2;
+    const startY = fromRect.top - gridRect.top + fromRect.height / 2;
+    const endX = toRect.left - gridRect.left + toRect.width / 2;
+    const endY = toRect.top - gridRect.top + toRect.height / 2;
+    const deltaX = endX - startX;
+    const deltaY = endY - startY;
+    const projectileId = `${variant}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    setProjectileFeedback((prev) => [
+      ...prev,
+      {
+        id: projectileId,
+        variant,
+        startX,
+        startY,
+        angle: Math.atan2(deltaY, deltaX),
+        distance: Math.hypot(deltaX, deltaY)
+      }
+    ]);
+
+    registerFeedbackTimeout(() => {
+      setProjectileFeedback((prev) => prev.filter((projectile) => projectile.id !== projectileId));
+    }, durationMs);
+  };
+  const playBattleSfx = (
+    key: BattleSfxKey,
+    options?: { cooldownMs?: number; playbackRate?: number; volumeMultiplier?: number }
+  ) => {
+    if (!gameOptions.sfxEnabled) return;
+    battleSfxRef.current?.play(key, options);
+  };
+  const triggerAttackFeedback = (
+    attacker: any,
+    defender: any,
+    attackOutcome: ReturnType<typeof getAttackDamage>,
+    options: {
+      attackerPosition?: TerrainPoint | null;
+      updatedTargetHp: number;
+      isProjectile: boolean;
+      moraleThreshold?: number;
+    }
+  ) => {
+    const attackerPoint = options.attackerPosition ?? { x: attacker.x, y: attacker.y };
+    const defenderKey = `${defender.x},${defender.y}`;
+    const attackerKey = `${attackerPoint.x},${attackerPoint.y}`;
+    const moraleThreshold = options.moraleThreshold ?? 0.35;
+
+    triggerCellFeedback(defenderKey, "hit", 360);
+    if (attackOutcome.abilityTags.includes("Charge")) {
+      triggerCellFeedback(attackerKey, "charge", 520);
+      playBattleSfx("charge-impact", { cooldownMs: 100, volumeMultiplier: 1.15 });
+    } else if (options.isProjectile) {
+      playBattleSfx("arrow-shot", { cooldownMs: 60, playbackRate: getTroopMechanicType(attacker) === "sieged" ? 0.84 : 1 });
+    } else {
+      playBattleSfx("melee-hit", { cooldownMs: 70, playbackRate: attackOutcome.hasAdvantage ? 0.96 : 1 });
+    }
+
+    if (options.isProjectile) {
+      triggerProjectileFeedback(attackerPoint, { x: defender.x, y: defender.y }, getTroopMechanicType(attacker) === "sieged" ? "siege" : "arrow");
+      triggerCellFeedback(attackerKey, "ranged", 260);
+    } else if (attackOutcome.abilityTags.includes("Charge")) {
+      triggerProjectileFeedback(attackerPoint, { x: defender.x, y: defender.y }, "charge", 300);
+    }
+
+    if (options.updatedTargetHp <= 0) {
+      triggerCellFeedback(defenderKey, "death", 720);
+      playBattleSfx("death-fall", { cooldownMs: 100, volumeMultiplier: 1.1 });
+      return;
+    }
+
+    if (options.updatedTargetHp <= Math.ceil(defender.maxHp * moraleThreshold)) {
+      triggerCellFeedback(defenderKey, "morale", 900);
+      playBattleSfx("morale-break", { cooldownMs: 200, volumeMultiplier: 0.95 });
+    }
+  };
+  const getRangeForBattle = (unit: any) => (gameOptions.terrainEffectsEnabled ? getEffectiveRange(unit, battlefieldTerrain) : unit.range);
+  const getMoveForBattle = (unit: any) => (gameOptions.terrainEffectsEnabled ? getEffectiveMove(unit, battlefieldTerrain) : unit.move);
+  const getTileOccupant = (battleUnits: any[], x: number, y: number, ignoredUnitId?: string) =>
+    battleUnits.find((candidate) => candidate.id !== ignoredUnitId && candidate.hp > 0 && candidate.x === x && candidate.y === y);
+  const getReachableTiles = (unit: any, battleUnits: any[]) => {
+    const maxSteps = getMoveForBattle(unit);
+    const queue = [{ x: unit.x, y: unit.y, steps: 0 }];
+    const visited = new Set<string>([`${unit.x},${unit.y}`]);
+    const reachable = [{ x: unit.x, y: unit.y, steps: 0 }];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current || current.steps >= maxSteps) continue;
+
+      const neighbors = [
+        { x: current.x + 1, y: current.y },
+        { x: current.x - 1, y: current.y },
+        { x: current.x, y: current.y + 1 },
+        { x: current.x, y: current.y - 1 }
+      ];
+
+      neighbors.forEach((neighbor) => {
+        const key = `${neighbor.x},${neighbor.y}`;
+        if (visited.has(key) || !isWithinBattlefield(neighbor.x, neighbor.y)) return;
+        if (getTileOccupant(battleUnits, neighbor.x, neighbor.y, unit.id)) return;
+
+        visited.add(key);
+        const nextNode = { ...neighbor, steps: current.steps + 1 };
+        reachable.push(nextNode);
+        queue.push(nextNode);
+      });
+    }
+
+    return reachable;
+  };
+  const getAiFormationRole = (unit: any) => {
+    if (isLeaderRole(unit?.role)) return "leader";
+    const troopType = getTroopMechanicType(unit);
+    if (troopType === "mounted") return "flank";
+    if (troopType === "ranged" || troopType === "sieged") return "support";
+    return "frontline";
+  };
+  const getEnemyCentroid = (battleUnits: any[]) => {
+    if (battleUnits.length === 0) return { x: battlefieldSize / 2, y: battlefieldSize / 2 };
+    const totals = battleUnits.reduce(
+      (acc, unit) => ({ x: acc.x + unit.x, y: acc.y + unit.y }),
+      { x: 0, y: 0 }
+    );
+    return {
+      x: totals.x / battleUnits.length,
+      y: totals.y / battleUnits.length
+    };
+  };
+  const getNearestDistanceToEnemies = (position: { x: number; y: number }, enemyUnits: any[]) =>
+    enemyUnits.reduce((best, enemyUnit) => Math.min(best, Math.abs(enemyUnit.x - position.x) + Math.abs(enemyUnit.y - position.y)), Infinity);
+  const getAiPressureDistance = (unit: any) => {
+    const range = getRangeForBattle(unit);
+    if (range <= 1) return getMoveForBattle(unit) + 1;
+    return range + 1;
+  };
+  const getAdjacentFriendlyCountAt = (unit: any, position: { x: number; y: number }, battleUnits: any[]) =>
+    battleUnits.filter((candidate) => {
+      if (!candidate || candidate.id === unit.id || candidate.team !== unit.team || candidate.hp <= 0) return false;
+      return Math.abs(candidate.x - position.x) + Math.abs(candidate.y - position.y) === 1;
+    }).length;
+  const getEnemyThreatOnTile = (position: { x: number; y: number }, enemyUnits: any[]) =>
+    enemyUnits.reduce((threat, enemyUnit) => {
+      const enemyRange = getRangeForBattle(enemyUnit);
+      const distance = Math.abs(enemyUnit.x - position.x) + Math.abs(enemyUnit.y - position.y);
+      if (distance <= enemyRange) return threat + 2;
+      if (enemyRange === 1 && distance <= getMoveForBattle(enemyUnit) + 1) return threat + 1;
+      return threat;
+    }, 0);
+  const getAiTargetCandidates = (unit: any, enemyUnits: any[], battleUnits: any[]) =>
+    enemyUnits
+      .map((enemyUnit) => {
+      const distance = Math.abs(enemyUnit.x - unit.x) + Math.abs(enemyUnit.y - unit.y);
+      const enemyType = getTroopMechanicType(enemyUnit);
+      const friendlySupportNearby = battleUnits.some((candidate) => {
+        if (!candidate || candidate.team !== unit.team || candidate.hp <= 0) return false;
+        const troopType = getTroopMechanicType(candidate);
+        if (troopType !== "ranged" && troopType !== "sieged") return false;
+        return Math.abs(candidate.x - enemyUnit.x) + Math.abs(candidate.y - enemyUnit.y) <= 2;
+      });
+
+      let score = 150 - distance * 4;
+      score += Math.round((1 - (enemyUnit.hp / Math.max(1, enemyUnit.maxHp))) * 70);
+      if (enemyUnit.hp <= Math.ceil(enemyUnit.maxHp * 0.4)) score += 24;
+      if (isLeaderRole(enemyUnit.role)) score += 24;
+      if (enemyType === "ranged" || enemyType === "sieged") score += 24;
+      if (distance <= getAiPressureDistance(unit)) score += 20;
+      if (distance <= 3) score += 12;
+      if (friendlySupportNearby && (enemyType === "mounted" || enemyUnit.attack >= 150)) score += 20;
+      if (getTroopMechanicType(unit) === "mounted" && (enemyType === "ranged" || enemyType === "sieged")) score += 32;
+      if (getTroopMechanicType(unit) === "closecombat" && enemyType === "ranged") score += 16;
+      if (getAiFormationRole(unit) === "leader" && distance <= 2) score -= 28;
+
+      return { target: enemyUnit, score, distance };
+    })
+      .sort((candidateA, candidateB) => {
+        if (candidateB.score !== candidateA.score) return candidateB.score - candidateA.score;
+        return candidateA.distance - candidateB.distance;
+      });
+  const getFallbackAiAction = (currentTeam: TeamName, battleUnits: any[]) => {
+    const aiUnits = battleUnits.filter((unit) => unit.team === currentTeam && unit.hp > 0);
+    const enemyUnits = battleUnits.filter((unit) => unit.team !== currentTeam && unit.hp > 0);
+    if (aiUnits.length === 0 || enemyUnits.length === 0) return null;
+
+    let chosenUnit = aiUnits[0] ?? null;
+    let chosenTarget = enemyUnits[0] ?? null;
+    let closestDistance = Infinity;
+
+    aiUnits.forEach((unit) => {
+      enemyUnits.forEach((enemyUnit) => {
+        const distance = Math.abs(unit.x - enemyUnit.x) + Math.abs(unit.y - enemyUnit.y);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          chosenUnit = unit;
+          chosenTarget = enemyUnit;
+        }
+      });
+    });
+
+    if (!chosenUnit || !chosenTarget) return null;
+
+    const effectiveRange = getRangeForBattle(chosenUnit);
+    if (isInRange(chosenUnit, chosenTarget, effectiveRange)) {
+      return {
+        type: "attack",
+        score: 0,
+        unitId: chosenUnit.id,
+        targetId: chosenTarget.id,
+        moveTo: null,
+        reason: "pressed the nearest target"
+      };
+    }
+
+    const closeCombatDestination = effectiveRange === 1 ? getCloseCombatAttackDestination(chosenUnit, chosenTarget) : null;
+    if (closeCombatDestination) {
+      return {
+        type: "attack",
+        score: 0,
+        unitId: chosenUnit.id,
+        targetId: chosenTarget.id,
+        moveTo: closeCombatDestination,
+        reason: "forced a close attack"
+      };
+    }
+
+    const fallbackTile = getReachableTiles(chosenUnit, battleUnits)
+      .filter((tile) => tile.x !== chosenUnit.x || tile.y !== chosenUnit.y)
+      .sort((tileA, tileB) => {
+        const distanceA = Math.abs(tileA.x - chosenTarget.x) + Math.abs(tileA.y - chosenTarget.y);
+        const distanceB = Math.abs(tileB.x - chosenTarget.x) + Math.abs(tileB.y - chosenTarget.y);
+        if (distanceA !== distanceB) return distanceA - distanceB;
+
+        const terrainA = getTerrainModifiers({ ...chosenUnit, x: tileA.x, y: tileA.y }, getTerrainAt(battlefieldTerrain, tileA.x, tileA.y));
+        const terrainB = getTerrainModifiers({ ...chosenUnit, x: tileB.x, y: tileB.y }, getTerrainAt(battlefieldTerrain, tileB.x, tileB.y));
+        return (terrainB.attackMultiplier + terrainB.moveDelta * 0.1) - (terrainA.attackMultiplier + terrainA.moveDelta * 0.1);
+      })[0];
+
+    if (!fallbackTile) return null;
+
+    return {
+      type: "move",
+      score: 0,
+      unitId: chosenUnit.id,
+      targetId: chosenTarget.id,
+      moveTo: { x: fallbackTile.x, y: fallbackTile.y },
+      reason: "advanced on the nearest target"
+    };
+  };
+  const decideAiAction = (currentTeam: TeamName, battleUnits: any[]) => {
+    const aiUnits = battleUnits.filter((unit) => unit.team === currentTeam && unit.hp > 0);
+    const enemyUnits = battleUnits.filter((unit) => unit.team !== currentTeam && unit.hp > 0);
+    if (aiUnits.length === 0 || enemyUnits.length === 0) return null;
+
+    const enemyCentroid = getEnemyCentroid(enemyUnits);
+    let bestDecision: any = null;
+
+    aiUnits.forEach((unit) => {
+      const targetCandidates = getAiTargetCandidates(unit, enemyUnits, battleUnits).slice(0, Math.min(4, enemyUnits.length));
+      if (targetCandidates.length === 0) return;
+
+      const reachableTiles = getReachableTiles(unit, battleUnits);
+
+      targetCandidates.forEach(({ target, score: targetPriority }) => {
+        const effectiveRange = getRangeForBattle(unit);
+        const canAttackAtRange = isInRange(unit, target, effectiveRange);
+        const closeCombatDestination = effectiveRange === 1 && !canAttackAtRange
+          ? getCloseCombatAttackDestination(unit, target)
+          : null;
+
+        if (canAttackAtRange || closeCombatDestination) {
+          const simulatedAttacker = closeCombatDestination ? { ...unit, ...closeCombatDestination } : unit;
+          const attackOutcome = getAttackDamage(simulatedAttacker, target, battleUnits, terrainEffectMap);
+          let attackScore = targetPriority + attackOutcome.damage / 3;
+          if (attackOutcome.damage >= target.hp) attackScore += 180;
+          if (attackOutcome.hasAdvantage) attackScore += 28;
+          if (attackOutcome.abilityTags.length > 0) attackScore += attackOutcome.abilityTags.length * 10;
+          if (closeCombatDestination) attackScore += 26;
+          if (isLeaderRole(target.role)) attackScore += 20;
+
+          if (!bestDecision || attackScore > bestDecision.score) {
+            bestDecision = {
+              type: "attack",
+              score: attackScore,
+              unitId: unit.id,
+              targetId: target.id,
+              moveTo: closeCombatDestination,
+              reason: closeCombatDestination ? "closed in for a melee strike" : "pressed an attack window"
+            };
+          }
+        }
+
+        reachableTiles.forEach((tile) => {
+          if (tile.x === unit.x && tile.y === unit.y) return;
+
+          const simulatedUnit = { ...unit, x: tile.x, y: tile.y };
+          const tileTerrain = getTerrainAt(battlefieldTerrain, tile.x, tile.y);
+          const tileModifiers = getTerrainModifiers(simulatedUnit, tileTerrain);
+          const currentTargetDistance = Math.abs(unit.x - target.x) + Math.abs(unit.y - target.y);
+          const targetDistance = Math.abs(tile.x - target.x) + Math.abs(tile.y - target.y);
+          const currentNearestEnemyDistance = getNearestDistanceToEnemies(unit, enemyUnits);
+          const nearestEnemyDistance = getNearestDistanceToEnemies(tile, enemyUnits);
+          const adjacentFriendlyCount = getAdjacentFriendlyCountAt(unit, tile, battleUnits);
+          const threat = getEnemyThreatOnTile(tile, enemyUnits);
+          const flankOffset = Math.abs(tile.x - enemyCentroid.x);
+          const pressureDistance = getAiPressureDistance(simulatedUnit);
+          const closesDistance = currentTargetDistance - targetDistance;
+          const createsAttackPressure = targetDistance <= pressureDistance;
+          const pressuresEnemyLine = nearestEnemyDistance <= pressureDistance;
+          const nearbyEnemyCount = enemyUnits.filter((enemyUnit) => Math.abs(enemyUnit.x - tile.x) + Math.abs(enemyUnit.y - tile.y) <= pressureDistance).length;
+          const role = getAiFormationRole(unit);
+          let moveScore = targetPriority * 0.2;
+          moveScore += (tileModifiers.attackMultiplier - 1) * 90;
+          moveScore += tileModifiers.moveDelta * 8;
+          moveScore += closesDistance * 32;
+          moveScore += (currentNearestEnemyDistance - nearestEnemyDistance) * 14;
+          moveScore += nearbyEnemyCount * 6;
+          if (createsAttackPressure) moveScore += role === "support" ? 24 : 44;
+          if (pressuresEnemyLine && role !== "leader") moveScore += 18;
+
+          if (role === "frontline") {
+            moveScore += 58 - targetDistance * 9;
+            moveScore += adjacentFriendlyCount * 8;
+            if (nearestEnemyDistance <= 2) moveScore += 18;
+            if (tileTerrain === "forest" || tileTerrain === "hill") moveScore += 14;
+          } else if (role === "support") {
+            const desiredDistance = Math.min(Math.max(2, getRangeForBattle(simulatedUnit) - 1), 3);
+            moveScore += 42 - Math.abs(targetDistance - desiredDistance) * 9;
+            moveScore += adjacentFriendlyCount * 6;
+            if (tileTerrain === "hill") moveScore += 28;
+            if (tileTerrain === "forest") moveScore += 10;
+            moveScore -= threat * 8;
+          } else if (role === "flank") {
+            moveScore += 52 - targetDistance * 8;
+            moveScore += flankOffset * 7;
+            if (tileTerrain === "plain") moveScore += 24;
+            if (tileTerrain === "forest" || tileTerrain === "river") moveScore -= 18;
+            moveScore -= Math.max(0, adjacentFriendlyCount - 1) * 6;
+          } else if (role === "leader") {
+            moveScore += 34 - Math.abs(targetDistance - 2) * 9;
+            moveScore += adjacentFriendlyCount * 8;
+            moveScore -= threat * 14;
+            if (nearestEnemyDistance <= 1) moveScore -= 40;
+          }
+
+          if (targetDistance >= currentTargetDistance && role !== "leader") {
+            moveScore -= 42;
+          }
+
+          if (closesDistance <= 0 && role !== "leader") {
+            moveScore -= 18;
+          }
+
+          if (!bestDecision || moveScore > bestDecision.score) {
+            bestDecision = {
+              type: "move",
+              score: moveScore,
+              unitId: unit.id,
+              moveTo: { x: tile.x, y: tile.y },
+              targetId: target.id,
+              reason:
+                role === "support"
+                  ? "repositioned to support the line"
+                  : role === "flank"
+                    ? "shifted toward the flank"
+                    : role === "leader"
+                      ? "tightened the command position"
+                      : "advanced to pressure the enemy line"
+            };
+          }
+        });
+      });
+    });
+
+    return bestDecision ?? getFallbackAiAction(currentTeam, battleUnits);
+  };
+  const buildAttackLogLine = (
+    attacker: any,
+    defender: any,
+    attackOutcome: ReturnType<typeof getAttackDamage>,
+    options: { closedIn?: boolean; remainingAmmo?: number } = {}
+  ) => {
+    const tags = [
+      attackOutcome.hasTerrainModifier ? attackOutcome.terrainLabel : null,
+      attackOutcome.hasLeaderAura ? "Leader Aura" : null,
+      attackOutcome.hasAdvantage ? `${TROOP_MECHANIC_LABELS[attackOutcome.attackerType]} > ${TROOP_MECHANIC_LABELS[attackOutcome.defenderType]}` : null,
+      ...(attackOutcome.abilityTags ?? [])
+    ].filter(Boolean);
+
+    return `${attacker.name} (${attacker.team})${options.closedIn ? " closed in and" : ""} attacked ${defender.name} (${defender.team}) for ${attackOutcome.damage}${
+      tags.length > 0 ? ` [${tags.join(" | ")}]` : ""
+    }${typeof options.remainingAmmo === "number" ? ` (${options.remainingAmmo} shots remaining)` : ""}`;
+  };
   const selected = getUnitById(selectedId);
   const inspectedUnit = getUnitById(inspectedUnitId);
   const currentBattleUnits = isSetupMode ? customUnits : units;
   const battlefieldSize = gameOptions.battlefieldSize;
-  const visibleBattleLog = Array.isArray(log) ? log.filter(isCombatLogEntry) : [];
+  const visibleBattleLog = Array.isArray(log) ? log.slice(0, 80) : [];
   const terrainEffectMap = gameOptions.terrainEffectsEnabled ? battlefieldTerrain : [];
   const inspectedTerrainType = inspectedUnit ? getTerrainAt(battlefieldTerrain, inspectedUnit.x, inspectedUnit.y) : null;
   const inspectedTileTerrainType = inspectedTile ? getTerrainAt(battlefieldTerrain, inspectedTile.x, inspectedTile.y) : null;
@@ -1985,15 +3142,21 @@ function CodeConq() {
     ? TERRAIN_MECHANICS_INFO.find((terrainInfo) => terrainInfo.terrain === inspectedTileTerrainType) ?? null
     : null;
   const inspectedEffectiveAttack = inspectedUnit ? getDisplayedAttack(inspectedUnit, currentBattleUnits, terrainEffectMap) : 0;
-  const selectedEffectiveAttack = selected ? getDisplayedAttack(selected, currentBattleUnits, terrainEffectMap) : 0;
-  const selectedTerrainType = selected ? getTerrainAt(battlefieldTerrain, selected.x, selected.y) : null;
+  const inspectedEffectiveRange = inspectedUnit
+    ? (gameOptions.terrainEffectsEnabled ? getEffectiveRange(inspectedUnit, battlefieldTerrain) : inspectedUnit.range)
+    : 0;
   const selectedEffectiveMove = selected ? (gameOptions.terrainEffectsEnabled ? getEffectiveMove(selected, battlefieldTerrain) : selected.move) : 0;
+  const selectedEffectiveRange = selected ? getRangeForBattle(selected) : 0;
   const inspectedEffectNotes = inspectedUnit
     ? getUnitEffectNotes(inspectedUnit, currentBattleUnits, battlefieldTerrain, gameOptions.terrainEffectsEnabled)
     : [];
-  const selectedEffectNotes = selected
-    ? getUnitEffectNotes(selected, currentBattleUnits, battlefieldTerrain, gameOptions.terrainEffectsEnabled)
+  const focusedBattleUnit = inspectedUnit ?? selected ?? null;
+  const focusedUnitAbilities = focusedBattleUnit ? getTroopAbilities(focusedBattleUnit.role) : [];
+  const focusedTerrainType = focusedBattleUnit ? getTerrainAt(battlefieldTerrain, focusedBattleUnit.x, focusedBattleUnit.y) : null;
+  const focusedEffectNotes = focusedBattleUnit
+    ? getUnitEffectNotes(focusedBattleUnit, currentBattleUnits, battlefieldTerrain, gameOptions.terrainEffectsEnabled)
     : [];
+  const focusedFeedbackKinds = focusedBattleUnit ? (cellFeedback[`${focusedBattleUnit.x},${focusedBattleUnit.y}`] ?? []) : [];
   const useEightByEightViewport = !isBattlefieldFullscreen;
   const useFullscreenNavigationViewport = isBattlefieldFullscreen && battlefieldSize > 14;
   const showGridNavigation = (!isBattlefieldFullscreen && battlefieldSize > 8) || useFullscreenNavigationViewport;
@@ -2010,6 +3173,49 @@ function CodeConq() {
   })();
   const passiveTeams = (isSetupMode ? setupTeamsInPlay : aliveBattleTeams).filter((team, index, arr) => arr.indexOf(team) === index);
   const setupTeams: TeamName[] = gameMode === "multiplayer" ? [multiplayerTeams[0], multiplayerTeams[1]] : [...ALL_TEAMS];
+  const iconActionButtonClass = "battle-button flex h-10 w-10 items-center justify-center p-0 text-lg font-semibold";
+  const troopReferenceStats = useMemo(() => {
+    const references: Record<string, TroopReferenceStats> = {};
+
+    Object.values(AVAILABLE_TROOPS).flat().forEach((troop) => {
+      if (!references[troop.role]) {
+        references[troop.role] = getTroopReferenceStats(troop.role);
+      }
+    });
+
+    return references;
+  }, []);
+  const allReferenceTroops = useMemo(() => (
+    ALL_TEAMS.flatMap((team) =>
+      AVAILABLE_TROOPS[team].map((troop) => {
+        const referenceStats = troopReferenceStats[troop.role];
+        const troopTypeDisplay = getTroopTypeDisplay({
+          role: troop.role,
+          name: troop.name,
+          ammo: referenceStats.ammo,
+          range: referenceStats.range,
+          move: referenceStats.move
+        });
+
+        return {
+          ...troop,
+          team,
+          referenceStats,
+          troopTypeDisplay,
+          searchKeywords: getTroopSearchKeywords(
+            {
+              role: troop.role,
+              name: troop.name,
+              ammo: referenceStats.ammo,
+              range: referenceStats.range,
+              move: referenceStats.move
+            },
+            team
+          )
+        };
+      })
+    )
+  ), [troopReferenceStats]);
   const isTeamAllowedInSetup = (team: TeamName) => setupTeams.includes(team);
   const advanceAiTurn = (currentTeam: TeamName) => {
     const nextAiIndex = aiTeams.indexOf(currentTeam);
@@ -2065,9 +3271,9 @@ function CodeConq() {
     [...Array(battlefieldSize)].map((_, x) => {
       const target = getUnit(x, y);
       const distance = Math.abs(x - selected.x) + Math.abs(y - selected.y);
-      const canAttackFromRange = target && target.team !== selected.team && distance <= selected.range;
+      const canAttackFromRange = target && target.team !== selected.team && distance <= selectedEffectiveRange;
       const canCloseForAttack =
-        target && target.team !== selected.team && selected.range === 1 && Boolean(getCloseCombatAttackDestination(selected, target));
+        target && target.team !== selected.team && selectedEffectiveRange === 1 && Boolean(getCloseCombatAttackDestination(selected, target));
       return (canAttackFromRange || canCloseForAttack) ? `${x},${y}` : null;
     }).filter(Boolean)
   ) : [];
@@ -2159,52 +3365,92 @@ function CodeConq() {
         setSelectedId(clicked.id);
       }
     } else if (selected) {
-      const meleeAttackDestination = clicked && clicked.team !== selected.team && selected.range === 1 && !isInRange(selected, clicked, selected.range)
+      const meleeAttackDestination = clicked && clicked.team !== selected.team && selectedEffectiveRange === 1 && !isInRange(selected, clicked, selectedEffectiveRange)
         ? getCloseCombatAttackDestination(selected, clicked)
         : null;
 
-      if (clicked && clicked.team !== selected.team && (isInRange(selected, clicked, selected.range) || meleeAttackDestination)) {
+      if (clicked && clicked.team !== selected.team && (isInRange(selected, clicked, selectedEffectiveRange) || meleeAttackDestination)) {
         // Check if target is alive
         if (clicked.hp <= 0) {
           setLog((prevLog) => [`${clicked.name} is already dead!`, ...prevLog]);
           return;
         }
 
+        const attackerPosition = meleeAttackDestination ? { x: meleeAttackDestination.x, y: meleeAttackDestination.y } : null;
+        const attackingUnit = attackerPosition ? { ...selected, ...attackerPosition } : selected;
+        const nextClickedHp = clicked.hp;
         if (meleeAttackDestination) {
-          selected.x = meleeAttackDestination.x;
-          selected.y = meleeAttackDestination.y;
+          attackingUnit.x = meleeAttackDestination.x;
+          attackingUnit.y = meleeAttackDestination.y;
         }
         
         // Attack enemy with troop-mechanic matchup bonus
-        const attackOutcome = getAttackDamage(selected, clicked, units, terrainEffectMap);
+        const attackOutcome = getAttackDamage(attackingUnit, clicked, units, terrainEffectMap);
         const dmg = attackOutcome.damage;
-        clicked.hp -= dmg;
+        const updatedTargetHp = nextClickedHp - dmg;
+        const nextAmmo = selected.ammo && selected.ammo > 0 ? selected.ammo - 1 : selected.ammo;
+        const runsOutOfAmmo = Boolean(selected.ammo && selected.ammo > 0 && nextAmmo === 0);
+        const usedProjectileAttack = Boolean(selected.ammo && selected.ammo > 0);
         
         // If this is a ranged attack, reduce ammunition
         if (selected.ammo && selected.ammo > 0) {
-          selected.ammo -= 1;
           setLog((prevLog) => [
-            `${selected.name} (${selected.team}) attacked ${clicked.name} (${clicked.team}) for ${dmg}${attackOutcome.hasTerrainModifier ? ` [${attackOutcome.terrainLabel}]` : ""}${attackOutcome.hasLeaderAura ? " [Leader Aura]" : ""}${attackOutcome.hasAdvantage ? ` [${TROOP_MECHANIC_LABELS[attackOutcome.attackerType]} > ${TROOP_MECHANIC_LABELS[attackOutcome.defenderType]}]` : ""} (${selected.ammo} shots remaining)`,
+            buildAttackLogLine(attackingUnit, clicked, attackOutcome, { remainingAmmo: nextAmmo ?? 0 }),
             ...prevLog
           ]);
           
           // If out of ammo, switch to melee
-          if (selected.ammo === 0) {
-            selected.range = 1; // Switch to melee range
-            setLog((prevLog) => [`${selected.name} is out of ammo! Switching to melee combat.`, ...prevLog]);
+          if (runsOutOfAmmo) {
+            setLog((prevLog) => [`${selected.name} is out of ammo! Switching to melee combat at half attack.`, ...prevLog]);
           }
         } else {
           setLog((prevLog) => [
-            `${selected.name} (${selected.team})${meleeAttackDestination ? " closed in and" : ""} attacked ${clicked.name} (${clicked.team}) for ${dmg}${attackOutcome.hasTerrainModifier ? ` [${attackOutcome.terrainLabel}]` : ""}${attackOutcome.hasLeaderAura ? " [Leader Aura]" : ""}${attackOutcome.hasAdvantage ? ` [${TROOP_MECHANIC_LABELS[attackOutcome.attackerType]} > ${TROOP_MECHANIC_LABELS[attackOutcome.defenderType]}]` : ""}`,
+            buildAttackLogLine(attackingUnit, clicked, attackOutcome, { closedIn: Boolean(meleeAttackDestination) }),
             ...prevLog
           ]);
         }
+
+        if (attackOutcome.abilityTags.includes("Charge")) {
+          setLog((prevLog) => [`${attackingUnit.name} (${attackingUnit.team}) crashed into the line with a charge!`, ...prevLog]);
+        }
+
+        if (updatedTargetHp > 0 && updatedTargetHp <= Math.ceil(clicked.maxHp * 0.35)) {
+          setLog((prevLog) => [`${clicked.name} (${clicked.team}) is shaken and losing morale!`, ...prevLog]);
+        }
+
+        setUnits((prev) =>
+          prev
+            .map((unit: any) => {
+              if (unit.id === selected.id) {
+                return {
+                  ...unit,
+                  ...(attackerPosition ?? {}),
+                  ammo: nextAmmo,
+                  range: runsOutOfAmmo ? 1 : unit.range
+                };
+              }
+
+              if (unit.id === clicked.id) {
+                return {
+                  ...unit,
+                  hp: updatedTargetHp
+                };
+              }
+
+              return unit;
+            })
+            .filter((unit: any) => unit.hp > 0)
+        );
+
+        triggerAttackFeedback(attackingUnit, clicked, attackOutcome, {
+          attackerPosition,
+          updatedTargetHp,
+          isProjectile: usedProjectileAttack
+        });
         
         // Check if target was killed
-        if (clicked.hp <= 0) {
+        if (updatedTargetHp <= 0) {
           setLog((prevLog) => [`${clicked.name} (${clicked.team}) was killed!`, ...prevLog]);
-          // Immediately remove dead unit
-          setUnits((prev) => prev.filter((u: any) => u.hp > 0));
         }
         
         setSelectedId(null);
@@ -2400,6 +3646,7 @@ function CodeConq() {
     setIsInGameOptionsOpen(false);
     setIsInGameMechanicsOpen(false);
     setIsInGameGraphicsOpen(false);
+    setIsInGameUnitsOpen(false);
     setGridOrientation("north");
     setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
     const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
@@ -2422,6 +3669,7 @@ function CodeConq() {
     setIsInGameOptionsOpen(false);
     setIsInGameMechanicsOpen(false);
     setIsInGameGraphicsOpen(false);
+    setIsInGameUnitsOpen(false);
     setGridOrientation("north");
     setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
     setGameMode("multiplayer");
@@ -2461,6 +3709,7 @@ function CodeConq() {
     setIsInGameOptionsOpen(false);
     setIsInGameMechanicsOpen(false);
     setIsInGameGraphicsOpen(false);
+    setIsInGameUnitsOpen(false);
     setGridOrientation("north");
     setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
     setGameMode("custom-scenario");
@@ -2482,6 +3731,7 @@ function CodeConq() {
     setIsInGameOptionsOpen(false);
     setIsInGameMechanicsOpen(false);
     setIsInGameGraphicsOpen(false);
+    setIsInGameUnitsOpen(false);
     setGameMode(null);
     setIsSetupMode(false);
     setCurrentLevel("Level1");
@@ -2513,6 +3763,7 @@ function CodeConq() {
       setIsInGameOptionsOpen(false);
       setIsInGameMechanicsOpen(false);
       setIsInGameGraphicsOpen(false);
+      setIsInGameUnitsOpen(false);
       setGridOrientation("north");
       setGameMode("single-player");
       setIsSetupMode(false);
@@ -2535,6 +3786,7 @@ function CodeConq() {
       setIsInGameOptionsOpen(false);
       setIsInGameMechanicsOpen(false);
       setIsInGameGraphicsOpen(false);
+      setIsInGameUnitsOpen(false);
       setGridOrientation("north");
       setGameMode("multiplayer");
       setIsSetupMode(true);
@@ -2557,6 +3809,7 @@ function CodeConq() {
       setIsInGameOptionsOpen(false);
       setIsInGameMechanicsOpen(false);
       setIsInGameGraphicsOpen(false);
+      setIsInGameUnitsOpen(false);
       setGridOrientation("north");
       setGameMode("custom-scenario");
       setIsSetupMode(true);
@@ -2585,31 +3838,15 @@ function CodeConq() {
     return customUnits.filter(u => u.team === team).length;
   };
 
-  const getAutoDeployUnitCount = (size: BattlefieldSize) => {
-    if (size <= 8) return 12;
-    if (size <= 10) return 14;
-    if (size <= 14) return 16;
-    return 18;
+  const getAutoDeployUnitRange = (size: BattlefieldSize): [number, number] => {
+    if (size <= 8) return [12, 13];
+    if (size <= 10) return [13, 15];
+    return [14, 16];
   };
 
-  const getCompactDeploymentSlots = (
-    count: number,
-    size: BattlefieldSize,
-    side: "top" | "bottom"
-  ) => {
-    const columns = Math.min(6, Math.max(2, Math.ceil(Math.sqrt(count))));
-    const rows = Math.ceil(count / columns);
-    const startX = Math.max(0, Math.floor((size - columns) / 5));
-    const startY = side === "top" ? 0 : Math.max(0, size - rows - 0);
-
-    return Array.from({ length: count }, (_, index) => {
-      const row = Math.floor(index / columns);
-      const column = index % columns;
-      return {
-        x: startX + column,
-        y: startY + row
-      };
-    });
+  const getRandomAutoDeployUnitCount = (size: BattlefieldSize) => {
+    const [minimumUnits, maximumUnits] = getAutoDeployUnitRange(size);
+    return minimumUnits + Math.floor(Math.random() * (maximumUnits - minimumUnits + 1));
   };
 
   const getCustomAutoDeployOpponent = () =>
@@ -2617,15 +3854,217 @@ function CodeConq() {
       ? selectedTeam
       : ALL_TEAMS.find((team) => team !== playerTeam) ?? "Barbarians";
 
+  const shuffleArray = <T,>(items: T[]) => {
+    const shuffled = [...items];
+
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const randomIndex = Math.floor(Math.random() * (index + 1));
+      [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+    }
+
+    return shuffled;
+  };
+
+  const buildAutoDeployRoleCounts = (team: TeamName, totalUnits: number) => {
+    const availableTroops = AVAILABLE_TROOPS[team];
+    const leaderTroop = availableTroops.find((troop) => troop.Icon === "👑") ?? availableTroops[0];
+    const nonLeaderTroops = availableTroops.filter((troop) => troop.role !== leaderTroop.role);
+    const groupedCandidates = nonLeaderTroops
+      .map((troop) => {
+        const referenceStats = getTroopReferenceStats(troop.role);
+        const troopType = getTroopMechanicType({
+          role: troop.role,
+          name: troop.name,
+          ammo: referenceStats.ammo,
+          range: referenceStats.range,
+          move: referenceStats.move
+        });
+
+        return {
+          troop,
+          troopType
+        };
+      });
+
+    const desiredGroupCount = Math.max(2, Math.min(groupedCandidates.length, Math.round((totalUnits - 1) / 4)));
+    const candidatesByType = groupedCandidates.reduce<Record<TroopMechanicType, typeof groupedCandidates>>(
+      (groups, candidate) => {
+        groups[candidate.troopType].push(candidate);
+        return groups;
+      },
+      {
+        closecombat: [],
+        mounted: [],
+        ranged: [],
+        sieged: []
+      }
+    );
+    const randomTypeOrder = shuffleArray(["closecombat", "mounted", "ranged", "sieged"] as TroopMechanicType[]);
+    const roleGroups: typeof availableTroops = [];
+
+    while (roleGroups.length < desiredGroupCount) {
+      let addedGroupThisRound = false;
+
+      for (const troopType of randomTypeOrder) {
+        const nextCandidate = candidatesByType[troopType].shift();
+        if (!nextCandidate) continue;
+        roleGroups.push(nextCandidate.troop);
+        addedGroupThisRound = true;
+
+        if (roleGroups.length >= desiredGroupCount) break;
+      }
+
+      if (!addedGroupThisRound) break;
+    }
+
+    if (roleGroups.length < desiredGroupCount) {
+      const leftovers = shuffleArray(
+        Object.values(candidatesByType).flat().map(({ troop }) => troop)
+      );
+      roleGroups.push(...leftovers.slice(0, desiredGroupCount - roleGroups.length));
+    }
+
+    const counts = Array(roleGroups.length).fill(3);
+    let remaining = Math.max(0, totalUnits - 1 - counts.reduce((sum, current) => sum + current, 0));
+
+    while (remaining > 0 && roleGroups.length > 0) {
+      const eligibleIndexes = counts
+        .map((count, index) => (count < 7 ? index : -1))
+        .filter((index) => index >= 0);
+
+      if (eligibleIndexes.length === 0) break;
+
+      const chosenIndex = eligibleIndexes[Math.floor(Math.random() * eligibleIndexes.length)];
+      counts[chosenIndex] += 1;
+      remaining -= 1;
+    }
+
+    const roleCounts = roleGroups.flatMap((troop, index) =>
+      Array.from({ length: counts[index] }, () => troop)
+    );
+
+    return [leaderTroop, ...roleCounts].slice(0, totalUnits);
+  };
+
+  const getFormationColumns = (size: BattlefieldSize) => {
+    const flankWidth = size >= 10 ? 2 : 1;
+    const laneWidth = size >= 8 ? 1 : 0;
+    const leftFlankColumns = Array.from({ length: flankWidth }, (_, index) => index);
+    const rightFlankColumns = Array.from({ length: flankWidth }, (_, index) => size - flankWidth + index);
+    const leftLaneBoundary = flankWidth + laneWidth;
+    const rightLaneBoundary = size - flankWidth - laneWidth;
+    const centerColumns = Array.from(
+      { length: Math.max(0, rightLaneBoundary - leftLaneBoundary) },
+      (_, index) => leftLaneBoundary + index
+    );
+    const sortCentered = (columns: number[]) =>
+      [...columns].sort((a, b) => {
+        const center = (size - 1) / 2;
+        const distanceDifference = Math.abs(a - center) - Math.abs(b - center);
+        if (distanceDifference !== 0) return distanceDifference;
+        return a - b;
+      });
+
+    return {
+      frontCenterColumns: sortCentered(centerColumns),
+      backCenterColumns: sortCentered(centerColumns),
+      flankColumns: [...leftFlankColumns, ...rightFlankColumns]
+    };
+  };
+
+  const buildSlotPool = (rows: number[], columns: number[]) =>
+    rows.flatMap((row) => columns.map((column) => ({ x: column, y: row })));
+
+  const getAutoDeploySlots = (
+    troops: Array<{ role: string; name: string }>,
+    size: BattlefieldSize,
+    side: "top" | "bottom"
+  ) => {
+    const minimumFrontlineGap = 2;
+    const maxRowsPerArmy = Math.max(1, Math.floor((size - minimumFrontlineGap) / 2));
+    const frontRows =
+      side === "top"
+        ? Array.from({ length: maxRowsPerArmy }, (_, index) => maxRowsPerArmy - 1 - index)
+        : Array.from({ length: maxRowsPerArmy }, (_, index) => size - maxRowsPerArmy + index);
+    const backRows = [...frontRows].reverse();
+    const { frontCenterColumns, backCenterColumns, flankColumns } = getFormationColumns(size);
+    const frontCenterSlots = buildSlotPool(frontRows, frontCenterColumns);
+    const frontFlankSlots = buildSlotPool(frontRows, flankColumns);
+    const backCenterSlots = buildSlotPool(backRows, backCenterColumns);
+    const backFlankSlots = buildSlotPool(backRows, flankColumns);
+    const fallbackSlots = buildSlotPool(frontRows, Array.from({ length: size }, (_, index) => index));
+    const usedSlots = new Set<string>();
+    const takeNextSlot = (pools: TerrainPoint[][]) => {
+      for (const pool of pools) {
+        const nextSlot = pool.find((slot) => !usedSlots.has(`${slot.x},${slot.y}`));
+        if (!nextSlot) continue;
+        usedSlots.add(`${nextSlot.x},${nextSlot.y}`);
+        return nextSlot;
+      }
+
+      return { x: 0, y: frontRows[0] ?? 0 };
+    };
+
+    const decoratedTroops = troops.map((troop, index) => {
+      const referenceStats = getTroopReferenceStats(troop.role);
+      const troopType = getTroopMechanicType({
+        role: troop.role,
+        name: troop.name,
+        ammo: referenceStats.ammo,
+        range: referenceStats.range,
+        move: referenceStats.move
+      });
+
+      return {
+        troop,
+        index,
+        troopType,
+        isLeader: isLeaderRole(troop.role)
+      };
+    });
+
+    const slots = Array.from({ length: troops.length }, () => ({ x: 0, y: 0 }));
+    const assignTroops = (
+      troopFilter: (troop: (typeof decoratedTroops)[number]) => boolean,
+      preferredPools: TerrainPoint[][]
+    ) => {
+      decoratedTroops.filter(troopFilter).forEach((entry) => {
+        slots[entry.index] = takeNextSlot(preferredPools);
+      });
+    };
+
+    assignTroops(
+      (entry) => entry.isLeader,
+      [backCenterSlots, backFlankSlots, frontCenterSlots, fallbackSlots]
+    );
+    assignTroops(
+      (entry) => !entry.isLeader && entry.troopType === "closecombat",
+      [frontCenterSlots, frontFlankSlots, backCenterSlots, fallbackSlots]
+    );
+    assignTroops(
+      (entry) => !entry.isLeader && entry.troopType === "mounted",
+      [frontFlankSlots, backFlankSlots, frontCenterSlots, fallbackSlots]
+    );
+    assignTroops(
+      (entry) => !entry.isLeader && entry.troopType === "ranged",
+      [backCenterSlots, backFlankSlots, frontCenterSlots, fallbackSlots]
+    );
+    assignTroops(
+      (entry) => !entry.isLeader && entry.troopType === "sieged",
+      [backCenterSlots, backFlankSlots, fallbackSlots]
+    );
+
+    return slots;
+  };
+
   const createAutoDeployedArmy = (
     team: TeamName,
     side: "top" | "bottom",
-    size: BattlefieldSize
+    size: BattlefieldSize,
+    unitCount: number
   ) => {
-    const availableTroops = AVAILABLE_TROOPS[team];
-    const unitCount = Math.min(getAutoDeployUnitCount(size), availableTroops.length, 16);
-    const chosenTroops = availableTroops.slice(0, unitCount);
-    const slots = getCompactDeploymentSlots(chosenTroops.length, size, side);
+    const chosenTroops = buildAutoDeployRoleCounts(team, unitCount);
+    const slots = getAutoDeploySlots(chosenTroops, size, side);
 
     return chosenTroops.map((troop, index) => {
       const stats = generateTroopStats(troop.role);
@@ -2645,15 +4084,16 @@ function CodeConq() {
 
   const autoDeployCustomBattle = () => {
     const enemyTeam = getCustomAutoDeployOpponent();
-    const deployedPlayerArmy = createAutoDeployedArmy(playerTeam, "bottom", battlefieldSize);
-    const deployedEnemyArmy = createAutoDeployedArmy(enemyTeam, "top", battlefieldSize);
+    const unitCount = getRandomAutoDeployUnitCount(battlefieldSize);
+    const deployedPlayerArmy = createAutoDeployedArmy(playerTeam, "bottom", battlefieldSize, unitCount);
+    const deployedEnemyArmy = createAutoDeployedArmy(enemyTeam, "top", battlefieldSize, unitCount);
 
     setCustomUnits([...deployedEnemyArmy, ...deployedPlayerArmy]);
     setSelectedTeam(playerTeam);
     setDraggedTroop(null);
     setSelectedId(null);
     setLog((prev) => [
-      `Auto deployed ${playerTeam} versus ${enemyTeam} in tight formations on opposite sides.`,
+      `Auto deployed ${playerTeam} versus ${enemyTeam} with ${unitCount} troops per side, grouped formations, and a two-tile battle line gap.`,
       ...prev
     ]);
   };
@@ -2671,122 +4111,109 @@ function CodeConq() {
     
     const timeout = setTimeout(() => {
       const currentTeam = turn;
-      const enemies = units.filter((u: any) => u.team === currentTeam);
-      const players = units.filter((u: any) => u.team !== currentTeam);
+      const aiDecision = decideAiAction(currentTeam as TeamName, units);
       
-      if (enemies.length === 0 || players.length === 0) {
+      if (!aiDecision) {
         advanceAiTurn(currentTeam as TeamName);
         return;
       }
 
-      // Find the current team's unit that's closest to any enemy
-      let bestEnemy = enemies[0];
-      let bestDistance = Infinity;
-      
-      enemies.forEach((enemy) => {
-        const closestPlayer = players.reduce((prev, curr) => {
-          const prevDist = Math.abs(enemy.x - prev.x) + Math.abs(enemy.y - prev.y);
-          const currDist = Math.abs(enemy.x - curr.x) + Math.abs(enemy.y - curr.y);
-          return currDist < prevDist ? curr : prev;
+      if (aiDecision.type === "attack") {
+        const actingUnit = units.find((unit: any) => unit.id === aiDecision.unitId);
+        const targetUnit = units.find((unit: any) => unit.id === aiDecision.targetId);
+
+        if (!actingUnit || !targetUnit) {
+          advanceAiTurn(currentTeam as TeamName);
+          return;
+        }
+
+        const movedAttacker = aiDecision.moveTo ? { ...actingUnit, ...aiDecision.moveTo } : actingUnit;
+        const attackOutcome = getAttackDamage(movedAttacker, targetUnit, units, terrainEffectMap);
+        const remainingAmmo = actingUnit.ammo && actingUnit.ammo > 0 ? actingUnit.ammo - 1 : actingUnit.ammo;
+        const updatedTargetHp = targetUnit.hp - attackOutcome.damage;
+        const runsOutOfAmmo = Boolean(actingUnit.ammo && actingUnit.ammo > 0 && remainingAmmo === 0);
+        const usedProjectileAttack = Boolean(actingUnit.ammo && actingUnit.ammo > 0);
+
+        setUnits((prev) =>
+          prev
+            .map((unit: any) => {
+              if (unit.id === actingUnit.id) {
+                return {
+                  ...unit,
+                  ...(aiDecision.moveTo ?? {}),
+                  ammo: remainingAmmo,
+                  range: runsOutOfAmmo ? 1 : unit.range
+                };
+              }
+
+              if (unit.id === targetUnit.id) {
+                return {
+                  ...unit,
+                  hp: updatedTargetHp
+                };
+              }
+
+              return unit;
+            })
+            .filter((unit: any) => unit.hp > 0)
+        );
+
+        triggerAttackFeedback(movedAttacker, targetUnit, attackOutcome, {
+          attackerPosition: aiDecision.moveTo ?? null,
+          updatedTargetHp,
+          isProjectile: usedProjectileAttack
         });
-        
-        const distance = Math.abs(enemy.x - closestPlayer.x) + Math.abs(enemy.y - closestPlayer.y);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestEnemy = enemy;
-        }
-      });
-      
-      // Move or attack with the best unit
-      const target = players.reduce((prev, curr) => {
-        const prevDist = Math.abs(bestEnemy.x - prev.x) + Math.abs(bestEnemy.y - prev.y);
-        const currDist = Math.abs(bestEnemy.x - curr.x) + Math.abs(bestEnemy.y - curr.y);
-        return currDist < prevDist ? curr : prev;
-      });
-      
-      // Check if target is alive
-      if (target.hp <= 0) {
-        advanceAiTurn(currentTeam as TeamName);
-        return;
-      }
-      
-      const distX = target.x - bestEnemy.x;
-      const distY = target.y - bestEnemy.y;
-      
-      if (Math.abs(distX) + Math.abs(distY) <= bestEnemy.range) {
-        // Attack if in range
-        const attackOutcome = getAttackDamage(bestEnemy, target, units, terrainEffectMap);
-        target.hp -= attackOutcome.damage;
-        
-        // Check if target was killed
-        if (target.hp <= 0) {
-          setLog((log) => [`${target.name} (${target.team}) was killed by ${bestEnemy.name} (${currentTeam})!`, ...log]);
-          // Immediately remove dead unit
-          setUnits((prev) => prev.filter((u: any) => u.hp > 0));
-        }
-        
-        // If this is a ranged attack, reduce ammunition
-        if (bestEnemy.ammo && bestEnemy.ammo > 0) {
-          bestEnemy.ammo -= 1;
-          setLog((log) => [
-            `${bestEnemy.name} (${currentTeam}) attacked ${target.name} (${target.team}) for ${attackOutcome.damage}${attackOutcome.hasTerrainModifier ? ` [${attackOutcome.terrainLabel}]` : ""}${attackOutcome.hasLeaderAura ? " [Leader Aura]" : ""}${attackOutcome.hasAdvantage ? ` [${TROOP_MECHANIC_LABELS[attackOutcome.attackerType]} > ${TROOP_MECHANIC_LABELS[attackOutcome.defenderType]}]` : ""} (${bestEnemy.ammo} shots remaining)`,
-            ...log
-          ]);
-          
-          // If out of ammo, switch to melee
-          if (bestEnemy.ammo === 0) {
-            bestEnemy.range = 1; // Switch to melee range
-            setLog((log) => [`${bestEnemy.name} is out of ammo! Switching to melee combat.`, ...log]);
-          }
-        } else {
-          setLog((log) => [
-            `${bestEnemy.name} (${currentTeam}) attacked ${target.name} (${target.team}) for ${attackOutcome.damage}${attackOutcome.hasTerrainModifier ? ` [${attackOutcome.terrainLabel}]` : ""}${attackOutcome.hasLeaderAura ? " [Leader Aura]" : ""}${attackOutcome.hasAdvantage ? ` [${TROOP_MECHANIC_LABELS[attackOutcome.attackerType]} > ${TROOP_MECHANIC_LABELS[attackOutcome.defenderType]}]` : ""}`,
-            ...log
-          ]);
-        }
-      } else {
-        // Move towards enemy
-        const effectiveMove = gameOptions.terrainEffectsEnabled ? getEffectiveMove(bestEnemy, battlefieldTerrain) : bestEnemy.move;
-        let newX = bestEnemy.x;
-        let newY = bestEnemy.y;
 
-        for (let step = 0; step < effectiveMove; step += 1) {
-          const remainingDistX = target.x - newX;
-          const remainingDistY = target.y - newY;
-          let moveX = 0;
-          let moveY = 0;
+        setLog((existingLog) => {
+          const nextLog = [
+            buildAttackLogLine(movedAttacker, targetUnit, attackOutcome, {
+              closedIn: Boolean(aiDecision.moveTo),
+              remainingAmmo: actingUnit.ammo && actingUnit.ammo > 0 ? remainingAmmo ?? 0 : undefined
+            }),
+            `${actingUnit.name} (${currentTeam}) ${aiDecision.reason}.`,
+            ...existingLog
+          ];
 
-          if (Math.abs(remainingDistX) > Math.abs(remainingDistY)) {
-            moveX = Math.sign(remainingDistX);
-          } else {
-            moveY = Math.sign(remainingDistY);
+          if (runsOutOfAmmo) {
+            nextLog.unshift(`${actingUnit.name} is out of ammo! Switching to melee combat.`);
           }
 
-          const candidateX = newX + moveX;
-          const candidateY = newY + moveY;
-          const alreadyOccupied = units.some((u: any) => u.id !== bestEnemy.id && u.x === candidateX && u.y === candidateY);
+          if (updatedTargetHp <= 0) {
+            nextLog.unshift(`${targetUnit.name} (${targetUnit.team}) was killed!`);
+          }
 
-          if (!isWithinBattlefield(candidateX, candidateY) || alreadyOccupied) break;
+          return nextLog;
+        });
 
-          newX = candidateX;
-          newY = candidateY;
+        if (attackOutcome.abilityTags.includes("Charge")) {
+          setLog((existingLog) => [`${actingUnit.name} (${currentTeam}) crashed into the line with a charge!`, ...existingLog]);
         }
 
-        if (newX !== bestEnemy.x || newY !== bestEnemy.y) {
-          bestEnemy.x = newX;
-          bestEnemy.y = newY;
-          const terrainLabel = TERRAIN_LABELS[getTerrainAt(battlefieldTerrain, newX, newY)];
-          setLog((log) => [`${bestEnemy.name} (${currentTeam}) moved onto ${terrainLabel}`, ...log]);
+        if (updatedTargetHp > 0 && updatedTargetHp <= Math.ceil(targetUnit.maxHp * 0.35)) {
+          setLog((existingLog) => [`${targetUnit.name} (${targetUnit.team}) is shaken and losing morale!`, ...existingLog]);
+        }
+      } else if (aiDecision.type === "move" && aiDecision.moveTo) {
+        const actingUnit = units.find((unit: any) => unit.id === aiDecision.unitId);
+        if (actingUnit) {
+          const terrainLabel = TERRAIN_LABELS[getTerrainAt(battlefieldTerrain, aiDecision.moveTo.x, aiDecision.moveTo.y)];
+          setUnits((prev) =>
+            prev.map((unit: any) =>
+              unit.id === actingUnit.id ? { ...unit, x: aiDecision.moveTo.x, y: aiDecision.moveTo.y } : unit
+            )
+          );
+          setLog((existingLog) => [
+            `${actingUnit.name} (${currentTeam}) ${aiDecision.reason}.`,
+            `${actingUnit.name} (${currentTeam}) moved onto ${terrainLabel}`,
+            ...existingLog
+          ]);
         }
       }
-      
-      setUnits([...units].filter((u: any) => u.hp > 0));
-      
+
       advanceAiTurn(currentTeam as TeamName);
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [turn, units, isSetupMode, gameMode, aiTeams, playerTeam, battlefieldTerrain]);
+  }, [turn, units, isSetupMode, gameMode, aiTeams, playerTeam, battlefieldTerrain, terrainEffectMap]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -2947,16 +4374,49 @@ function CodeConq() {
   const openInGameOptions = () => {
     setIsGameMenuOpen(false);
     setIsInGameOptionsOpen(true);
+    setIsInGameMechanicsOpen(false);
+    setIsInGameGraphicsOpen(false);
+    setIsInGameUnitsOpen(false);
   };
 
   const openInGameMechanics = () => {
     setIsGameMenuOpen(false);
+    setIsInGameOptionsOpen(false);
+    setActiveMechanicsSlide(0);
     setIsInGameMechanicsOpen(true);
+    setIsInGameGraphicsOpen(false);
+    setIsInGameUnitsOpen(false);
   };
 
   const openInGameGraphics = () => {
     setIsGameMenuOpen(false);
+    setIsInGameOptionsOpen(false);
+    setIsInGameMechanicsOpen(false);
     setIsInGameGraphicsOpen(true);
+    setIsInGameUnitsOpen(false);
+  };
+
+  const openInGameUnits = () => {
+    setIsGameMenuOpen(false);
+    setIsInGameOptionsOpen(false);
+    setIsInGameMechanicsOpen(false);
+    setIsInGameGraphicsOpen(false);
+    setUnitsReferenceTeam(activeTeam as TeamName);
+    setUnitsReferenceQuery("");
+    setIsInGameUnitsOpen(true);
+  };
+
+  const backToInGameMenu = () => {
+    setIsInGameOptionsOpen(false);
+    setIsInGameMechanicsOpen(false);
+    setIsInGameGraphicsOpen(false);
+    setIsInGameUnitsOpen(false);
+    setIsGameMenuOpen(true);
+  };
+
+  const dismissFocusedBattlePanel = () => {
+    setSelectedId(null);
+    setInspectedUnitId(null);
   };
 
   const renderGameOptionsContent = () => (
@@ -2969,6 +4429,12 @@ function CodeConq() {
             className={`battle-button w-full px-4 py-3 text-sm font-semibold ${gameOptions.musicEnabled ? "bg-emerald-600 hover:bg-emerald-700" : "bg-gray-700 hover:bg-gray-800"}`}
           >
             {gameOptions.musicEnabled ? "Music: On" : "Music: Off"}
+          </button>
+          <button
+            onClick={() => toggleOption("sfxEnabled")}
+            className={`battle-button w-full px-4 py-3 text-sm font-semibold ${gameOptions.sfxEnabled ? "bg-cyan-600 hover:bg-cyan-700" : "bg-gray-700 hover:bg-gray-800"}`}
+          >
+            {gameOptions.sfxEnabled ? "Battle SFX: On" : "Battle SFX: Off"}
           </button>
           <button
             onClick={() => toggleOption("showMoveHighlights")}
@@ -2993,12 +4459,6 @@ function CodeConq() {
             className={`battle-button w-full px-4 py-3 text-sm font-semibold ${gameOptions.showTurnBanner ? "bg-yellow-600 hover:bg-yellow-700" : "bg-gray-700 hover:bg-gray-800"}`}
           >
             {gameOptions.showTurnBanner ? "Turn Banner: On" : "Turn Banner: Off"}
-          </button>
-          <button
-            onClick={() => toggleOption("showUnitPanel")}
-            className={`battle-button w-full px-4 py-3 text-sm font-semibold ${gameOptions.showUnitPanel ? "bg-purple-600 hover:bg-purple-700" : "bg-gray-700 hover:bg-gray-800"}`}
-          >
-            {gameOptions.showUnitPanel ? "Unit Panel: On" : "Unit Panel: Off"}
           </button>
           <div className="bg-black bg-opacity-20 border border-yellow-700 rounded-lg px-4 py-3">
             <label htmlFor="battlefield-size" className="block text-yellow-200 text-sm font-semibold mb-2">
@@ -3101,83 +4561,522 @@ function CodeConq() {
     </div>
   );
 
-  const renderMechanicsContent = () => (
-    <div className="text-left bg-black bg-opacity-20 rounded-lg border border-yellow-700 p-4">
-      <h3 className="text-yellow-200 font-bold mb-3 text-lg border-b border-yellow-600 pb-2">Mechanics of the Game</h3>
-      <div className="grid gap-3">
-        {GAME_MECHANICS_INFO.map((mechanic) => (
-          <div key={mechanic.title} className="rounded-lg border border-yellow-700 bg-black bg-opacity-20 px-4 py-3">
-            <div className="text-yellow-200 font-semibold text-sm sm:text-base">{mechanic.title}</div>
-            <p className="text-yellow-100 text-sm mt-1 leading-relaxed">{mechanic.description}</p>
-          </div>
-        ))}
-        <div className="rounded-lg border border-yellow-700 bg-black bg-opacity-20 px-4 py-3">
-          <div className="text-yellow-200 font-semibold text-sm sm:text-base">Troop Type Reference</div>
-          <p className="text-yellow-100 text-sm mt-1 leading-relaxed">
-            Every unit belongs to one battlefield type. Matchups and terrain bonuses are built around these roles.
-          </p>
-          <div className="grid gap-3 mt-3">
-            {TROOP_MECHANICS_INFO.map((troopInfo) => (
-              <div key={troopInfo.type} className="rounded-lg border border-yellow-700/60 bg-black/20 px-3 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-yellow-200 font-semibold">
-                    <span className="text-cyan-300 mr-2">{TROOP_MECHANIC_ICONS[troopInfo.type]}</span>
-                    {TROOP_MECHANIC_LABELS[troopInfo.type]}
-                  </div>
-                  <span className="rounded-full border border-yellow-700 bg-black/20 px-2 py-0.5 text-[11px] uppercase tracking-wide text-yellow-100">
-                    {troopInfo.type}
-                  </span>
+  const mechanicsSections = [
+    {
+      key: "core",
+      title: "Core Battle Rules",
+      subtitle: "The systems you should expect to matter every round.",
+      badge: "Always active",
+      badgeClass: "border-yellow-700/60 bg-yellow-500/10 text-yellow-100",
+      tabClass: "border-yellow-700/45 bg-yellow-500/10 text-yellow-100",
+      panel: (
+        <div className="space-y-3">
+          {GAME_MECHANICS_INFO.map((mechanic, index) => (
+            <div key={mechanic.title} className="rounded-2xl border border-yellow-700/45 bg-gradient-to-r from-black/25 to-yellow-950/10 px-4 py-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-yellow-700/50 bg-black/35 text-xl">
+                  {mechanic.icon}
                 </div>
-                <p className="text-yellow-100 text-sm mt-1">{troopInfo.summary}</p>
-                <div className="mt-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-200">Pros</div>
-                  <div className="mt-1 space-y-1">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border border-yellow-700/40 bg-black/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-yellow-300/85">
+                      Rule {index + 1}
+                    </span>
+                    <div className="text-sm font-semibold text-yellow-200 sm:text-base">{mechanic.title}</div>
+                  </div>
+                  <p className="mt-2 text-sm leading-relaxed text-yellow-100/80">{mechanic.description}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    },
+    {
+      key: "ai",
+      title: "AI Doctrine",
+      subtitle: "How the computer now chooses movement, targets, and battlefield posture.",
+      badge: "Smarter flow",
+      badgeClass: "border-indigo-700/50 bg-indigo-500/10 text-indigo-100",
+      tabClass: "border-indigo-700/40 bg-indigo-950/20 text-indigo-100",
+      panel: (
+        <div className="grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="rounded-2xl border border-indigo-700/35 bg-indigo-950/15 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-200/80">Behavior Priorities</div>
+            <div className="mt-3 space-y-2">
+              {AI_MECHANICS_INFO.map((detail) => (
+                <div key={detail} className="rounded-xl border border-indigo-700/25 bg-black/20 px-3 py-3 text-sm leading-relaxed text-indigo-50/85">
+                  {detail}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-yellow-700/35 bg-black/20 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-yellow-300/80">What This Means</div>
+            <div className="mt-3 space-y-3">
+              <div className="rounded-xl border border-yellow-700/25 bg-yellow-950/10 px-3 py-3">
+                <div className="text-sm font-semibold text-yellow-100">Protect wounded and exposed units</div>
+                <p className="mt-1 text-xs leading-relaxed text-yellow-100/75">
+                  The AI now hunts soft targets faster, especially damaged troops, archers, siege engines, and isolated leaders.
+                </p>
+              </div>
+              <div className="rounded-xl border border-yellow-700/25 bg-yellow-950/10 px-3 py-3">
+                <div className="text-sm font-semibold text-yellow-100">Terrain still matters to both sides</div>
+                <p className="mt-1 text-xs leading-relaxed text-yellow-100/75">
+                  Hills, forests, rivers, and plains still shape pathing and combat, but the AI now accepts more risk to keep momentum.
+                </p>
+              </div>
+              <div className="rounded-xl border border-yellow-700/25 bg-yellow-950/10 px-3 py-3">
+                <div className="text-sm font-semibold text-yellow-100">Formations are more coherent and aggressive</div>
+                <p className="mt-1 text-xs leading-relaxed text-yellow-100/75">
+                  Expect tighter lines, safer leaders, earlier contact, and more decisive cavalry flanks instead of passive shuffling.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      key: "special",
+      title: "Special Systems",
+      subtitle: "Modern additions that reshape ammo, setup, faction identity, role passives, and battle feedback.",
+      badge: "Expanded",
+      badgeClass: "border-cyan-700/50 bg-cyan-500/10 text-cyan-100",
+      tabClass: "border-cyan-700/40 bg-cyan-950/20 text-cyan-100",
+      panel: (
+        <div className="space-y-4">
+          <div className="grid gap-3">
+            {ADDITIONAL_MECHANICS_INFO.map((mechanic) => (
+              <div key={mechanic.title} className="rounded-2xl border border-cyan-700/35 bg-black/20 px-4 py-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-700/40 bg-cyan-950/25 text-xl">
+                    {mechanic.icon}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-cyan-100 sm:text-base">{mechanic.title}</div>
+                    <p className="mt-2 text-sm leading-relaxed text-cyan-50/78">{mechanic.description}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-3xl border border-cyan-700/35 bg-cyan-950/12 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold uppercase tracking-[0.22em] text-cyan-200/80">Ability Reference</div>
+                <div className="mt-1 text-lg font-bold text-cyan-100">Signature passives trigger automatically</div>
+              </div>
+              <div className="rounded-full border border-cyan-700/45 bg-black/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-cyan-100">
+                {UNIT_ABILITY_MECHANICS_INFO.length} abilities
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 xl:grid-cols-2">
+              {UNIT_ABILITY_MECHANICS_INFO.map((ability) => (
+                <div key={ability.title} className="rounded-2xl border border-cyan-700/25 bg-black/20 px-4 py-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-700/35 bg-cyan-950/20 text-xl">
+                      {ability.icon}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-cyan-100 sm:text-base">{ability.title}</div>
+                      <p className="mt-2 text-sm leading-relaxed text-cyan-50/78">{ability.detail}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      key: "roles",
+      title: "Combat Roles",
+      subtitle: "Each unit category solves a different battlefield problem.",
+      badge: "Role guide",
+      badgeClass: "border-yellow-700/60 bg-black/25 text-yellow-100",
+      tabClass: "border-yellow-700/45 bg-black/25 text-yellow-100",
+      panel: (
+        <div className="grid gap-3 xl:grid-cols-2">
+          <div className="rounded-2xl border border-cyan-700/35 bg-cyan-950/20 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-base font-semibold text-cyan-100">
+                <span className="mr-2 text-cyan-300">🐎🏹</span>
+                Hybrid
+              </div>
+              <span className="rounded-full border border-cyan-700/50 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-cyan-100">
+                special
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-cyan-50/80">
+              Hybrid troops count as ranged units while they still have ammo. Once they run dry, they immediately shift into close combat behavior.
+            </p>
+          </div>
+          {TROOP_MECHANICS_INFO.map((troopInfo) => (
+            <div key={troopInfo.type} className="rounded-2xl border border-yellow-700/40 bg-gradient-to-br from-black/20 to-yellow-950/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-semibold text-yellow-200">
+                  <span className="mr-2 text-cyan-300">{TROOP_MECHANIC_ICONS[troopInfo.type]}</span>
+                  {TROOP_MECHANIC_LABELS[troopInfo.type]}
+                </div>
+                <span className="rounded-full border border-yellow-700/45 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-yellow-100">
+                  {troopInfo.type}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-yellow-100/80">{troopInfo.summary}</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-emerald-700/25 bg-emerald-950/10 px-3 py-2.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-200">Strengths</div>
+                  <div className="mt-2 space-y-2">
                     {troopInfo.pros.map((pro) => (
-                      <p key={pro} className="text-xs text-lime-200 leading-relaxed">{pro}</p>
+                      <p key={pro} className="text-xs leading-relaxed text-lime-100/90">{pro}</p>
                     ))}
                   </div>
                 </div>
-                <div className="mt-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-rose-200">Cons</div>
-                  <div className="mt-1 space-y-1">
+                <div className="rounded-xl border border-rose-700/25 bg-rose-950/10 px-3 py-2.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-200">Weaknesses</div>
+                  <div className="mt-2 space-y-2">
                     {troopInfo.cons.map((con) => (
-                      <p key={con} className="text-xs text-yellow-100 leading-relaxed">{con}</p>
+                      <p key={con} className="text-xs leading-relaxed text-yellow-100/85">{con}</p>
                     ))}
                   </div>
                 </div>
               </div>
+            </div>
+          ))}
+        </div>
+      )
+    },
+    {
+      key: "terrain",
+      title: "Terrain Atlas",
+      subtitle: "Terrain effects apply when terrain modifiers are enabled in Graphics.",
+      badge: "Optional layer",
+      badgeClass: "border-emerald-700/45 bg-emerald-500/10 text-emerald-100",
+      tabClass: "border-emerald-700/40 bg-emerald-950/20 text-emerald-100",
+      panel: (
+        <div className="grid gap-3 xl:grid-cols-2">
+          {TERRAIN_MECHANICS_INFO.map((terrainInfo) => (
+            <div key={terrainInfo.terrain} className="rounded-2xl border border-emerald-700/35 bg-black/20 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-semibold text-emerald-100">{TERRAIN_LABELS[terrainInfo.terrain]}</div>
+                <span className="rounded-full border border-emerald-700/35 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-emerald-100">
+                  {terrainInfo.terrain}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-emerald-50/78">{terrainInfo.summary}</p>
+              <div className="mt-4 space-y-2 rounded-2xl border border-emerald-700/20 bg-emerald-950/10 px-3 py-3">
+                {terrainInfo.effects.map((effect) => (
+                  <p key={effect} className="text-xs leading-relaxed text-lime-100/90">
+                    {effect}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+  ] as const;
+
+  const activeMechanicsSection = mechanicsSections[activeMechanicsSlide] ?? mechanicsSections[0];
+  const cycleMechanicsSlide = (direction: number) => {
+    setActiveMechanicsSlide((current) => (current + direction + mechanicsSections.length) % mechanicsSections.length);
+  };
+
+  const renderMechanicsContent = () => (
+    <div className="space-y-5 text-left">
+      <div className="overflow-hidden rounded-3xl border border-yellow-700/70 bg-black/20 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+        <div className="border-b border-yellow-700/35 px-5 py-5 sm:px-6">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.34em] text-yellow-300/75">Battle Handbook</div>
+          <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <h3 className="text-2xl font-bold text-yellow-100 sm:text-3xl">Mechanics at a Glance</h3>
+              <p className="mt-2 text-sm leading-relaxed text-yellow-100/80 sm:text-[15px]">
+                Use this handbook to read the battle flow quickly: what wins matchups, how AI formations behave,
+                which passives trigger automatically, and which terrain changes the fight before you commit.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <div className="rounded-2xl border border-yellow-700/50 bg-black/20 px-3 py-3 text-center">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-yellow-300/80">Core</div>
+                <div className="mt-1 text-2xl font-bold text-yellow-100">{GAME_MECHANICS_INFO.length}</div>
+              </div>
+              <div className="rounded-2xl border border-cyan-700/45 bg-cyan-950/15 px-3 py-3 text-center">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-cyan-200/85">Systems</div>
+                <div className="mt-1 text-2xl font-bold text-cyan-100">{ADDITIONAL_MECHANICS_INFO.length + UNIT_ABILITY_MECHANICS_INFO.length}</div>
+              </div>
+              <div className="rounded-2xl border border-emerald-700/45 bg-emerald-950/15 px-3 py-3 text-center">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-200/85">Terrain</div>
+                <div className="mt-1 text-2xl font-bold text-emerald-100">{TERRAIN_MECHANICS_INFO.length}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-3 px-5 py-4 sm:px-6 lg:grid-cols-3">
+          <div className="rounded-2xl border border-yellow-700/40 bg-black/20 px-4 py-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-yellow-300/75">Read First</div>
+            <div className="mt-2 text-sm font-semibold text-yellow-100">Front lines decide tempo.</div>
+            <p className="mt-1 text-sm leading-relaxed text-yellow-100/75">
+              Protect ranged and siege units, keep cavalry lanes open, and avoid letting hybrid troops waste their ammo into poor targets.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-cyan-700/35 bg-cyan-950/15 px-4 py-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200/80">Ability Reminder</div>
+            <div className="mt-2 text-sm font-semibold text-cyan-100">Passives are live from the first attack.</div>
+            <p className="mt-1 text-sm leading-relaxed text-cyan-50/75">
+              Brace, Shield Wall, Charge, Harrier, Shock Assault, Guarded, Ferocity, Deadeye, Crush, Command Aura, Siege Mastery, Skirmish Step, and Resolve all trigger automatically when their conditions are met.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-emerald-700/35 bg-emerald-950/15 px-4 py-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200/80">AI Reminder</div>
+            <div className="mt-2 text-sm font-semibold text-emerald-100">The computer now plays for shape, not just distance.</div>
+            <p className="mt-1 text-sm leading-relaxed text-emerald-50/75">
+              Expect stronger front lines, safer support units, and more deliberate flank pressure in longer fights.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-yellow-700/60 bg-black/20 p-5 shadow-[0_10px_30px_rgba(0,0,0,0.2)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="text-lg font-bold text-yellow-200">{activeMechanicsSection.title}</div>
+            <p className="mt-1 text-sm text-yellow-100/75">{activeMechanicsSection.subtitle}</p>
+          </div>
+          <div className="flex items-center gap-2 self-start">
+            <button
+              type="button"
+              onClick={() => cycleMechanicsSlide(-1)}
+              className="battle-button flex h-10 w-10 items-center justify-center rounded-full bg-gray-800/80 text-lg font-bold hover:bg-gray-700"
+              aria-label="Previous mechanics section"
+              title="Previous section"
+            >
+              ←
+            </button>
+            <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${activeMechanicsSection.badgeClass}`}>
+              {activeMechanicsSection.badge}
+            </div>
+            <button
+              type="button"
+              onClick={() => cycleMechanicsSlide(1)}
+              className="battle-button flex h-10 w-10 items-center justify-center rounded-full bg-gray-800/80 text-lg font-bold hover:bg-gray-700"
+              aria-label="Next mechanics section"
+              title="Next section"
+            >
+              →
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {mechanicsSections.map((section, index) => (
+            <button
+              key={section.key}
+              type="button"
+              onClick={() => setActiveMechanicsSlide(index)}
+              className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] transition-colors ${
+                index === activeMechanicsSlide
+                  ? section.tabClass
+                  : "border-white/10 bg-black/20 text-yellow-100/70 hover:border-yellow-700/40 hover:text-yellow-100"
+              }`}
+            >
+              {section.title}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-yellow-300/70">
+            Section {activeMechanicsSlide + 1} of {mechanicsSections.length}
+          </div>
+          <div className="flex items-center gap-2">
+            {mechanicsSections.map((section, index) => (
+              <button
+                key={`${section.key}-dot`}
+                type="button"
+                onClick={() => setActiveMechanicsSlide(index)}
+                aria-label={`Open ${section.title}`}
+                className={`h-2.5 rounded-full transition-all ${
+                  index === activeMechanicsSlide ? "w-8 bg-yellow-300" : "w-2.5 bg-yellow-300/35 hover:bg-yellow-300/60"
+                }`}
+              />
             ))}
           </div>
         </div>
-        <div className="rounded-lg border border-yellow-700 bg-black bg-opacity-20 px-4 py-3">
-          <div className="text-yellow-200 font-semibold text-sm sm:text-base">Terrain Effects Reference</div>
-          <p className="text-yellow-100 text-sm mt-1 leading-relaxed">
-            These bonuses and penalties apply when terrain effects are enabled in Graphics.
-          </p>
-          <div className="grid gap-3 mt-3">
-            {TERRAIN_MECHANICS_INFO.map((terrainInfo) => (
-              <div key={terrainInfo.terrain} className="rounded-lg border border-yellow-700/60 bg-black/20 px-3 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-yellow-200 font-semibold">{TERRAIN_LABELS[terrainInfo.terrain]}</div>
-                  <span className="rounded-full border border-yellow-700 bg-black/20 px-2 py-0.5 text-[11px] uppercase tracking-wide text-yellow-100">
-                    {terrainInfo.terrain}
-                  </span>
-                </div>
-                <p className="text-yellow-100 text-sm mt-1">{terrainInfo.summary}</p>
-                <div className="mt-2 space-y-1">
-                  {terrainInfo.effects.map((effect) => (
-                    <p key={effect} className="text-xs text-lime-200 leading-relaxed">
-                      {effect}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="mt-5">
+          {activeMechanicsSection.panel}
         </div>
       </div>
     </div>
   );
+
+  const renderUnitsContent = () => {
+    const unitsReferenceTeams = ALL_TEAMS.filter((team) => AVAILABLE_TROOPS[team].length > 0);
+    const normalizedUnitsQuery = unitsReferenceQuery.trim().toLowerCase();
+    const activeUnitsScope: UnitsReferenceScope =
+      normalizedUnitsQuery.length > 0
+        ? "All"
+        : unitsReferenceTeam === "All" || unitsReferenceTeams.includes(unitsReferenceTeam)
+          ? unitsReferenceTeam
+          : unitsReferenceTeams[0];
+    const visibleTroops = allReferenceTroops.filter((troop) => {
+      if (activeUnitsScope !== "All" && troop.team !== activeUnitsScope) {
+        return false;
+      }
+
+      if (!normalizedUnitsQuery) {
+        return true;
+      }
+
+      return troop.searchKeywords.some((keyword) => keyword.includes(normalizedUnitsQuery));
+    });
+    const unitsScopeButtons: UnitsReferenceScope[] = ["All", ...unitsReferenceTeams];
+    const unitsHeading = activeUnitsScope === "All" ? "All Units" : activeUnitsScope;
+    const unitsSubheading =
+      normalizedUnitsQuery.length > 0
+        ? `Search results for "${unitsReferenceQuery.trim()}"`
+        : activeUnitsScope === "All"
+          ? "Full roster across every faction"
+          : "Compact faction roster";
+
+    return (
+      <div className="space-y-3">
+        <div className="rounded-xl border border-yellow-700/70 bg-black/20 px-3 py-3 sm:px-4">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-yellow-300/80">Unit Reference</div>
+              </div>
+              <div className="rounded-full border border-yellow-700/70 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-yellow-100">
+                {visibleTroops.length} units
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                value={unitsReferenceQuery}
+                onChange={(event) => setUnitsReferenceQuery(event.target.value)}
+                placeholder="Search units, factions, or keywords like ranged, mounted, hybrid, siege..."
+                className="w-full rounded-lg border border-yellow-700/60 bg-black/30 px-3 py-2 text-sm text-yellow-100 placeholder:text-yellow-100/45 focus:border-yellow-400 focus:outline-none"
+              />
+              {unitsReferenceQuery.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setUnitsReferenceQuery("")}
+                  className="rounded-lg border border-yellow-700/60 bg-black/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-yellow-100 hover:border-yellow-500 hover:text-yellow-50"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {unitsScopeButtons.map((team) => (
+                <button
+                  key={team}
+                  type="button"
+                  onClick={() => setUnitsReferenceTeam(team)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                    team === activeUnitsScope
+                      ? "border-yellow-400 bg-yellow-500/15 text-yellow-100"
+                      : "border-yellow-700/60 bg-black/20 text-yellow-200 hover:border-yellow-500 hover:text-yellow-100"
+                  }`}
+                >
+                  {team}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-yellow-700/70 bg-black/20">
+          <div className="flex items-center justify-between gap-3 border-b border-yellow-700/40 px-3 py-3 sm:px-4">
+            <div className="min-w-0">
+              <div className="text-lg font-bold text-yellow-200 sm:text-xl">{unitsHeading}</div>
+              <div className="text-[11px] uppercase tracking-wide text-yellow-100/70">{unitsSubheading}</div>
+            </div>
+            <div className="hidden rounded-full border border-yellow-700/60 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-yellow-100 sm:block">
+              Template stats
+            </div>
+          </div>
+
+          <div className="grid gap-2 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-3">
+            {visibleTroops.map((troop) => {
+              const referenceStats = troop.referenceStats;
+              const troopTypeDisplay = troop.troopTypeDisplay;
+              const troopAbilities = getTroopAbilities(troop.role);
+              const troopIcon =
+                typeof troop.Icon === "string" && troop.Icon.length <= 3
+                  ? troop.Icon
+                  : ICON_MAP[troop.Icon as keyof typeof ICON_MAP] || troop.Icon || "⚔️";
+
+              return (
+                <div key={`${troop.team}-${troop.role}`} className="rounded-lg border border-yellow-700/50 bg-black/25 px-3 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-yellow-700/50 bg-black/30 text-2xl leading-none">
+                      {troopIcon}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-yellow-200">{troop.name}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {(activeUnitsScope === "All" || normalizedUnitsQuery.length > 0) && (
+                          <span className="rounded-full border border-amber-700/60 bg-amber-950/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-200">
+                            {troop.team}
+                          </span>
+                        )}
+                        <span className="rounded-full border border-yellow-700/60 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-yellow-100">
+                          {troop.role}
+                        </span>
+                        <span className="rounded-full border border-cyan-700/60 bg-cyan-950/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-cyan-200">
+                          {troopTypeDisplay.icon} {troopTypeDisplay.label}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-yellow-100">
+                    <span className="rounded-md border border-yellow-700/40 bg-black/20 px-2 py-1">
+                      HP {referenceStats.hp[0]}-{referenceStats.hp[1]}
+                    </span>
+                    <span className="rounded-md border border-yellow-700/40 bg-black/20 px-2 py-1">
+                      ATK {referenceStats.attack[0]}-{referenceStats.attack[1]}
+                    </span>
+                    <span className="rounded-md border border-yellow-700/40 bg-black/20 px-2 py-1">RNG {referenceStats.range}</span>
+                    <span className="rounded-md border border-yellow-700/40 bg-black/20 px-2 py-1">MOV {referenceStats.move}</span>
+                    <span className="rounded-md border border-yellow-700/40 bg-black/20 px-2 py-1">AMMO {referenceStats.ammo}</span>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/78">Signature Skills</div>
+                    {troopAbilities.length > 0 ? (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {troopAbilities.map((ability) => (
+                          <span
+                            key={ability.key}
+                            className="rounded-full border border-cyan-700/50 bg-cyan-950/25 px-2 py-0.5 text-[10px] uppercase tracking-wide text-cyan-100"
+                            title={ability.description}
+                          >
+                            {ability.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-1.5 text-[11px] text-yellow-100/68">No signature skills.</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {visibleTroops.length === 0 && (
+            <div className="border-t border-yellow-700/40 px-4 py-6 text-center text-sm text-yellow-100/80">
+              No units matched that search. Try a faction, role, or keywords like `ranged`, `mounted`, `hybrid`, or `siege`.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const beginGridPan = (clientX: number, clientY: number) => {
     const viewport = battlefieldViewportRef.current;
@@ -3218,6 +5117,7 @@ function CodeConq() {
   const handleViewportPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!showGridNavigation) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    if ((e.target as HTMLElement | null)?.closest(".terrain-cell")) return;
 
     battlefieldPanCleanupRef.current?.();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -3281,6 +5181,79 @@ function CodeConq() {
       );
     }
 
+    if (startScreen === "about") {
+      return (
+        <div className="flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
+          <div className="game-ui p-8 max-w-4xl w-full">
+            <div className="flex items-center justify-between gap-4 mb-6">
+              <button
+                onClick={() => setStartScreen("menu")}
+                className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+              >
+                Back
+              </button>
+              <h1 className="text-4xl font-bold text-yellow-200 drop-shadow-lg">About Battlecry</h1>
+              <div className="rounded-full border border-yellow-500/35 bg-black/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow-100">
+                v{GAME_VERSION}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-yellow-700/40 bg-black/20 px-5 py-5 shadow-[0_20px_55px_rgba(0,0,0,0.35)]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-yellow-300/75">Game Overview</div>
+              <h2 className="mt-2 text-2xl font-bold text-yellow-100">Tactical battles across living battlefields</h2>
+              <p className="mt-3 text-sm leading-7 text-yellow-50/80">
+                Battlecry is a tactical grid war game where historical-inspired factions clash across changing terrain.
+                Each battle is shaped by troop roles, formation buffs, civilization passives, signature unit abilities,
+                and battlefield feedback that helps you read momentum in real time.
+              </p>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Single Player</div>
+                  <div className="mt-1 text-sm leading-6 text-yellow-50/82">
+                    Fight campaign battles against the AI and adapt to terrain, faction buffs, and battlefield momentum.
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Multiplayer</div>
+                  <div className="mt-1 text-sm leading-6 text-yellow-50/82">
+                    Build two armies and play local pass-and-play battles on the same machine.
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Custom Scenario</div>
+                  <div className="mt-1 text-sm leading-6 text-yellow-50/82">
+                    Place troops manually, set up your own encounters, and test faction matchups however you want.
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Current Build</div>
+                  <div className="mt-1 text-sm leading-6 text-yellow-50/82">
+                    {GAME_BUILD_LABEL} with smarter AI, new passive abilities, terrain depth, and battle feedback effects.
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-2 sm:grid-cols-3">
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-center">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Factions</div>
+                  <div className="mt-1 text-base font-semibold text-yellow-50">{ALL_TEAMS.length}</div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-center">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Campaign Maps</div>
+                  <div className="mt-1 text-base font-semibold text-yellow-50">{Object.keys(levels).length}</div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-center">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Battle Sizes</div>
+                  <div className="mt-1 text-base font-semibold text-yellow-50">{BATTLEFIELD_SIZE_OPTIONS[0]}-{BATTLEFIELD_SIZE_OPTIONS[BATTLEFIELD_SIZE_OPTIONS.length - 1]}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
         <div className="game-ui p-8 text-center max-w-2xl w-full">
@@ -3290,28 +5263,34 @@ function CodeConq() {
           <div className="flex flex-col gap-4 max-w-md mx-auto">
             <button
               onClick={startSinglePlayerMode}
-              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-blue-600 hover:bg-blue-700"
+              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
             >
               Single Player
             </button>
             <button
               onClick={startMultiplayerMode}
-              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-red-600 hover:bg-red-700"
+              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
             >
               Multiplayer
             </button>
             <button
               onClick={startCustomScenarioMode}
-              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-purple-600 hover:bg-purple-700"
+              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
             >
               Custom Scenario
+            </button>
+            <button
+              onClick={() => setStartScreen("about")}
+              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+            >
+              About
             </button>
           </div>
 
           <div className="mt-6 max-w-md mx-auto">
             <button
               onClick={() => setStartScreen("options")}
-              className="battle-button w-full px-6 py-3 text-lg font-semibold bg-emerald-600 hover:bg-emerald-700"
+              className="battle-button w-full px-6 py-3 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
             >
               Options
             </button>
@@ -3371,14 +5350,11 @@ function CodeConq() {
                   onChange={(e) => setCurrentLevel(e.target.value as keyof typeof levels)}
                   className="bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-2 py-1 text-xs sm:text-sm focus:outline-none focus:border-yellow-400"
                 >
-                  <option value="Level1">Level 1: Romans vs Barbarians</option>
-                  <option value="Level2">Level 2: Greeks vs Celts</option>
-                  <option value="Level3">Level 3: Carthage vs Vikings</option>
-                  <option value="Level4">Level 4: Germanic vs Teutons</option>
-                  <option value="Level5">Level 5: Romans vs Carthage</option>
-                  <option value="Level6">Level 6: Greeks vs Germanic</option>
-                  <option value="Level7">Level 7: Celts vs Vikings</option>
-                  <option value="Level8">Level 8: Barbarians vs Teutons</option>
+                  {(Object.entries(LEVEL_MATCHUP_LABELS) as [keyof typeof levels, string][]).map(([levelKey, label], index) => (
+                    <option key={levelKey} value={levelKey}>
+                      {`Level ${index + 1}: ${label}`}
+                    </option>
+                  ))}
                 </select>
                 {gameMode === "single-player" && (
                   <div className="flex flex-wrap items-center gap-2">
@@ -3414,248 +5390,308 @@ function CodeConq() {
             )}
           </div>
 
-          <div className="relative">
+          <div>
             <button
               onClick={() => setIsGameMenuOpen((open) => !open)}
               className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-gray-700 hover:bg-gray-800"
             >
               Game Menu
             </button>
-
-            {isGameMenuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-52 rounded-lg border border-yellow-700 bg-gray-900/95 shadow-2xl backdrop-blur-sm overflow-hidden">
-                <button
-                  onClick={openInGameOptions}
-                  className="w-full text-left px-4 py-3 text-sm text-yellow-100 hover:bg-yellow-700/20 border-b border-yellow-700/50"
-                >
-                  Options
-                </button>
-                <button
-                  onClick={openInGameMechanics}
-                  className="w-full text-left px-4 py-3 text-sm text-yellow-100 hover:bg-yellow-700/20 border-b border-yellow-700/50"
-                >
-                  Mechanics
-                </button>
-                <button
-                  onClick={openInGameGraphics}
-                  className="w-full text-left px-4 py-3 text-sm text-yellow-100 hover:bg-yellow-700/20 border-b border-yellow-700/50"
-                >
-                  Graphics
-                </button>
-                <button
-                  onClick={backToMainMenu}
-                  className="w-full text-left px-4 py-3 text-sm text-yellow-100 hover:bg-red-700/20"
-                >
-                  Back to Menu
-                </button>
-              </div>
-            )}
           </div>
         </div>
 
-        <div className="game-ui w-full rounded-none border-x-0 border-t border-yellow-800/50 px-2 sm:px-3 py-2 flex flex-wrap items-center gap-2 justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            {(!isSetupMode || gameMode === "multiplayer" || gameMode === "custom-scenario") && (
-              <button
-                onClick={toggleBattlefieldFullscreen}
-                className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 relative"
-              >
-                <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-                {isBattlefieldFullscreen ? "🗗 Exit Fullscreen" : "🗖 Fullscreen"}
-              </button>
-            )}
-
-            {gameMode && (
-              <button
-                onClick={restartCurrentGame}
-                className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-red-700 hover:bg-red-800"
-              >
-                Restart Game
-              </button>
-            )}
-
-            {gameMode === "single-player" && !isSetupMode && !gameStarted && (
-              <button
-                onClick={startSinglePlayerBattle}
-                className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-green-600 hover:bg-green-700 relative"
-              >
-                <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-                🚀 Start Battle
-              </button>
-            )}
-
-            {gameMode === "custom-scenario" && isSetupMode && (
-              <>
-                <button
-                  onClick={autoDeployCustomBattle}
-                  className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-blue-600 hover:bg-blue-700 relative"
-                >
-                  <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                  </svg>
-                  Auto Deploy
-                </button>
-
-                <button
-                  onClick={startCustomGame}
-                  disabled={customUnits.length === 0}
-                  className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed relative"
-                >
-                  <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                  </svg>
-                  🚀 Start Custom Game
-                </button>
-
-                <button
-                  onClick={resetCustomSetup}
-                  className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-red-600 hover:bg-red-700 relative"
-                >
-                  <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                  </svg>
-                  🔄 Reset Setup
-                </button>
-
-              </>
-            )}
-
-            {gameMode === "multiplayer" && isSetupMode && (
-              <>
-                <button
-                  onClick={startMultiplayerGame}
-                  disabled={customUnits.length === 0}
-                  className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed relative"
-                >
-                  <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                  </svg>
-                  🚀 Start Multiplayer Game
-                </button>
-
-                <button
-                  onClick={resetCustomSetup}
-                  className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-red-600 hover:bg-red-700 relative"
-                >
-                  <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                  </svg>
-                  🔄 Reset Setup
-                </button>
-              </>
-            )}
-
-            {!isSetupMode && ((gameMode === "multiplayer" && gameStarted) || (gameMode !== "multiplayer" && turn === playerTeam && gameStarted)) && (
-              <>
-                {!isSetupMode && gameStarted && (
-                  <div className="text-blue-200 font-semibold bg-blue-900 bg-opacity-50 px-2.5 py-1.5 rounded border border-blue-600 text-center">
-                    <span className="block text-[11px] uppercase tracking-wide">Merges</span>
-                    <span className="block text-xs sm:text-sm">{mergeCount}/2</span>
-                  </div>
-                )}
-
-                {!isSetupMode && gameStarted && (
-                  <button
-                    onClick={() => {
-                      if (mergeCount < 2) {
-                        setMergeMode(!mergeMode);
-                        setSelectedForMerge(null);
-                        setSelectedId(null);
-                        if (!mergeMode) {
-                          setLog((prevLog) => [`Merge mode activated! All teams can now merge their troops. Click on two adjacent troops of the same role to merge them. (${2 - mergeCount} merges remaining)`, ...prevLog]);
-                        } else {
-                          setLog((prevLog) => [`Merge mode deactivated.`, ...prevLog]);
-                        }
-                      } else {
-                        setLog((prevLog) => [`No more merges allowed this game!`, ...prevLog]);
-                      }
-                    }}
-                    disabled={mergeCount >= 2}
-                    className={`battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold relative ${
-                      mergeMode ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    <svg className="absolute -left-1 -top-1 w-4 h-4 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                    </svg>
-                    {mergeMode ? '🔄 Cancel Merge' : '🔗 Merge Troops'}
-                  </button>
-                )}
-              </>
-            )}
-
-            {isBattlefieldFullscreen && !isSetupMode && (
-              <div className="text-yellow-100 border border-yellow-700 rounded px-2.5 py-1.5 text-xs sm:text-sm font-semibold">
-                {checkEnd() || `${turn.toUpperCase()} TURN`}
-              </div>
-            )}
-          </div>
-
-          {!isSetupMode && passiveTeams.length > 0 && (
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {passiveTeams.map((team) => {
-                const passive = CIV_PASSIVES[team];
-                return (
-                  <div key={team} className="relative group">
-                    <button
-                      type="button"
-                      className="game-ui flex items-center justify-center border border-yellow-600 text-xl"
-                      style={{ width: "42px", height: "42px" }}
-                      aria-label={`${team} passive: ${passive.name}. ${passive.effect}`}
-                      title={`${team} - ${passive.name}: ${passive.effect}`}
-                    >
-                      {PASSIVE_ICONS[team]}
-                    </button>
-                    <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-56 -translate-x-1/2 rounded-lg border border-yellow-700 bg-gray-900 px-3 py-2 text-center shadow-lg group-hover:block">
-                      <div className="text-yellow-200 text-sm font-bold">{team}</div>
-                      <div className="text-amber-300 text-xs font-semibold mt-1">{passive.name}</div>
-                      <div className="text-yellow-100 text-xs mt-1">{passive.effect}</div>
-                    </div>
-                  </div>
-                );
-              })}
+        <div className="pointer-events-none fixed right-3 top-28 z-20 flex max-h-[calc(100vh-8rem)] flex-col items-end gap-2 sm:right-4">
+          {isBattlefieldFullscreen && !isSetupMode && (
+            <div className="pointer-events-auto text-yellow-100 border border-yellow-700 rounded bg-gray-900/80 px-2.5 py-1.5 text-xs sm:text-sm font-semibold backdrop-blur-sm">
+              {checkEnd() || `${turn.toUpperCase()} TURN`}
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 text-yellow-200 text-xs sm:text-sm font-semibold">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={regenerateTerrain}
-                className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-emerald-700 hover:bg-emerald-800"
-              >
-                Regenerate Terrain
-              </button>
+          {!isSetupMode && gameStarted && (
+            <div
+              className="pointer-events-auto text-blue-200 font-semibold bg-blue-900/70 px-2.5 py-1.5 rounded border border-blue-600 text-center backdrop-blur-sm"
+              title={`${mergeCount}/2 merges used`}
+            >
+              <span className="block text-[11px] uppercase tracking-wide">Merges</span>
+              <span className="block text-xs sm:text-sm">{mergeCount}/2</span>
             </div>
+          )}
 
-            {canRotateTroops && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-3 py-1 uppercase tracking-wide text-yellow-100">
-                  Facing
-                </span>
-                <div className="flex items-center gap-1 rounded-full border border-yellow-700 bg-black bg-opacity-20 px-1 py-1">
-                  {GRID_ORIENTATIONS.map((orientation) => (
-                    <button
-                      key={orientation}
-                      type="button"
-                      onClick={() => rotateTroopsTo(orientation)}
-                      className={`rounded-full px-2 py-1 text-[10px] sm:text-xs font-bold uppercase transition-colors ${
-                        gridOrientation === orientation
-                          ? "bg-yellow-500 text-gray-900"
-                          : "text-yellow-100 hover:bg-yellow-700/30"
+          {!isSetupMode && focusedBattleUnit && (
+            <div className="game-ui pointer-events-auto w-[18rem] rounded-2xl border border-amber-700/70 bg-black/20 p-3 text-left text-yellow-100 shadow-[0_12px_35px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/10 text-2xl">
+                  {(() => {
+                    const FocusedUnitIcon = getUnitDisplayIcon(focusedBattleUnit);
+                    return typeof FocusedUnitIcon === "string" ? FocusedUnitIcon : (FocusedUnitIcon ? createElement(FocusedUnitIcon) : "⚔️");
+                  })()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-amber-300/80">
+                    {selected ? "Selected Unit" : "Focused Unit"}
+                  </div>
+                  <div className="truncate text-base font-semibold text-yellow-50">{focusedBattleUnit.name}</div>
+                  <div className="truncate text-xs text-amber-200/85">{focusedBattleUnit.team} · {focusedBattleUnit.role}</div>
+                </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissFocusedBattlePanel}
+                  className="battle-button flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-700 p-0 text-sm font-bold leading-none hover:bg-gray-800"
+                  aria-label="Close selected unit"
+                  title="Close"
+                >
+                  X
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">HP {focusedBattleUnit.hp}/{focusedBattleUnit.maxHp}</div>
+                <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">ATK {getDisplayedAttack(focusedBattleUnit, currentBattleUnits, terrainEffectMap)}</div>
+                <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">RNG {getRangeForBattle(focusedBattleUnit)}</div>
+                <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">MOV {getMoveForBattle(focusedBattleUnit)}</div>
+              </div>
+              <div className="mt-3 rounded-xl border border-emerald-500/15 bg-emerald-950/20 px-2.5 py-2 text-xs text-emerald-100/90">
+                <span className="font-semibold text-emerald-200">Terrain:</span>{" "}
+                {TERRAIN_LABELS[focusedTerrainType ?? "plain"]}
+              </div>
+              <div className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-950/20 px-2.5 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/85">Signature Skills</div>
+                {focusedUnitAbilities.length > 0 ? (
+                  <div className="mt-2 space-y-1.5">
+                    {focusedUnitAbilities.map((ability) => (
+                      <div key={ability.key} className="rounded-lg border border-cyan-500/20 bg-black/20 px-2.5 py-2 text-[11px] leading-5 text-cyan-50/92">
+                        <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-lg border border-white/8 bg-black/20 px-2.5 py-2 text-[11px] leading-5 text-yellow-100/72">
+                    This unit has no signature passive skill.
+                  </div>
+                )}
+              </div>
+              {focusedFeedbackKinds.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {focusedFeedbackKinds.map((kind) => (
+                    <div
+                      key={kind}
+                      className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${
+                        kind === "hit"
+                          ? "border-orange-400/50 bg-orange-500/10 text-orange-100"
+                          : kind === "death"
+                            ? "border-red-400/50 bg-red-500/10 text-red-100"
+                            : kind === "charge"
+                              ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
+                              : kind === "morale"
+                                ? "border-violet-400/50 bg-violet-500/10 text-violet-100"
+                                : "border-cyan-400/50 bg-cyan-500/10 text-cyan-100"
                       }`}
                     >
-                      {orientation.charAt(0)}
-                    </button>
+                      {kind === "hit"
+                        ? "Under Fire"
+                        : kind === "death"
+                          ? "Breaking"
+                          : kind === "charge"
+                            ? "Charging"
+                            : kind === "morale"
+                              ? "Shaken"
+                              : "Volley"}
+                    </div>
                   ))}
                 </div>
+              )}
+              <div className="mt-3 space-y-1.5">
+                {focusedEffectNotes.slice(0, 3).map((note) => (
+                  <div key={note} className="rounded-xl border border-white/8 bg-black/25 px-2.5 py-2 text-[11px] leading-5 text-yellow-100/88">
+                    {note}
+                  </div>
+                ))}
+                {focusedEffectNotes.length === 0 && (
+                  <div className="rounded-xl border border-white/8 bg-black/25 px-2.5 py-2 text-[11px] leading-5 text-yellow-100/72">
+                    No special effects active on this unit right now.
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {canRotateTroops && (
+            <div className="pointer-events-auto flex flex-col items-center gap-1 rounded-2xl border border-yellow-700 bg-gray-900/80 px-1.5 py-1.5 backdrop-blur-sm">
+              {GRID_ORIENTATIONS.map((orientation) => (
+                <button
+                  key={orientation}
+                  type="button"
+                  onClick={() => rotateTroopsTo(orientation)}
+                  title={`Face ${orientation}`}
+                  aria-label={`Face ${orientation}`}
+                  className={`rounded-full px-2 py-1 text-[10px] sm:text-xs font-bold uppercase transition-colors ${
+                    gridOrientation === orientation
+                      ? "bg-yellow-500 text-gray-900"
+                      : "text-yellow-100 hover:bg-yellow-700/30"
+                  }`}
+                >
+                  {orientation.charAt(0)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {(!isSetupMode || gameMode === "multiplayer" || gameMode === "custom-scenario") && (
+            <button
+              type="button"
+              onClick={toggleBattlefieldFullscreen}
+              className={`pointer-events-auto ${iconActionButtonClass} bg-indigo-600 hover:bg-indigo-700`}
+              aria-label={isBattlefieldFullscreen ? "Exit fullscreen battlefield" : "Enter fullscreen battlefield"}
+              title={isBattlefieldFullscreen ? "Exit fullscreen battlefield" : "Enter fullscreen battlefield"}
+            >
+              {isBattlefieldFullscreen ? "🗗" : "🗖"}
+            </button>
+          )}
+
+          {gameMode && (
+            <button
+              type="button"
+              onClick={restartCurrentGame}
+              className={`pointer-events-auto ${iconActionButtonClass} bg-red-700 hover:bg-red-800`}
+              aria-label="Restart game"
+              title="Restart game"
+            >
+              ↺
+            </button>
+          )}
+
+          {!isSetupMode && (gameOptions.showTurnBanner || gameOptions.showBattleLog) && (
+            <button
+              type="button"
+              onClick={() => setIsBattleLogPanelOpen(true)}
+              className={`pointer-events-auto ${iconActionButtonClass} bg-amber-700 hover:bg-amber-800`}
+              aria-label="Open battle log"
+              title="Open battle log"
+            >
+              📜
+            </button>
+          )}
+
+          {isSetupMode && (
+            <button
+              type="button"
+              onClick={() => setIsUnitPanelOpen(true)}
+              className={`pointer-events-auto ${iconActionButtonClass} bg-purple-700 hover:bg-purple-800`}
+              aria-label={`Open ${selectedTeam} troops`}
+              title={`Open ${selectedTeam} troops`}
+            >
+              🪖
+            </button>
+          )}
+
+          {gameMode === "single-player" && !isSetupMode && !gameStarted && (
+            <button
+              type="button"
+              onClick={startSinglePlayerBattle}
+              className={`pointer-events-auto ${iconActionButtonClass} bg-green-600 hover:bg-green-700`}
+              aria-label="Start battle"
+              title="Start battle"
+            >
+              ▶
+            </button>
+          )}
+
+          {gameMode === "custom-scenario" && isSetupMode && (
+            <>
+              <button
+                type="button"
+                onClick={autoDeployCustomBattle}
+                className={`pointer-events-auto ${iconActionButtonClass} bg-blue-600 hover:bg-blue-700`}
+                aria-label="Auto deploy troops"
+                title="Auto deploy troops"
+              >
+                ✨
+              </button>
+
+              <button
+                type="button"
+                onClick={startCustomGame}
+                disabled={customUnits.length === 0}
+                className={`pointer-events-auto ${iconActionButtonClass} bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed`}
+                aria-label="Start custom game"
+                title="Start custom game"
+              >
+                ▶
+              </button>
+
+              <button
+                type="button"
+                onClick={resetCustomSetup}
+                className={`pointer-events-auto ${iconActionButtonClass} bg-red-600 hover:bg-red-700`}
+                aria-label="Reset setup"
+                title="Reset setup"
+              >
+                🗑
+              </button>
+            </>
+          )}
+
+          {gameMode === "multiplayer" && isSetupMode && (
+            <>
+              <button
+                type="button"
+                onClick={startMultiplayerGame}
+                disabled={customUnits.length === 0}
+                className={`pointer-events-auto ${iconActionButtonClass} bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed`}
+                aria-label="Start multiplayer game"
+                title="Start multiplayer game"
+              >
+                ▶
+              </button>
+
+              <button
+                type="button"
+                onClick={resetCustomSetup}
+                className={`pointer-events-auto ${iconActionButtonClass} bg-red-600 hover:bg-red-700`}
+                aria-label="Reset setup"
+                title="Reset setup"
+              >
+                🗑
+              </button>
+            </>
+          )}
+
+          {!isSetupMode && ((gameMode === "multiplayer" && gameStarted) || (gameMode !== "multiplayer" && turn === playerTeam && gameStarted)) && (
+            <button
+              type="button"
+              onClick={() => {
+                if (mergeCount < 2) {
+                  setMergeMode(!mergeMode);
+                  setSelectedForMerge(null);
+                  setSelectedId(null);
+                  if (!mergeMode) {
+                    setLog((prevLog) => [`Merge mode activated! All teams can now merge their troops. Click on two adjacent troops of the same role to merge them. (${2 - mergeCount} merges remaining)`, ...prevLog]);
+                  } else {
+                    setLog((prevLog) => [`Merge mode deactivated.`, ...prevLog]);
+                  }
+                } else {
+                  setLog((prevLog) => [`No more merges allowed this game!`, ...prevLog]);
+                }
+              }}
+              disabled={mergeCount >= 2}
+              className={`pointer-events-auto ${iconActionButtonClass} ${mergeMode ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              aria-label={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
+              title={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
+            >
+              🔗
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={regenerateTerrain}
+            className={`pointer-events-auto ${iconActionButtonClass} bg-emerald-700 hover:bg-emerald-800`}
+            aria-label="Regenerate terrain"
+            title="Regenerate terrain"
+          >
+            🗺
+          </button>
         </div>
       </div>
 
@@ -3665,12 +5701,20 @@ function CodeConq() {
             <div className="game-ui p-4 sm:p-6">
               <div className="flex items-center justify-between gap-4 mb-5">
                 <h2 className="text-2xl sm:text-3xl font-bold text-yellow-200">Options</h2>
-                <button
-                  onClick={() => setIsInGameOptionsOpen(false)}
-                  className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
-                >
-                  Close
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={backToInGameMenu}
+                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => setIsInGameOptionsOpen(false)}
+                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
               {renderGameOptionsContent()}
             </div>
@@ -3680,18 +5724,87 @@ function CodeConq() {
 
       {isInGameMechanicsOpen && (
         <div className="fixed inset-0 z-40 bg-black/65 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
-          <div className="w-full max-w-2xl mx-auto mt-8 sm:mt-12 mb-6">
+          <div className="w-full max-w-6xl mx-auto mt-8 sm:mt-12 mb-6">
             <div className="game-ui p-4 sm:p-6">
               <div className="flex items-center justify-between gap-4 mb-5">
                 <h2 className="text-2xl sm:text-3xl font-bold text-yellow-200">Mechanics</h2>
-                <button
-                  onClick={() => setIsInGameMechanicsOpen(false)}
-                  className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
-                >
-                  Close
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={backToInGameMenu}
+                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => setIsInGameMechanicsOpen(false)}
+                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
               {renderMechanicsContent()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isGameMenuOpen && (
+        <div className="fixed inset-0 z-40 bg-black/65 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center">
+            <div className="game-ui w-full max-w-md overflow-hidden rounded-[28px] border border-yellow-700/80 shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+              <div className="border-b border-yellow-700/40 px-5 py-5 sm:px-6">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-yellow-300/75">Pause Menu</div>
+                <div className="mt-2 flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-2xl font-bold text-yellow-200 sm:text-3xl">Game Menu</h2>
+                    <p className="mt-1 text-sm text-yellow-100/75">Open battle references, settings, and quick navigation.</p>
+                  </div>
+                  <button
+                    onClick={() => setIsGameMenuOpen(false)}
+                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+              <div className="grid gap-3 p-5 sm:p-6">
+                <button
+                  onClick={openInGameOptions}
+                  className="rounded-2xl border border-yellow-700/50 bg-black/20 px-4 py-4 text-left transition-colors hover:bg-yellow-700/15"
+                >
+                  <div className="text-base font-semibold text-yellow-100">Options</div>
+                  <div className="mt-1 text-sm text-yellow-100/70">Gameplay toggles, sound, and battlefield size.</div>
+                </button>
+                <button
+                  onClick={openInGameMechanics}
+                  className="rounded-2xl border border-cyan-700/40 bg-cyan-950/15 px-4 py-4 text-left transition-colors hover:bg-cyan-800/20"
+                >
+                  <div className="text-base font-semibold text-cyan-100">Mechanics</div>
+                  <div className="mt-1 text-sm text-cyan-50/75">Battle rules, troop types, hybrids, and terrain effects.</div>
+                </button>
+                <button
+                  onClick={openInGameUnits}
+                  className="rounded-2xl border border-yellow-700/50 bg-black/20 px-4 py-4 text-left transition-colors hover:bg-yellow-700/15"
+                >
+                  <div className="text-base font-semibold text-yellow-100">Units</div>
+                  <div className="mt-1 text-sm text-yellow-100/70">Browse faction rosters and troop reference stats.</div>
+                </button>
+                <button
+                  onClick={openInGameGraphics}
+                  className="rounded-2xl border border-emerald-700/40 bg-emerald-950/15 px-4 py-4 text-left transition-colors hover:bg-emerald-800/20"
+                >
+                  <div className="text-base font-semibold text-emerald-100">Graphics</div>
+                  <div className="mt-1 text-sm text-emerald-50/75">Terrain visuals, overlays, and battlefield presentation.</div>
+                </button>
+                <button
+                  onClick={backToMainMenu}
+                  className="rounded-2xl border border-rose-700/40 bg-rose-950/15 px-4 py-4 text-left transition-colors hover:bg-rose-800/20"
+                >
+                  <div className="text-base font-semibold text-rose-100">Back to Menu</div>
+                  <div className="mt-1 text-sm text-rose-50/75">Leave the current battle and return to the main screen.</div>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3703,14 +5816,52 @@ function CodeConq() {
             <div className="game-ui p-4 sm:p-6">
               <div className="flex items-center justify-between gap-4 mb-5">
                 <h2 className="text-2xl sm:text-3xl font-bold text-yellow-200">Graphics</h2>
-                <button
-                  onClick={() => setIsInGameGraphicsOpen(false)}
-                  className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
-                >
-                  Close
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={backToInGameMenu}
+                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => setIsInGameGraphicsOpen(false)}
+                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
               {renderGraphicsContent()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isInGameUnitsOpen && (
+        <div className="fixed inset-0 z-40 bg-black/65 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
+          <div className="mx-auto mt-6 mb-6 w-full max-w-5xl sm:mt-10">
+            <div className="game-ui p-3 sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-yellow-200 sm:text-2xl">Units</h2>
+                  <div className="text-xs uppercase tracking-wide text-yellow-100/70">Compact roster browser</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={backToInGameMenu}
+                    className="battle-button bg-gray-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide hover:bg-gray-800 sm:text-sm"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => setIsInGameUnitsOpen(false)}
+                    className="battle-button bg-gray-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide hover:bg-gray-800 sm:text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+              {renderUnitsContent()}
             </div>
           </div>
         </div>
@@ -3804,10 +5955,8 @@ function CodeConq() {
         </div>
       )}
 
-      {/* Three-Column Layout: Battle Log (Left) | Battlefield Grid (Center) | Selected Unit/Troop Panel (Right) */}
-      <div className={`flex gap-3 w-full ${isBattlefieldFullscreen ? "flex-row max-w-none items-stretch" : "flex-col xl:flex-row max-w-8xl"}`}>
-        {/* Left Side: Turn Info + Battle Log */}
-        {!isSetupMode && (gameOptions.showTurnBanner || gameOptions.showBattleLog) && (
+      <div className="flex w-full justify-center">
+        {false && !isSetupMode && (gameOptions.showTurnBanner || gameOptions.showBattleLog) && (
           <div className={`flex-shrink-0 ${isBattlefieldFullscreen ? "w-56" : "xl:w-80"}`}>
             <div className={`game-ui p-4 relative ${isBattlefieldFullscreen ? "max-h-[72vh] overflow-y-auto" : ""}`}>
               {gameOptions.showTurnBanner && (
@@ -3826,11 +5975,15 @@ function CodeConq() {
                       : turn === playerTeam ? "Your turn - Click to select and move/attack"
                         : turn === "Barbarians" ? "Barbarians are thinking..."
                         : turn === "Greeks" ? "Greeks are thinking..."
-                        : turn === "Celts" ? "Celts are thinking..."
+                        : turn === "Gauls" ? "Gauls are thinking..."
                         : turn === "Germanic" ? "Germanic tribes are thinking..."
                         : turn === "Carthage" ? "Carthage is thinking..."
-                        : turn === "Vikings" ? "Vikings are thinking..."
-                        : turn === "Teutons" ? "Teutons are thinking..." : ""}
+                        : turn === "Egypt" ? "Egypt is thinking..."
+                        : turn === "Thracians" ? "Thracians are thinking..."
+                        : turn === "Dacians" ? "Dacians are thinking..."
+                        : turn === "Parthians" ? "Parthians are thinking..."
+                        : turn === "Seleucids" ? "Seleucids are thinking..."
+                        : turn === "Vikings" ? "Vikings are thinking..." : ""}
                   </div>
                   
                   {/* Decorative sword */}
@@ -3870,62 +6023,86 @@ function CodeConq() {
           </div>
         )}
         
-        {/* Battlefield Grid - Center */}
-        <div className={`battlefield-container relative flex-1 ${isBattlefieldFullscreen ? "min-w-0 flex items-center justify-center" : "mt-3 sm:mt-4"}`}>
-          <div className="relative mx-auto w-fit max-w-full">
-            {showGridNavigation && (
-              <>
-                <div
-                  className="absolute left-12 right-12 top-0 z-10 flex h-12 items-start justify-center pt-2"
-                  onMouseEnter={() => setHoverScrollDirection("up")}
-                  onMouseLeave={() => setHoverScrollDirection(null)}
-                >
-                  <div className="battlefield-nav-rail battlefield-nav-rail-horizontal" aria-hidden="true" />
-                </div>
-                <div
-                  className="absolute bottom-0 left-12 right-12 z-10 flex h-12 items-end justify-center pb-2"
-                  onMouseEnter={() => setHoverScrollDirection("down")}
-                  onMouseLeave={() => setHoverScrollDirection(null)}
-                >
-                  <div className="battlefield-nav-rail battlefield-nav-rail-horizontal" aria-hidden="true" />
-                </div>
-                <div
-                  className="absolute bottom-12 left-0 top-12 z-10 flex w-12 items-center justify-start pl-2"
-                  onMouseEnter={() => setHoverScrollDirection("left")}
-                  onMouseLeave={() => setHoverScrollDirection(null)}
-                >
-                  <div className="battlefield-nav-rail battlefield-nav-rail-vertical" aria-hidden="true" />
-                </div>
-                <div
-                  className="absolute bottom-12 right-0 top-12 z-10 flex w-12 items-center justify-end pr-2"
-                  onMouseEnter={() => setHoverScrollDirection("right")}
-                  onMouseLeave={() => setHoverScrollDirection(null)}
-                >
-                  <div className="battlefield-nav-rail battlefield-nav-rail-vertical" aria-hidden="true" />
-                </div>
-              </>
-            )}
-
-            <div
-              ref={battlefieldViewportRef}
-              className={
+        <div className={`battlefield-container relative mx-auto flex w-full justify-center ${isBattlefieldFullscreen ? "min-w-0 items-center" : "mt-3 sm:mt-4"}`}>
+          <div
+            className={
+              `relative mx-auto max-w-full ${
                 useEightByEightViewport
-                  ? "battlefield-scroll-viewport battlefield-scroll-viewport-8x8"
+                  ? "battlefield-shell-8x8"
                   : useFullscreenNavigationViewport
-                    ? "battlefield-scroll-viewport battlefield-scroll-viewport-fullscreen-large"
-                    : ""
-              }
-              onPointerDownCapture={handleViewportPointerDown}
-              style={showGridNavigation ? { cursor: isPanningGrid ? "grabbing" : "grab" } : undefined}
-            >
-              <div
-                className="battlefield-grid inline-grid gap-1 rounded-lg"
-                style={{
-                  width: "max-content",
-                  gridTemplateColumns: `repeat(${battlefieldSize}, minmax(0, 1fr))`,
-                  gridTemplateRows: `repeat(${battlefieldSize}, minmax(0, 1fr))`
-                }}
-              >
+                    ? "battlefield-shell-fullscreen-large"
+                    : "w-fit"
+              }`
+            }
+          >
+            <div className="relative mx-auto w-fit max-w-full">
+                {showGridNavigation && (
+                  <>
+                    <div
+                      className="pointer-events-none absolute left-2 right-2 top-2 z-10 flex h-10 items-start justify-center"
+                    >
+                      <div
+                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-horizontal"
+                        aria-hidden="true"
+                        onMouseEnter={() => setHoverScrollDirection("up")}
+                        onMouseLeave={() => setHoverScrollDirection(null)}
+                      />
+                    </div>
+                    <div
+                      className="pointer-events-none absolute bottom-2 left-2 right-2 z-10 flex h-10 items-end justify-center"
+                    >
+                      <div
+                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-horizontal"
+                        aria-hidden="true"
+                        onMouseEnter={() => setHoverScrollDirection("down")}
+                        onMouseLeave={() => setHoverScrollDirection(null)}
+                      />
+                    </div>
+                    <div
+                      className="pointer-events-none absolute bottom-2 left-2 top-2 z-10 flex w-10 items-center justify-start"
+                    >
+                      <div
+                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-vertical"
+                        aria-hidden="true"
+                        onMouseEnter={() => setHoverScrollDirection("left")}
+                        onMouseLeave={() => setHoverScrollDirection(null)}
+                      />
+                    </div>
+                    <div
+                      className="pointer-events-none absolute bottom-2 right-2 top-2 z-10 flex w-10 items-center justify-end"
+                    >
+                      <div
+                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-vertical"
+                        aria-hidden="true"
+                        onMouseEnter={() => setHoverScrollDirection("right")}
+                        onMouseLeave={() => setHoverScrollDirection(null)}
+                      />
+                    </div>
+                  </>
+                )}
+                <div className="flex w-max mx-auto items-start">
+                  <div
+                    ref={battlefieldViewportRef}
+                    className={
+                      useEightByEightViewport
+                        ? "battlefield-scroll-viewport battlefield-scroll-viewport-8x8"
+                        : useFullscreenNavigationViewport
+                          ? "battlefield-scroll-viewport battlefield-scroll-viewport-fullscreen-large"
+                          : ""
+                    }
+                    onPointerDownCapture={handleViewportPointerDown}
+                    style={showGridNavigation ? { cursor: isPanningGrid ? "grabbing" : "grab" } : undefined}
+                  >
+                    <div className="w-max mx-auto">
+                    <div
+                      ref={battlefieldGridRef}
+                      className={`battlefield-grid grid mx-auto gap-0 ${passiveTeams.length > 0 ? "rounded-r-none border-r-0" : "rounded-lg"}`}
+                      style={{
+                        width: "max-content",
+                        gridTemplateColumns: `repeat(${battlefieldSize}, minmax(0, 1fr))`,
+                        gridTemplateRows: `repeat(${battlefieldSize}, minmax(0, 1fr))`
+                      }}
+                    >
                 {[...Array(battlefieldSize)].flatMap((_, y) =>
                   [...Array(battlefieldSize)].map((_, x) => {
                 const u = getUnit(x, y);
@@ -3936,6 +6113,12 @@ function CodeConq() {
                 const percent = u ? (u.hp / u.maxHp) * 100 : 0;
                 const terrainType = getTerrainAt(battlefieldTerrain, x, y);
                 const UnitDisplayIcon = u ? getUnitDisplayIcon(u) : null;
+                const feedbackKinds = cellFeedback[key] ?? [];
+                const hasHitFeedback = feedbackKinds.includes("hit");
+                const hasDeathFeedback = feedbackKinds.includes("death");
+                const hasChargeFeedback = feedbackKinds.includes("charge");
+                const hasMoraleFeedback = feedbackKinds.includes("morale");
+                const hasRangedFeedback = feedbackKinds.includes("ranged");
                 const terrainStyle = {
                   backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12)), url(${TERRAIN_ASSETS[terrainType]})`,
                   backgroundSize: "cover",
@@ -3945,6 +6128,9 @@ function CodeConq() {
                 return (
                   <div
                     key={key}
+                    ref={(node) => {
+                      battlefieldCellRefs.current[key] = node;
+                    }}
                     onClick={() => handleClick(x, y)}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, x, y)}
@@ -3955,14 +6141,19 @@ function CodeConq() {
                         e.dataTransfer.setData('text/plain', u.id);
                       }
                     }}
-                    className={`${isBattlefieldFullscreen ? "w-[68px] h-[76px] sm:w-[76px] sm:h-[92px]" : "w-[76px] h-[92px] sm:w-[92px] sm:h-[108px]"} terrain-cell flex flex-col items-center justify-center text-xs sm:text-sm cursor-pointer transition-all duration-200 relative
+                    className={`${isBattlefieldFullscreen ? "w-[76px] h-[84px] sm:w-[84px] sm:h-[100px]" : "w-[84px] h-[100px] sm:w-[100px] sm:h-[116px]"} terrain-cell flex flex-col items-center justify-center text-xs sm:text-sm cursor-pointer transition-all duration-200 relative
                     ${isSelected ? "unit-selected" : ""}
                     ${isMove ? "movement-highlight" : ""}
                     ${isAttack ? "attack-highlight" : ""}
-                    ${u ? (u.team === "Romans" ? "unit-roman" : u.team === "Greeks" ? "unit-greek" : u.team === "Celts" ? "unit-celtic" : u.team === "Germanic" ? "unit-germanic" : u.team === "Carthage" ? "unit-carthage" : u.team === "Vikings" ? "unit-viking" : u.team === "Teutons" ? "unit-teuton" : "unit-barbarian") : ""}
+                    ${u ? (u.team === "Romans" ? "unit-roman" : u.team === "Greeks" ? "unit-greek" : u.team === "Gauls" ? "unit-celtic" : u.team === "Germanic" ? "unit-germanic" : u.team === "Carthage" ? "unit-carthage" : u.team === "Egypt" ? "unit-egypt" : u.team === "Thracians" ? "unit-thracian" : u.team === "Dacians" ? "unit-dacian" : u.team === "Parthians" ? "unit-parthian" : u.team === "Seleucids" ? "unit-seleucid" : u.team === "Vikings" ? "unit-viking" : "unit-barbarian") : ""}
                     ${isSetupMode && draggedTroop && !u ? "drag-over" : ""}
                     ${mergeMode && u && u.team === turn && selectedForMerge && u.role === selectedForMerge.role ? "merge-highlight" : ""}
                     ${mergeMode && u && u.team === turn && selectedForMerge && u.id === selectedForMerge.id ? "merge-selected" : ""}
+                    ${hasHitFeedback ? "battle-feedback-hit" : ""}
+                    ${hasDeathFeedback ? "battle-feedback-death" : ""}
+                    ${hasChargeFeedback ? "battle-feedback-charge" : ""}
+                    ${hasMoraleFeedback ? "battle-feedback-morale" : ""}
+                    ${hasRangedFeedback ? "battle-feedback-ranged" : ""}
                     ${!isSetupMode && mergeMode && u && ALL_TEAMS.includes(u.team) ? "cursor-grab active:cursor-grabbing" : ""}`}
                     style={terrainStyle}
                     title={TERRAIN_LABELS[terrainType]}
@@ -3970,18 +6161,20 @@ function CodeConq() {
                     {u ? (
                       <div className="relative w-full h-full flex flex-col items-center justify-center">
                           {/* Unit Icon */}
-                          <div className="text-2xl mb-1">
+                          <div className="text-2xl mb-0.5">
                             {typeof UnitDisplayIcon === "string" ? UnitDisplayIcon : (UnitDisplayIcon ? createElement(UnitDisplayIcon) : "⚔️")}
                           </div>
                           
                           {/* Unit Name */}
-                          <div className="text-xs text-center font-semibold text-yellow-200 leading-tight">
-                            {u.name}
+                          <div className="rounded-full bg-black/35 px-2 py-0.5 text-[10px] text-center font-semibold text-yellow-100 leading-tight shadow-sm">
+                            {getBattlefieldUnitLabel(u)}
                           </div>
                           
-                          {/* Health Display */}
-                          <div className="text-xs text-white font-bold">
-                            {u.hp} HP
+                          {/* Health + Range State */}
+                          <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-white/95">
+                            <span>{u.hp} HP</span>
+                            {u.ammo && u.ammo > 0 && <span className="text-cyan-300">| 🏹{u.ammo}</span>}
+                            {hasNoAmmoPenalty(u) && <span className="text-red-300">| ⚔️</span>}
                           </div>
                           
                           {/* Health Bar */}
@@ -3991,20 +6184,6 @@ function CodeConq() {
                               style={{ width: `${percent}%` }}
                             ></div>
                           </div>
-                          
-                          {/* Ammo Display for Ranged Units */}
-                          {u.ammo && u.ammo > 0 && (
-                            <div className="text-xs text-cyan-400 mt-1">
-                              🏹{u.ammo}
-                            </div>
-                          )}
-                          
-                          {/* Out of Ammo Indicator */}
-                          {u.ammo === 0 && (u.range ?? 1) > 1 && (
-                            <div className="text-xs text-red-400 mt-1">
-                              ⚔️
-                            </div>
-                          )}
                           
                           {/* Movement and Attack Indicators */}
                           {isMove && <div className="text-green-400 text-lg">🚶‍♂️</div>}
@@ -4019,12 +6198,81 @@ function CodeConq() {
                 );
               })
             )}
-              </div>
+                      {projectileFeedback.map((projectile) => (
+                        <div
+                          key={projectile.id}
+                          className={`battle-projectile-trace battle-projectile-${projectile.variant}`}
+                          style={{
+                            left: `${projectile.startX}px`,
+                            top: `${projectile.startY}px`,
+                            width: `${projectile.distance}px`,
+                            transform: `translateY(-50%) rotate(${projectile.angle}rad)`
+                          }}
+                        />
+                      ))}
+                    </div>
+                    </div>
+                  </div>
+                  {passiveTeams.length > 0 && (
+                    <div className="game-ui flex flex-col items-center gap-3 rounded-l-none border-l-0 px-2 py-3">
+                      {passiveTeams.map((team) => {
+                        const passive = CIV_PASSIVES[team];
+                        return (
+                          <div
+                            key={team}
+                            className="relative group"
+                            aria-label={`${team} passive: ${passive.name}. ${passive.effect}`}
+                            title={`${team} - ${passive.name}: ${passive.effect}`}
+                          >
+                            <div className="game-ui flex h-11 w-11 shrink-0 items-center justify-center border border-yellow-600 bg-gray-950 text-lg shadow-lg transition-colors group-hover:border-yellow-400">
+                              {PASSIVE_ICONS[team]}
+                            </div>
+                            <div className="game-ui pointer-events-none absolute left-1/2 top-full z-20 mt-4 hidden w-[21rem] -translate-x-1/2 overflow-hidden rounded-[22px] border border-yellow-500/80 bg-slate-950/95 text-left shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-amber-200/10 backdrop-blur-md group-hover:block">
+                              <div className="absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.3),_transparent_70%)]" />
+                              <div className="absolute right-[-18px] top-[-22px] h-24 w-24 rounded-full bg-amber-300/8 blur-2xl" />
+                              <div className="absolute left-1/2 top-[-8px] h-4 w-4 -translate-x-1/2 rotate-45 border-l border-t border-yellow-500/80 bg-slate-900" />
+                              <div className="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-yellow-300/85 to-transparent" />
+                              <div className="relative p-4">
+                                <div className="flex items-start gap-3">
+                                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-yellow-400/65 bg-gradient-to-br from-amber-300/20 via-amber-200/10 to-transparent text-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_10px_24px_rgba(0,0,0,0.3)]">
+                                    {PASSIVE_ICONS[team]}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <div className="text-[15px] font-bold tracking-[0.08em] text-yellow-50">
+                                        {team}
+                                      </div>
+                                      <div className="h-px flex-1 bg-gradient-to-r from-yellow-400/35 to-transparent" />
+                                    </div>
+                                    <div className="mt-2 inline-flex rounded-full border border-yellow-500/35 bg-yellow-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-yellow-300/95">
+                                      Passive
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-300/80">
+                                    Faction Bonus
+                                  </div>
+                                  <div className="mt-2 text-base font-semibold leading-tight text-yellow-100">
+                                    {passive.name}
+                                  </div>
+                                  <div className="mt-3 rounded-xl border border-yellow-500/15 bg-slate-950/45 px-3 py-2.5 text-[13px] leading-6 text-yellow-50/95">
+                                    {passive.effect}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
             </div>
           </div>
         </div>
 
-        {inspectedUnit && !isSetupMode && (
+        {inspectedUnit && (
           <div className="fixed inset-0 z-40 bg-black/65 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
             <div className="w-full max-w-lg mx-auto mt-8 sm:mt-12 mb-6">
               <div className="game-ui p-4 sm:p-6 relative">
@@ -4063,11 +6311,14 @@ function CodeConq() {
                     <span className="text-orange-400">⚔️</span> Attack: {inspectedEffectiveAttack}
                     {inspectedEffectiveAttack !== inspectedUnit.attack ? ` (base ${inspectedUnit.attack})` : ""}
                   </p>
-                  <p><span className="text-blue-400">🎯</span> Range: {inspectedUnit.range}</p>
+                  <p>
+                    <span className="text-blue-400">🎯</span> Range: {inspectedEffectiveRange}
+                    {inspectedEffectiveRange !== inspectedUnit.range ? ` (base ${inspectedUnit.range})` : ""}
+                  </p>
                   <p><span className="text-green-400">🚶‍♂️</span> Move: {getEffectiveMove(inspectedUnit, battlefieldTerrain)} {getEffectiveMove(inspectedUnit, battlefieldTerrain) !== inspectedUnit.move ? `(base ${inspectedUnit.move})` : ""}</p>
                   <p>
-                    <span className="text-cyan-300">{TROOP_MECHANIC_ICONS[getTroopMechanicType(inspectedUnit)]}</span>{" "}
-                    Troop Type: {TROOP_MECHANIC_LABELS[getTroopMechanicType(inspectedUnit)]}
+                    <span className="text-cyan-300">{getTroopTypeDisplay(inspectedUnit).icon}</span>{" "}
+                    Troop Type: {getTroopTypeDisplay(inspectedUnit).label}
                   </p>
                   <p><span className="text-lime-300">🗺️</span> Terrain: <strong>{TERRAIN_LABELS[inspectedTerrainType ?? "plain"]}</strong></p>
                   {!gameOptions.terrainEffectsEnabled && (
@@ -4086,8 +6337,8 @@ function CodeConq() {
                   {inspectedUnit.ammo && inspectedUnit.ammo > 0 && (
                     <p><span className="text-cyan-400">🏹</span> Shots: {inspectedUnit.ammo}</p>
                   )}
-                  {inspectedUnit.ammo === 0 && (inspectedUnit.range ?? 1) > 1 && (
-                    <p><span className="text-red-400">⚔️</span> <strong>No shots left - fights in close combat</strong></p>
+                  {hasNoAmmoPenalty(inspectedUnit) && (
+                    <p><span className="text-red-400">⚔️</span> <strong>No shots left - fights in close combat at half attack</strong></p>
                   )}
                 </div>
 
@@ -4144,135 +6395,143 @@ function CodeConq() {
           </div>
         )}
 
-        {/* Right Side Panel */}
-        {gameOptions.showUnitPanel && (
-        <div className={`game-ui p-4 flex-shrink-0 relative ${isBattlefieldFullscreen ? "w-56 max-h-[72vh] overflow-y-auto" : "xl:w-60"}`}>
-          {/* Decorative shield */}
-          <svg className="absolute -top-2 left-2 w-6 h-6 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 1L3 5v6c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V5l-9-4z"/>
-          </svg>
-          
-          {isSetupMode ? (
-            // Troop Selection Panel
-            <>
-              <h2 className="text-yellow-200 font-bold mb-3 text-xl border-b border-yellow-600 pb-2">
-                {selectedTeam} Troops
-              </h2>
-              <div className="max-h-96 overflow-y-auto space-y-2">
-                {AVAILABLE_TROOPS[selectedTeam].map((troop, index) => (
-                  <div
-                    key={index}
-                    draggable
-                    onDragStart={() => setDraggedTroop(troop)}
-                    onDragEnd={() => setDraggedTroop(null)}
-                    className="bg-gray-700 p-3 rounded cursor-move hover:bg-gray-600 transition-colors border border-gray-600 relative"
+        {isBattleLogPanelOpen && !isSetupMode && (gameOptions.showTurnBanner || gameOptions.showBattleLog) && (
+          <div className="fixed left-3 right-3 top-24 z-40 sm:left-4 sm:right-auto sm:w-[30rem]">
+            <div className="game-ui p-4 sm:p-6 relative max-h-[calc(100vh-7rem)] overflow-y-auto">
+                <div className="flex items-center justify-between gap-4 mb-4">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-yellow-200">Battle Log</h2>
+                  <button
+                    onClick={() => setIsBattleLogPanelOpen(false)}
+                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
                   >
-                    {/* Decorative star for draggable troops */}
-                    <svg className="absolute -top-1 -right-1 w-4 h-4 text-yellow-300 opacity-70" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    Close
+                  </button>
+                </div>
+
+                {gameOptions.showTurnBanner && (
+                  <div className="text-center relative mb-4">
+                    <svg className="absolute -top-2 left-4 w-8 h-8 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 8l3 4h2l-3 4-3-4H9l3-4z"/>
                     </svg>
-                    
-                    <div className="flex items-center gap-2">
-                      <div className="text-2xl">
-                        {typeof troop.Icon === "string" && troop.Icon.length <= 2
-                          ? troop.Icon
-                          : ICON_MAP[troop.Icon as keyof typeof ICON_MAP] || troop.Icon || "⚔️"}
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-yellow-200 font-semibold">{troop.name}</div>
-                        <div className="text-xs text-gray-300">
-                          {troop.role}
+                    <div className="text-2xl font-bold text-yellow-200">
+                      {checkEnd() || `${turn.toUpperCase()} TURN`}
+                    </div>
+                    <div className="text-sm text-yellow-100 mt-1">
+                      {gameMode === "multiplayer"
+                        ? `${turn} player's turn`
+                        : turn === playerTeam ? "Your turn - Click to select and move/attack"
+                          : turn === "Barbarians" ? "Barbarians are thinking..."
+                          : turn === "Greeks" ? "Greeks are thinking..."
+                          : turn === "Gauls" ? "Gauls are thinking..."
+                          : turn === "Germanic" ? "Germanic tribes are thinking..."
+                          : turn === "Carthage" ? "Carthage is thinking..."
+                          : turn === "Egypt" ? "Egypt is thinking..."
+                          : turn === "Thracians" ? "Thracians are thinking..."
+                          : turn === "Dacians" ? "Dacians are thinking..."
+                          : turn === "Parthians" ? "Parthians are thinking..."
+                          : turn === "Seleucids" ? "Seleucids are thinking..."
+                          : turn === "Vikings" ? "Vikings are thinking..." : ""}
+                    </div>
+                  </div>
+                )}
+
+                {gameOptions.showTurnBanner && gameOptions.showBattleLog && (
+                  <div className="my-3 border-t border-yellow-600/50" />
+                )}
+
+                {gameOptions.showBattleLog && (
+                  <div className="relative">
+                    <h3 className="text-yellow-200 font-bold mb-1 text-lg border-b border-yellow-600 pb-2">Battle Timeline</h3>
+                    <p className="mb-3 text-xs text-yellow-100/70">Attacks, kills, movement, AI intent, merges, and state changes appear here in order.</p>
+                    <div className="max-h-[60vh] overflow-y-auto space-y-2">
+                      {visibleBattleLog.map((line, i) => {
+                        const appearance = getBattleLogAppearance(line);
+                        return (
+                        <div
+                          key={i}
+                          className={`rounded-xl border-l-2 p-2.5 text-sm ${appearance.accent} ${appearance.text} ${appearance.bg}`}
+                        >
+                          {line}
+                        </div>
+                      )})}
+                      {visibleBattleLog.length === 0 && (
+                        <p className="text-sm text-yellow-100/75">No battle actions yet.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+          </div>
+        )}
+
+        {isUnitPanelOpen && isSetupMode && (
+          <div className="fixed left-3 right-3 top-24 z-40 sm:left-auto sm:right-4 sm:w-[28rem]">
+            <div className="game-ui p-4 sm:p-6 relative max-h-[calc(100vh-7rem)] overflow-y-auto">
+                <div className="flex items-center justify-between gap-4 mb-4">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-yellow-200">{selectedTeam} Troops</h2>
+                  <button
+                    onClick={() => setIsUnitPanelOpen(false)}
+                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="max-h-[60vh] overflow-y-auto space-y-2">
+                  {AVAILABLE_TROOPS[selectedTeam].map((troop, index) => {
+                    const troopAbilities = getTroopAbilities(troop.role);
+                    return (
+                      <div
+                        key={index}
+                        draggable
+                        onDragStart={() => setDraggedTroop(troop)}
+                        onDragEnd={() => setDraggedTroop(null)}
+                        className="bg-gray-700 p-3 rounded cursor-move hover:bg-gray-600 transition-colors border border-gray-600 relative"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="text-2xl">
+                            {typeof troop.Icon === "string" && troop.Icon.length <= 2
+                              ? troop.Icon
+                              : ICON_MAP[troop.Icon as keyof typeof ICON_MAP] || troop.Icon || "⚔️"}
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-yellow-200 font-semibold">{troop.name}</div>
+                            <div className="text-xs text-gray-300">{troop.role}</div>
+                          </div>
+                        </div>
+                        <div className="mt-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/78">Signature Skills</div>
+                          {troopAbilities.length > 0 ? (
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              {troopAbilities.map((ability) => (
+                                <span
+                                  key={ability.key}
+                                  className="rounded-full border border-cyan-700/50 bg-cyan-950/25 px-2 py-0.5 text-[10px] uppercase tracking-wide text-cyan-100"
+                                  title={ability.description}
+                                >
+                                  {ability.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-1.5 text-[11px] text-yellow-100/68">No signature skills.</div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="mt-4 p-3 bg-gray-800 rounded border border-gray-600">
-                <div className="text-yellow-200 font-semibold mb-2">Team Counts:</div>
-                <div className="text-sm text-gray-300">
-                  {setupTeams.map((team) => (
-                    <div key={team}>{team}: {getTeamCount(team)}/16</div>
-                  ))}
+                    );
+                  })}
                 </div>
-              </div>
-            </>
-          ) : (
-            // Selected Unit Display
-            selected ? (
-              <>
-                <h2 className="text-yellow-200 font-bold mb-3 text-xl border-b border-yellow-600 pb-2">Selected Unit</h2>
-                <div className="space-y-2 text-sm text-yellow-200">
-                  <p><span className="text-yellow-300">🧱</span> <strong>{selected.name}</strong></p>
-                  <p><span className="text-sky-300">🏴</span> Team: {selected.team}</p>
-                  <p>
-                    <span className="text-red-400">❤️</span> HP: {selected.hp}/{selected.maxHp}
-                    {selected.baseMaxHp && selected.baseMaxHp !== selected.maxHp ? ` (base ${selected.baseMaxHp})` : ""}
-                  </p>
-                  <p>
-                    <span className="text-orange-400">⚔️</span> Attack: {selectedEffectiveAttack}
-                    {selectedEffectiveAttack !== selected.attack ? ` (base ${selected.attack})` : ""}
-                  </p>
-                  <p><span className="text-blue-400">🎯</span> Range: {selected.range}</p>
-                  <p><span className="text-green-400">🚶‍♂️</span> Move: {selectedEffectiveMove}{selectedEffectiveMove !== selected.move ? ` (base ${selected.move})` : ""}</p>
-                  <p><span className="text-purple-400">🏷️</span> Role: {selected.role}</p>
-                  <p>
-                    <span className="text-cyan-300">{TROOP_MECHANIC_ICONS[getTroopMechanicType(selected)]}</span>{" "}
-                    Troop Type: {TROOP_MECHANIC_LABELS[getTroopMechanicType(selected)]}
-                  </p>
-                  {selectedTerrainType && (
-                    <p><span className="text-lime-300">🗺️</span> Terrain: {TERRAIN_LABELS[selectedTerrainType]}</p>
-                  )}
-                  {!gameOptions.terrainEffectsEnabled && selectedTerrainType && (
-                    <p className="text-xs text-yellow-100 opacity-90">Terrain effects are disabled in Graphics.</p>
-                  )}
-                  {selectedEffectNotes.length > 0 && (
-                    <div className="rounded-lg border border-lime-700 bg-black/20 px-3 py-2">
-                      <div className="text-lime-300 text-xs font-semibold mb-1">Active Effects</div>
-                      <div className="space-y-1">
-                        {selectedEffectNotes.map((note) => (
-                          <p key={note} className="text-xs text-yellow-100">{note}</p>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Ammunition display for ranged units */}
-                  {selected.ammo && selected.ammo > 0 && (
-                    <p><span className="text-cyan-400">🏹</span> Shots: {selected.ammo}</p>
-                  )}
-                  
-                  {/* Out of ammo indicator */}
-                  {selected.ammo === 0 && (selected.range ?? 1) > 1 && (
-                    <p><span className="text-red-400">⚔️</span> <strong>No shots left - fights in close combat</strong></p>
-                  )}
-                </div>
-                
-                {/* Health Bar */}
-                <div className="mt-3">
-                  <div className="text-xs text-yellow-200 mb-1">Health</div>
-                  <div className="w-full bg-gray-700 rounded-full h-2 border border-gray-600">
-                    <div 
-                      className="health-bar rounded-full h-full" 
-                      style={{ width: `${(selected.hp / selected.maxHp) * 100}%` }}
-                    ></div>
+
+                <div className="mt-4 p-3 bg-gray-800 rounded border border-gray-600">
+                  <div className="text-yellow-200 font-semibold mb-2">Team Counts:</div>
+                  <div className="text-sm text-gray-300">
+                    {setupTeams.map((team) => (
+                      <div key={team}>{team}: {getTeamCount(team)}/16</div>
+                    ))}
                   </div>
                 </div>
-              </>
-            ) : (
-              <>
-                <h2 className="text-yellow-200 font-bold mb-3 text-xl border-b border-yellow-600 pb-2">No Unit Selected</h2>
-                <p className="text-green-200 text-sm opacity-70">Click on a unit to select it. Click the same troop again to inspect full stats. Click an empty tile to inspect terrain effects.</p>
-              </>
-            )
-          )}
-          
-          {/* Decorative helmet */}
-          <svg className="absolute -bottom-2 right-2 w-6 h-6 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-          </svg>
-        </div>
+              </div>
+          </div>
         )}
       </div>
       </div>
