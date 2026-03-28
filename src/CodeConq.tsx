@@ -5,6 +5,7 @@ import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState, t
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { BattlefieldSkyLayer } from "./components/codeconq/BattlefieldSkyLayer";
 import { FormationLoadingScreen } from "./components/codeconq/FormationLoadingScreen";
+import { useBattlefieldDayNightOverlay } from "./hooks/useBattlefieldDayNight";
 import { useBattlefieldViewport } from "./hooks/useBattlefieldViewport";
 import { useBattleSession } from "./hooks/useCodeConqController";
 import { levels } from "./Units/InitialUnits";
@@ -186,6 +187,7 @@ function CodeConq() {
   /** Prevents the AI effect from scheduling a second decision when units update mid–attack animation. */
   const aiAttackAnimatingRef = useRef(false);
   const reduceUiMotion = useReducedMotion();
+  const { overlayRef: dayNightOverlayRef, dayNightClock } = useBattlefieldDayNightOverlay(reduceUiMotion);
 
   useLayoutEffect(() => {
     const list = isSetupMode ? customUnits : units;
@@ -3164,8 +3166,22 @@ function CodeConq() {
       <div className="sticky top-0 z-30 w-full">
         <div className="game-ui w-full rounded-none border-x-0 px-2 sm:px-3 py-2 flex flex-wrap items-center gap-2 justify-between relative">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-base sm:text-lg font-bold text-yellow-200 drop-shadow-lg">Battlecry</h1>
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-600/60 bg-black/30 px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold tabular-nums text-amber-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                title={
+                  reduceUiMotion
+                    ? "Time of day (cycle paused — reduced motion)"
+                    : "Time of day (synced with battlefield sky)"
+                }
+                aria-label={`${dayNightClock.isNight ? "Night" : "Day"}, ${dayNightClock.timeLabel}`}
+              >
+                <span aria-hidden className="select-none text-sm leading-none">
+                  {reduceUiMotion ? "☀️" : dayNightClock.isNight ? "🌙" : "☀️"}
+                </span>
+                <span>{dayNightClock.timeLabel}</span>
+              </span>
               <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-2 py-0.5 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide text-yellow-100">
                 {gameMode === "multiplayer" ? "Local Multiplayer" : "Player vs AI"}
               </span>
@@ -3975,6 +3991,11 @@ function CodeConq() {
                         gridTemplateRows: `repeat(${battlefieldSize}, minmax(0, 1fr))`
                       }}
                     >
+                <div
+                  ref={dayNightOverlayRef}
+                  className="battlefield-daynight-overlay"
+                  aria-hidden
+                />
                 <BattlefieldSkyLayer />
                 <LayoutGroup id="battlefield-units">
                 {[...Array(battlefieldSize)].flatMap((_, y) =>
