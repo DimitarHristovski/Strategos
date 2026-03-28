@@ -1,8 +1,9 @@
 // CodeConq - Grid Strategy Game with Highlights and Expanded Features
 // Now includes: Health Bars, Kill Counters, Special Ability Tooltips, and Custom Drag & Drop Setup
 
-import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { LayoutGroup, motion, useReducedMotion } from "framer-motion";
+import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
+import { BattlefieldSkyLayer } from "./components/codeconq/BattlefieldSkyLayer";
 import { FormationLoadingScreen } from "./components/codeconq/FormationLoadingScreen";
 import { useBattlefieldViewport } from "./hooks/useBattlefieldViewport";
 import { useBattleSession } from "./hooks/useCodeConqController";
@@ -70,6 +71,19 @@ import {
   rerollUnits,
   stripUnitForStorage
 } from "./game/unitLifecycle";
+import {
+  ATTACK_RESOLVE_MELEE_MS,
+  ATTACK_RESOLVE_RANGED_MS,
+  battlefieldMotionCssVars,
+  DEATH_CELL_FEEDBACK_MS,
+  DEATH_EXIT_ANIMATION_S,
+  getAttackResolutionDelayMs,
+  HIT_FLASH_MS,
+  MELEE_WINDUP_MS,
+  RANGED_ATTACKER_PULSE_MS,
+  SIEGE_FOG_DURATION_MS,
+  SIEGE_IMPACT_DELAY_MS
+} from "./game/battleAnimation";
 import type {
   BattlefieldSize,
   BattleFeedbackKind,
@@ -86,13 +100,6 @@ import type {
   TroopMechanicType,
   UnitsReferenceScope
 } from "./game/types";
-
-/** Match projectile volley duration (ranged) / melee & charge clash duration. */
-const ATTACK_RESOLVE_RANGED_MS = 2000;
-const ATTACK_RESOLVE_MELEE_MS = 3000;
-
-const getAttackResolutionDelayMs = (isProjectile: boolean) =>
-  isProjectile ? ATTACK_RESOLVE_RANGED_MS : ATTACK_RESOLVE_MELEE_MS;
 
 const renderTeamSelectOptions = (
   allowedTeams: readonly TeamName[],
@@ -472,7 +479,9 @@ function CodeConq() {
   const getCloseCombatAttackDestination = (attacker: any, target: any) => {
     if (!attacker || !target || attacker.range !== 1) return null;
 
-    const attackerMove = getEffectiveMove(attacker, battlefieldTerrain);
+    const reachableKeys = new Set(
+      getReachableTiles(attacker, units).map((t) => `${t.x},${t.y}`)
+    );
 
     const candidates = [
       { x: target.x + 1, y: target.y },
@@ -482,7 +491,7 @@ function CodeConq() {
     ]
       .filter(({ x, y }) => isWithinBattlefield(x, y))
       .filter(({ x, y }) => !getUnit(x, y))
-      .filter(({ x, y }) => Math.abs(attacker.x - x) + Math.abs(attacker.y - y) <= attackerMove)
+      .filter(({ x, y }) => reachableKeys.has(`${x},${y}`))
       .sort((a, b) => {
         const distanceA = Math.abs(attacker.x - a.x) + Math.abs(attacker.y - a.y);
         const distanceB = Math.abs(attacker.x - b.x) + Math.abs(attacker.y - b.y);
@@ -527,7 +536,7 @@ function CodeConq() {
     from: TerrainPoint,
     to: TerrainPoint,
     variant: ProjectileFeedback["variant"],
-    durationMs = 2000
+    durationMs = ATTACK_RESOLVE_RANGED_MS
   ) => {
     const gridRect = battlefieldGridRef.current?.getBoundingClientRect();
     const fromRect = battlefieldCellRefs.current[`${from.x},${from.y}`]?.getBoundingClientRect();
@@ -568,7 +577,7 @@ function CodeConq() {
   const applyAttackOutcomeFeedback = (defender: any, updatedTargetHp: number, moraleThreshold: number) => {
     const defenderKey = `${defender.x},${defender.y}`;
     if (updatedTargetHp <= 0) {
-      triggerCellFeedback(defenderKey, "death", 1080);
+      triggerCellFeedback(defenderKey, "death", DEATH_CELL_FEEDBACK_MS);
       playBattleSfx("death-fall", { cooldownMs: 100, volumeMultiplier: 1.1 });
       return;
     }
@@ -601,12 +610,15 @@ function CodeConq() {
     if (options.isProjectile) {
       if (suppressOutcome) {
         registerFeedbackTimeout(() => {
-          triggerCellFeedback(defenderKey, "hit", 720);
+          triggerCellFeedback(defenderKey, "hit", HIT_FLASH_MS);
         }, ATTACK_RESOLVE_RANGED_MS);
       } else {
-        triggerCellFeedback(defenderKey, "hit", 720);
+        triggerCellFeedback(defenderKey, "hit", HIT_FLASH_MS);
       }
     } else {
+      if (!attackOutcome.abilityTags.includes("Charge")) {
+        triggerCellFeedback(attackerKey, "meleeWindup", MELEE_WINDUP_MS);
+      }
       triggerCellFeedback(defenderKey, "meleeHit", meleeFightMs);
     }
     if (attackOutcome.abilityTags.includes("Charge")) {
@@ -621,13 +633,11 @@ function CodeConq() {
     if (options.isProjectile) {
       const projectileVariant = getTroopMechanicType(attacker) === "sieged" ? "siege" : "arrow";
       triggerProjectileFeedback(attackerPoint, { x: defender.x, y: defender.y }, projectileVariant);
-      triggerCellFeedback(attackerKey, "ranged", 2000);
+      triggerCellFeedback(attackerKey, "ranged", RANGED_ATTACKER_PULSE_MS);
       if (projectileVariant === "siege") {
-        const impactDelayMs = 2000;
-        const fogDurationMs = 3200;
         registerFeedbackTimeout(() => {
-          triggerCellFeedback(defenderKey, "siegeFog", fogDurationMs);
-        }, impactDelayMs);
+          triggerCellFeedback(defenderKey, "siegeFog", SIEGE_FOG_DURATION_MS);
+        }, SIEGE_IMPACT_DELAY_MS);
       }
     } else if (attackOutcome.abilityTags.includes("Charge")) {
       triggerProjectileFeedback(attackerPoint, { x: defender.x, y: defender.y }, "charge", meleeFightMs);
@@ -636,7 +646,7 @@ function CodeConq() {
     if (suppressOutcome) return;
 
     if (options.updatedTargetHp <= 0) {
-      triggerCellFeedback(defenderKey, "death", 1080);
+      triggerCellFeedback(defenderKey, "death", DEATH_CELL_FEEDBACK_MS);
       playBattleSfx("death-fall", { cooldownMs: 100, volumeMultiplier: 1.1 });
       return;
     }
@@ -1220,12 +1230,26 @@ function CodeConq() {
     return <FormationLoadingScreen />;
   }
 
-  const highlightMove = selected && gameOptions.showMoveHighlights && (isSetupMode ? customUnits : units) ? [...Array(battlefieldSize)].flatMap((_, y) =>
-    [...Array(battlefieldSize)].map((_, x) => {
-      const distance = Math.abs(x - selected.x) + Math.abs(y - selected.y);
-      return (distance <= selectedEffectiveMove && !getUnit(x, y)) ? `${x},${y}` : null;
-    }).filter(Boolean)
-  ) : [];
+  /** BFS reachability in battle — occupied tiles block movement for all units (no passing through). */
+  const battleMoveDestinationKeys =
+    selected && !isSetupMode
+      ? new Set(getReachableTiles(selected, units).map((t) => `${t.x},${t.y}`))
+      : null;
+
+  const highlightMove =
+    selected && gameOptions.showMoveHighlights && (isSetupMode ? customUnits : units)
+      ? [...Array(battlefieldSize)].flatMap((_, y) =>
+          [...Array(battlefieldSize)].map((_, x) => {
+            if (isSetupMode) {
+              const distance = Math.abs(x - selected.x) + Math.abs(y - selected.y);
+              return distance <= selectedEffectiveMove && !getUnit(x, y) ? `${x},${y}` : null;
+            }
+            const key = `${x},${y}`;
+            if (key === `${selected.x},${selected.y}`) return null;
+            return battleMoveDestinationKeys?.has(key) ? `${x},${y}` : null;
+          }).filter(Boolean)
+        )
+      : [];
 
   const highlightAttack = selected && gameOptions.showAttackHighlights && (isSetupMode ? customUnits : units) ? [...Array(battlefieldSize)].flatMap((_, y) =>
     [...Array(battlefieldSize)].map((_, x) => {
@@ -1428,8 +1452,8 @@ function CodeConq() {
           advanceTurn();
           battleResolutionPendingRef.current = false;
         }, resolveDelayMs);
-      } else if (!clicked && isInRange(selected, { x, y }, selectedEffectiveMove)) {
-        // Move to empty space
+      } else if (!clicked && battleMoveDestinationKeys?.has(`${x},${y}`) && !getUnit(x, y)) {
+        // Move to empty space (reachable via BFS)
         setUnits((prev) => prev.map((u: any) => u.id === selected.id ? { ...u, x, y } : u));
         triggerCellFeedback(`${x},${y}`, "move", 2000);
         setLog((prevLog) => [`${selected.name} (${selected.team}) moved onto ${TERRAIN_LABELS[getTerrainAt(battlefieldTerrain, x, y)]}`, ...prevLog]);
@@ -3867,7 +3891,11 @@ function CodeConq() {
           </div>
         )}
         
-        <div className={`battlefield-container relative mx-auto flex w-full justify-center ${isBattlefieldFullscreen ? "min-w-0 items-center" : "mt-3 sm:mt-4"}`}>
+        <div
+          className={`battlefield-container relative mx-auto flex w-full justify-center ${isBattlefieldFullscreen ? "min-w-0 items-center" : "mt-3 sm:mt-4"}`}
+          style={battlefieldMotionCssVars as CSSProperties}
+          data-battle-motion={reduceUiMotion ? "reduced" : "normal"}
+        >
           <div
             className={
               `relative mx-auto max-w-full ${
@@ -3947,6 +3975,7 @@ function CodeConq() {
                         gridTemplateRows: `repeat(${battlefieldSize}, minmax(0, 1fr))`
                       }}
                     >
+                <BattlefieldSkyLayer />
                 <LayoutGroup id="battlefield-units">
                 {[...Array(battlefieldSize)].flatMap((_, y) =>
                   [...Array(battlefieldSize)].map((_, x) => {
@@ -3960,6 +3989,7 @@ function CodeConq() {
                 const UnitDisplayIcon = u ? getUnitDisplayIcon(u) : null;
                 const feedbackKinds = cellFeedback[key] ?? [];
                 const hasHitFeedback = feedbackKinds.includes("hit");
+                const hasMeleeWindupFeedback = feedbackKinds.includes("meleeWindup");
                 const hasMeleeHitFeedback = feedbackKinds.includes("meleeHit");
                 const hasDeathFeedback = feedbackKinds.includes("death");
                 const hasChargeFeedback = feedbackKinds.includes("charge");
@@ -3980,8 +4010,14 @@ function CodeConq() {
                     : Math.min(24, tilesMoved * 2);
                 const terrainStyle = {
                   backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12)), url(${TERRAIN_ASSETS[terrainType]})`,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center"
+                  ...(reduceUiMotion
+                    ? { backgroundSize: "cover" as const, backgroundPosition: "center" as const }
+                    : {
+                        /* Extra canvas for slow pan — see .terrain-cell--living in index.css */
+                        backgroundSize: "122% 122%",
+                        backgroundPosition: "50% 50%",
+                        ["--terrain-drift-delay" as string]: `${-((x + y * 13) % 47)}s`
+                      })
                 };
                 
                 return (
@@ -4000,7 +4036,7 @@ function CodeConq() {
                         e.dataTransfer.setData('text/plain', u.id);
                       }
                     }}
-                    className={`${isBattlefieldFullscreen ? "w-[76px] h-[84px] sm:w-[84px] sm:h-[100px]" : "w-[84px] h-[100px] sm:w-[100px] sm:h-[116px]"} terrain-cell ${u ? "terrain-cell--has-unit" : ""} flex flex-col items-center justify-center text-xs sm:text-sm cursor-pointer transition-all duration-300 relative
+                    className={`${isBattlefieldFullscreen ? "w-[76px] h-[84px] sm:w-[84px] sm:h-[100px]" : "w-[84px] h-[100px] sm:w-[100px] sm:h-[116px]"} terrain-cell ${u ? "terrain-cell--has-unit" : ""}${reduceUiMotion ? "" : " terrain-cell--living"} flex flex-col items-center justify-center text-xs sm:text-sm cursor-pointer transition-all duration-300 relative
                     ${isSelected ? "unit-selected" : ""}
                     ${isMove ? "movement-highlight" : ""}
                     ${isAttack ? "attack-highlight" : ""}
@@ -4009,6 +4045,7 @@ function CodeConq() {
                     ${mergeMode && u && u.team === turn && selectedForMerge && u.role === selectedForMerge.role ? "merge-highlight" : ""}
                     ${mergeMode && u && u.team === turn && selectedForMerge && u.id === selectedForMerge.id ? "merge-selected" : ""}
                     ${hasHitFeedback ? "battle-feedback-hit" : ""}
+                    ${hasMeleeWindupFeedback ? "battle-feedback-melee-windup" : ""}
                     ${hasMeleeHitFeedback ? "battle-feedback-melee-hit" : ""}
                     ${hasDeathFeedback ? "battle-feedback-death" : ""}
                     ${hasChargeFeedback ? "battle-feedback-charge" : ""}
@@ -4018,22 +4055,49 @@ function CodeConq() {
                     ${hasSiegeFogFeedback ? "battle-feedback-siege-fog" : ""}
                     ${!isSetupMode && mergeMode && u && ALL_TEAMS.includes(u.team) ? "cursor-grab active:cursor-grabbing" : ""}`}
                     style={terrainStyle}
+                    data-terrain={terrainType}
                     title={TERRAIN_LABELS[terrainType]}
                   >
-                    {u ? (
-                      <motion.div
-                        layoutId={isSetupMode ? undefined : `battle-unit-${u.id}`}
-                        layout={!isSetupMode}
-                        initial={false}
-                        transition={{
-                          layout: {
-                            type: "tween",
-                            duration: unitLayoutDuration,
-                            ease: [0.22, 0.61, 0.36, 1]
+                    <AnimatePresence mode="popLayout" initial={false}>
+                      {u && (
+                        <motion.div
+                          key={u.id}
+                          layoutId={isSetupMode ? undefined : `battle-unit-${u.id}`}
+                          layout={!isSetupMode}
+                          initial={false}
+                          exit={
+                            reduceUiMotion
+                              ? { opacity: 0 }
+                              : { opacity: 0, scale: 0.82, y: 12 }
                           }
-                        }}
-                        className="battle-unit-layout-root flex h-full w-full flex-col items-center justify-center will-change-transform [transform:translateZ(0)]"
-                      >
+                          animate={
+                            reduceUiMotion
+                              ? {}
+                              : hasMeleeWindupFeedback
+                                ? { scale: [1, 1.09, 1] }
+                                : hasMeleeHitFeedback
+                                  ? { y: [0, -5, 0, -4, 0, -3, 0, -2, 0] }
+                                  : {}
+                          }
+                          transition={{
+                            layout: {
+                              type: "tween",
+                              duration: unitLayoutDuration,
+                              ease: [0.22, 0.61, 0.36, 1]
+                            },
+                            duration: hasMeleeWindupFeedback
+                              ? MELEE_WINDUP_MS / 1000
+                              : hasMeleeHitFeedback
+                                ? ATTACK_RESOLVE_MELEE_MS / 1000
+                                : 0.25,
+                            ease: hasMeleeHitFeedback ? [0.37, 0, 0.63, 1] : "easeOut",
+                            exit: {
+                              duration: reduceUiMotion ? 0.12 : DEATH_EXIT_ANIMATION_S,
+                              ease: [0.4, 0, 0.2, 1]
+                            }
+                          }}
+                          className="battle-unit-layout-root relative z-30 flex h-full w-full flex-col items-center justify-center will-change-transform [transform:translateZ(0)]"
+                        >
                           {/* Unit Icon */}
                           <div className="text-2xl mb-0.5 drop-shadow-md">
                             {typeof UnitDisplayIcon === "string" ? UnitDisplayIcon : (UnitDisplayIcon ? createElement(UnitDisplayIcon) : "⚔️")}
@@ -4063,8 +4127,10 @@ function CodeConq() {
                           {isMove && <div className="text-green-400 text-lg motion-safe:animate-bounce">🚶‍♂️</div>}
                           {isAttack && <div className="text-red-400 text-lg motion-safe:animate-pulse">⚔️</div>}
                         </motion.div>
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
+                      )}
+                    </AnimatePresence>
+                    {!u && (
+                      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
                         <div className="text-gray-600 text-xs"></div>
                       </div>
                     )}

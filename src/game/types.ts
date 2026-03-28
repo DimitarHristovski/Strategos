@@ -43,6 +43,7 @@ export type GameOptions = {
 export type BattleFeedbackKind =
   | "hit"
   | "meleeHit"
+  | "meleeWindup"
   | "death"
   | "charge"
   | "morale"
