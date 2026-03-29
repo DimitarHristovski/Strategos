@@ -120,7 +120,6 @@ import type {
   TerrainPreset,
   TerrainType,
   TroopCatalogEntry,
-  TroopMechanicType,
   UnitsReferenceScope
 } from "./game/types";
 
@@ -2668,82 +2667,46 @@ function CodeConq() {
   const buildAutoDeployRoleCounts = (team: TeamName, totalUnits: number) => {
     const availableTroops = AVAILABLE_TROOPS[team];
     const leaderTroop = availableTroops.find((troop) => troop.Icon === "👑") ?? availableTroops[0];
-    const nonLeaderTroops = availableTroops.filter((troop) => troop.role !== leaderTroop.role);
-    const groupedCandidates = nonLeaderTroops
-      .map((troop) => {
-        const referenceStats = getTroopReferenceStats(troop.role);
-        const troopType = getTroopMechanicType({
-          role: troop.role,
-          name: troop.name,
-          ammo: referenceStats.ammo,
-          range: referenceStats.range,
-          move: referenceStats.move
-        });
+    const nonLeaderCatalog = availableTroops.filter((troop) => troop.role !== leaderTroop.role);
 
-        return {
-          troop,
-          troopType
-        };
+    const troopMechanicForCatalog = (troop: (typeof availableTroops)[number]) => {
+      const referenceStats = getTroopReferenceStats(troop.role);
+      return getTroopMechanicType({
+        role: troop.role,
+        name: troop.name,
+        ammo: referenceStats.ammo,
+        range: referenceStats.range,
+        move: referenceStats.move
       });
+    };
 
-    const desiredGroupCount = Math.max(2, Math.min(groupedCandidates.length, Math.round((totalUnits - 1) / 4)));
-    const candidatesByType = groupedCandidates.reduce<Record<TroopMechanicType, typeof groupedCandidates>>(
-      (groups, candidate) => {
-        groups[candidate.troopType].push(candidate);
-        return groups;
-      },
-      {
-        closecombat: [],
-        mounted: [],
-        ranged: [],
-        sieged: []
+    const isSiegedTroop = (troop: (typeof availableTroops)[number]) => troopMechanicForCatalog(troop) === "sieged";
+
+    const pool = shuffleArray([...nonLeaderCatalog]);
+    const nonSiegePool = pool.filter((t) => !isSiegedTroop(t));
+    const needNonLeader = Math.max(0, totalUnits - 1);
+
+    const row: typeof availableTroops = [];
+    for (let i = 0; i < needNonLeader; i++) {
+      row.push(pool[i % pool.length]);
+    }
+
+    const MAX_SIEGE_UNITS = 2;
+    const siegeIndices: number[] = [];
+    row.forEach((t, index) => {
+      if (isSiegedTroop(t)) siegeIndices.push(index);
+    });
+
+    if (siegeIndices.length > MAX_SIEGE_UNITS && nonSiegePool.length > 0) {
+      const toReplace = siegeIndices.slice(MAX_SIEGE_UNITS);
+      let filler = 0;
+      for (const idx of toReplace) {
+        row[idx] = nonSiegePool[filler % nonSiegePool.length];
+        filler += 1;
       }
-    );
-    const randomTypeOrder = shuffleArray(["closecombat", "mounted", "ranged", "sieged"] as TroopMechanicType[]);
-    const roleGroups: typeof availableTroops = [];
-
-    while (roleGroups.length < desiredGroupCount) {
-      let addedGroupThisRound = false;
-
-      for (const troopType of randomTypeOrder) {
-        const nextCandidate = candidatesByType[troopType].shift();
-        if (!nextCandidate) continue;
-        roleGroups.push(nextCandidate.troop);
-        addedGroupThisRound = true;
-
-        if (roleGroups.length >= desiredGroupCount) break;
-      }
-
-      if (!addedGroupThisRound) break;
     }
 
-    if (roleGroups.length < desiredGroupCount) {
-      const leftovers = shuffleArray(
-        Object.values(candidatesByType).flat().map(({ troop }) => troop)
-      );
-      roleGroups.push(...leftovers.slice(0, desiredGroupCount - roleGroups.length));
-    }
-
-    const counts = Array(roleGroups.length).fill(3);
-    let remaining = Math.max(0, totalUnits - 1 - counts.reduce((sum, current) => sum + current, 0));
-
-    while (remaining > 0 && roleGroups.length > 0) {
-      const eligibleIndexes = counts
-        .map((count, index) => (count < 7 ? index : -1))
-        .filter((index) => index >= 0);
-
-      if (eligibleIndexes.length === 0) break;
-
-      const chosenIndex = eligibleIndexes[Math.floor(Math.random() * eligibleIndexes.length)];
-      counts[chosenIndex] += 1;
-      remaining -= 1;
-    }
-
-    const roleCounts = roleGroups.flatMap((troop, index) =>
-      Array.from({ length: counts[index] }, () => troop)
-    );
-
-    return [leaderTroop, ...roleCounts].slice(0, totalUnits);
+    return [leaderTroop, ...row].slice(0, totalUnits);
   };
 
   const getFormationColumns = (size: BattlefieldSize) => {
@@ -2893,7 +2856,7 @@ function CodeConq() {
     setDraggedTroop(null);
     setSelectedId(null);
     setLog((prev) => [
-      `Auto deployed ${playerTeam} versus ${enemyTeam} with ${unitCount} troops per side, grouped formations, and a two-tile battle line gap.`,
+      `Auto deployed ${playerTeam} versus ${enemyTeam} with ${unitCount} troops per side (full faction roster rotation, max 2 siege each), two-tile battle line gap.`,
       ...prev
     ]);
   };
