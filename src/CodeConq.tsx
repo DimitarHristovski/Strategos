@@ -39,6 +39,7 @@ import {
   DEFAULT_TERRAIN_GENERATION_SETTINGS,
   GAME_BUILD_LABEL,
   readGameAudioPrefs,
+  readPersistedSessionNavigation,
   writeGameAudioPrefs,
   GAME_STATE_STORAGE_KEY,
   LEGACY_GAME_STATE_STORAGE_KEY,
@@ -128,6 +129,8 @@ const EMPTY_TERRAIN_EFFECT_MAP: TerrainType[][] = [];
 
 /** About screen carousel: four panels (indices 0–3). */
 const ABOUT_SCREEN_SLIDE_LAST = 3;
+
+const INITIAL_SESSION_NAV = readPersistedSessionNavigation();
 
 const renderTeamSelectOptions = (
   allowedTeams: readonly TeamName[],
@@ -524,7 +527,7 @@ function CodeConq() {
   const [mergeMode, setMergeMode] = useState(false);
   const [mergeCount, setMergeCount] = useState(0);
   const [selectedForMerge, setSelectedForMerge] = useState<any>(null);
-  const [gameMode, setGameMode] = useState<GameMode | null>(null);
+  const [gameMode, setGameMode] = useState<GameMode | null>(() => INITIAL_SESSION_NAV.gameMode);
   const [multiplayerTeams, setMultiplayerTeams] = useState<[TeamName, TeamName]>(["Romans", "Barbarians"]);
   const [gridOrientation, setGridOrientation] = useState<GridOrientation>("north");
   const [isBattlefieldFullscreen, setIsBattlefieldFullscreen] = useState(false);
@@ -542,8 +545,22 @@ function CodeConq() {
   const feedbackTimeoutsRef = useRef<number[]>([]);
   const isRestoringSavedGameRef = useRef(false);
   const hasLoadedSavedGameRef = useRef(false);
-  const [startScreen, setStartScreen] = useState<"menu" | "options" | "about">("menu");
-  const [aboutSlideIndex, setAboutSlideIndex] = useState(0);
+  const [startScreen, setStartScreen] = useState<"menu" | "options" | "about">(
+    () => INITIAL_SESSION_NAV.startScreen
+  );
+  const [aboutSlideIndex, setAboutSlideIndex] = useState(() => INITIAL_SESSION_NAV.aboutSlideIndex);
+  /** False until the first full `localStorage` restore finishes (avoids wrong battle UI before units hydrate). */
+  const [sessionRestored, setSessionRestored] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const raw =
+        window.localStorage.getItem(GAME_STATE_STORAGE_KEY) ??
+        window.localStorage.getItem(LEGACY_GAME_STATE_STORAGE_KEY);
+      return !raw;
+    } catch {
+      return true;
+    }
+  });
   const aboutSwipeStartXRef = useRef<number | null>(null);
   const [isGameMenuOpen, setIsGameMenuOpen] = useState(false);
   const [gameMenuControlsOpen, setGameMenuControlsOpen] = useState(false);
@@ -583,6 +600,14 @@ function CodeConq() {
     [gameOptions.timedPlayEnabled, timedPlayLoserTeam]
   );
 
+  /** Must run inside a click/tap handler — browsers block `Audio.play()` from async effects after the gesture ends. */
+  const playBackgroundMusicFromUserGesture = useCallback(() => {
+    if (!gameOptions.musicEnabled) return;
+    const el = backgroundMusicRef.current;
+    if (!el) return;
+    void el.play().catch(() => {});
+  }, [gameOptions.musicEnabled]);
+
   /** Previous commit’s grid positions — used to scale layout move duration by tiles moved (Manhattan). */
   const unitPreviousGridRef = useRef<Record<string, { x: number; y: number }>>({});
   /** Blocks player actions while an attack animation is playing and results are not yet applied. */
@@ -617,8 +642,13 @@ function CodeConq() {
     if (!isGameMenuOpen) setGameMenuControlsOpen(false);
   }, [isGameMenuOpen]);
 
+  const prevStartScreenRef = useRef<typeof startScreen | null>(null);
   useEffect(() => {
-    if (startScreen === "about") setAboutSlideIndex(0);
+    const prev = prevStartScreenRef.current;
+    prevStartScreenRef.current = startScreen;
+    if (startScreen === "about" && prev !== null && prev !== "about") {
+      setAboutSlideIndex(0);
+    }
   }, [startScreen]);
 
   useEffect(() => {
@@ -741,6 +771,7 @@ function CodeConq() {
   useEffect(() => {
     if (typeof window === "undefined") {
       hasLoadedSavedGameRef.current = true;
+      setSessionRestored(true);
       return;
     }
 
@@ -800,6 +831,16 @@ function CodeConq() {
       setMergeCount(typeof savedState.mergeCount === "number" ? savedState.mergeCount : 0);
       setSelectedForMerge(savedState.selectedForMerge ? applyCivilizationPassive(restoreUnitFromStorage(savedState.selectedForMerge)) : null);
       setGameMode(savedState.gameMode ?? null);
+      {
+        const ss = savedState.startScreen;
+        if (ss === "menu" || ss === "options" || ss === "about") {
+          setStartScreen(ss);
+        }
+        const asi = savedState.aboutSlideIndex;
+        if (typeof asi === "number" && Number.isFinite(asi) && asi >= 0 && asi <= ABOUT_SCREEN_SLIDE_LAST) {
+          setAboutSlideIndex(Math.floor(asi));
+        }
+      }
       setMultiplayerTeams(Array.isArray(savedState.multiplayerTeams) ? savedState.multiplayerTeams : ["Romans", "Barbarians"]);
       setGridOrientation(GRID_ORIENTATIONS.includes(savedState.gridOrientation) ? savedState.gridOrientation : "north");
       const restoredTerrainPreset: TerrainPreset = ["mixed", "plain", "forest", "hill", "desert"].includes(savedState.terrainPreset)
@@ -855,6 +896,7 @@ function CodeConq() {
       // Ignore invalid saved state and fall back to a fresh session.
     } finally {
       hasLoadedSavedGameRef.current = true;
+      setSessionRestored(true);
     }
   }, []);
 
@@ -877,6 +919,8 @@ function CodeConq() {
       mergeCount,
       selectedForMerge: stripUnitForStorage(selectedForMerge),
       gameMode,
+      startScreen,
+      aboutSlideIndex,
       multiplayerTeams,
       gridOrientation,
       terrainPreset,
@@ -908,6 +952,8 @@ function CodeConq() {
     mergeCount,
     selectedForMerge,
     gameMode,
+    startScreen,
+    aboutSlideIndex,
     multiplayerTeams,
     gridOrientation,
     terrainPreset,
@@ -967,18 +1013,23 @@ function CodeConq() {
     });
   }, [gameOptions.musicEnabled]);
 
-  /** Browsers often block autoplay until a gesture; retry once after refresh when music is enabled. */
+  /** Browsers often block autoplay until a gesture; keep listening until `play()` actually succeeds. */
   useEffect(() => {
     if (!gameOptions.musicEnabled) return;
-    const tryResume = () => {
-      const a = backgroundMusicRef.current;
-      if (!a || !a.paused) return;
-      void a.play().catch(() => {});
-    };
     const onGesture = () => {
-      tryResume();
-      window.removeEventListener("pointerdown", onGesture);
-      window.removeEventListener("keydown", onGesture);
+      const a = backgroundMusicRef.current;
+      if (!a || !a.paused) {
+        window.removeEventListener("pointerdown", onGesture);
+        window.removeEventListener("keydown", onGesture);
+        return;
+      }
+      void a
+        .play()
+        .then(() => {
+          window.removeEventListener("pointerdown", onGesture);
+          window.removeEventListener("keydown", onGesture);
+        })
+        .catch(() => {});
     };
     window.addEventListener("pointerdown", onGesture, { passive: true });
     window.addEventListener("keydown", onGesture);
@@ -1934,6 +1985,10 @@ function CodeConq() {
     setIsBattlefieldFullscreen
   });
 
+  if (gameMode && !sessionRestored) {
+    return <FormationLoadingScreen />;
+  }
+
   // Safety check - don't render if units is not properly initialized
   if (!units || units.length === 0) {
     return <FormationLoadingScreen />;
@@ -2332,9 +2387,11 @@ function CodeConq() {
     setSelectedForMerge(null);
     battleOutcomeLoggedRef.current = false;
     initTimedPlayFromUnitList(prepared);
+    playBackgroundMusicFromUserGesture();
   };
 
   const startSinglePlayerBattle = () => {
+    playBackgroundMusicFromUserGesture();
     const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
     setPlayerTeam(nextPlayerTeam);
     setTurn(nextPlayerTeam);
@@ -2357,6 +2414,7 @@ function CodeConq() {
   };
 
   const startSinglePlayerMode = () => {
+    playBackgroundMusicFromUserGesture();
     setIsGameMenuOpen(false);
     setIsInGameOptionsOpen(false);
     setIsInGameMechanicsOpen(false);
@@ -2380,6 +2438,7 @@ function CodeConq() {
   };
 
   const startMultiplayerMode = () => {
+    playBackgroundMusicFromUserGesture();
     setIsGameMenuOpen(false);
     setIsInGameOptionsOpen(false);
     setIsInGameMechanicsOpen(false);
@@ -2420,9 +2479,11 @@ function CodeConq() {
     setMergeCount(0);
     battleOutcomeLoggedRef.current = false;
     initTimedPlayFromUnitList(prepared);
+    playBackgroundMusicFromUserGesture();
   };
 
   const startCustomScenarioMode = () => {
+    playBackgroundMusicFromUserGesture();
     setIsGameMenuOpen(false);
     setIsInGameOptionsOpen(false);
     setIsInGameMechanicsOpen(false);
@@ -2825,6 +2886,14 @@ function CodeConq() {
   };
 
   const toggleOption = (option: keyof GameOptions) => {
+    if (option === "musicEnabled") {
+      const next = !gameOptions.musicEnabled;
+      setGameOptions((prev) => ({ ...prev, musicEnabled: next }));
+      if (next) {
+        void backgroundMusicRef.current?.play().catch(() => {});
+      }
+      return;
+    }
     setGameOptions((prev) => ({
       ...prev,
       [option]: !prev[option]
