@@ -14,7 +14,6 @@ export type TroopSelectionSfxKind = "siege" | "elephant" | "horse" | "infantry";
 
 const SIEGE_ROLE_KEYWORDS = [
   "ballista",
-  "scorpion",
   "catapult",
   "trebuchet",
   "polybolos",

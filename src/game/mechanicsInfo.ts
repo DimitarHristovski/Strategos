@@ -63,22 +63,24 @@ export const GAME_MECHANICS_INFO = [
   {
     icon: "⚔️",
     title: "Troop Type Matchups",
-    description: "Only mounted troops get a type advantage. They deal +10% attack damage against ranged and sieged units."
+    description: "Only mounted troops get a type advantage: +10% attack (×1.1) against ranged and sieged units."
   },
   {
     icon: "🧱",
     title: "Role Formation Buff",
-    description: "Adjacent allied troops with the same role gain scaling max health: 2 units = +5%, 3 = +10%, 4 = +15%, and larger groups keep scaling while connected."
+    description:
+      "Adjacent allied troops with the same role gain scaling max HP: each extra linked unit adds +5% max HP (2 = +5%, 3 = +10%, 4 = +15%, …)."
   },
   {
     icon: "👑",
     title: "Leader Aura",
-    description: "Troops directly next to a King, Jarl, General, or Leader gain +10% attack."
+    description: "Troops orthogonally adjacent to a King, Jarl, General, or Leader gain +10% attack (×1.1)."
   },
   {
     icon: "🏹",
     title: "Ranged Shots",
-    description: "Ranged and sieged troops have limited shots. When they run dry, they can no longer fire effectively."
+    description:
+      "Ranged and siege troops have limited ammo. At 0 ammo they drop to range 1 and attack at −50% (×0.5), except Nomad Strike units which keep full melee attack."
   },
   {
     icon: "🧬",
@@ -102,7 +104,8 @@ export const ADDITIONAL_MECHANICS_INFO = [
   {
     icon: "🪫",
     title: "Ammo Exhaustion",
-    description: "Every shot spends 1 ammo. At 0 ammo, the unit drops to range 1 and attacks at half power, turning ranged hybrids into close-combat fighters."
+    description:
+      "Each ranged/siege shot spends 1 ammo. At 0 ammo: range 1, attack ×0.5 (unless Nomad Strike — full melee damage)."
   },
   {
     icon: "🏴",
@@ -111,8 +114,9 @@ export const ADDITIONAL_MECHANICS_INFO = [
   },
   {
     icon: "✨",
-    title: "Signature Unit Abilities",
-    description: "Selected roles now carry passive signature abilities like Brace, Shield Wall, Charge, Harrier, Shock Assault, Guarded, Deadeye, Crush, Command Aura, Siege Mastery, Skirmish Step, and Resolve that trigger automatically during combat."
+    title: "Signature & Faction Skills",
+    description:
+      "Each role has core signature passives (Brace, Shield Wall, Charge, Harrier, and others). Many units also carry a second faction skill—Testudo, Phalanx, Blood Oath, Fury Charge, Wild Ambush, Battle Cohesion, Sun Chariot, Rhomphaia Fury, Falx Dominion, Nomad Strike, Imperial Cohort, or Iron Shield—that layers extra attack, defense, or movement rules in combat."
   },
   {
     icon: "🎺",
@@ -146,67 +150,135 @@ export const UNIT_ABILITY_MECHANICS_INFO = [
   {
     icon: "🛡️",
     title: "Brace",
-    detail: "Spear and phalanx troops deal +15% damage into mounted enemies and take 15% less damage when receiving a mounted charge."
+    detail: "+15% attack vs mounted (×1.15); −15% damage taken from mounted (incoming ×0.85)."
   },
   {
     icon: "🧱",
     title: "Shield Wall",
-    detail: "Defensive infantry take 10% less damage while standing adjacent to at least 1 allied unit."
+    detail: "With ≥1 adjacent ally: −10% damage taken (×0.9)."
   },
   {
     icon: "🔥",
     title: "Shock Assault",
-    detail: "Berserker and falx-style shock troops hit 20% harder against targets already at or below half health."
+    detail: "+20% attack vs targets at ≤50% HP (×1.2)."
   },
   {
     icon: "🐎",
     title: "Charge",
-    detail: "Mounted shock troops gain +15% damage on plains and gain another +10% when crashing into ranged or siege units."
+    detail: "Mounted: +15% attack on plains (×1.15); +10% vs ranged or siege (×1.1), multiplicative."
   },
   {
     icon: "🏹",
     title: "Harrier",
-    detail: "Skirmishers and horse archers deal +10% damage while they still have ammo against targets with 1 or less move, and against siege crews."
+    detail: "With ammo left: +10% attack vs move ≤1 or siege (×1.1)."
   },
   {
     icon: "🪖",
     title: "Guarded",
-    detail: "Heavy line troops take 10% less damage while they stay above half health."
+    detail: "Above 50% HP: −10% damage taken (×0.9)."
   },
   {
     icon: "🪓",
     title: "Ferocity",
-    detail: "Aggressive fighters gain +10% attack when they are not standing next to an allied unit."
+    detail: "No adjacent allies: +10% attack (×1.1)."
   },
   {
     icon: "🎯",
     title: "Deadeye",
-    detail: "Precision archers gain +1 range on hills and deal +10% damage into unsupported ranged or siege targets."
+    detail: "On hills: +1 range; +10% vs unsupported ranged/siege (×1.1)."
   },
   {
     icon: "🐘",
     title: "Crush",
-    detail: "Elephants and impact troops deal +15% damage into close-combat units and gain another +5% against Guarded or Shield Wall defenders."
+    detail: "+15% vs close combat (×1.15); +5% extra vs Guarded or Shield Wall (×1.05)."
   },
   {
     icon: "🏴",
     title: "Command Aura",
-    detail: "Allies adjacent to a command unit gain +5% attack, stacking with the normal +10% leader aura when present."
+    detail: "Adjacent allies: +5% attack (×1.05); stacks with Leader Aura +10% (×1.1)."
   },
   {
     icon: "🏰",
     title: "Siege Mastery",
-    detail: "Siege engines gain +10% attack from plains or hills and gain +1 extra range on hills."
+    detail: "Siege on plains or hills: +10% attack (×1.1); on hills also +1 range."
   },
   {
     icon: "🪶",
     title: "Skirmish Step",
-    detail: "Mobile skirmish troops gain +1 move while they still have ammunition."
+    detail: "With ammo: +1 move (not stacking with Nomad Strike +1)."
   },
   {
     icon: "⚡",
     title: "Resolve",
-    detail: "Elite troops gain +10% attack when an adjacent allied unit is at or below 50% HP."
+    detail: "Adjacent ally at ≤50% HP: +10% attack (×1.1)."
+  },
+  {
+    icon: "🐢",
+    title: "Testudo",
+    detail:
+      "Vs ranged: −35% damage taken (×0.65). Vs skirmisher-style attackers: −15% more (×0.85). Adjacent Testudo ally: −10% taken (×0.9). Multiplicative."
+  },
+  {
+    icon: "🔱",
+    title: "Phalanx",
+    detail: "+20% attack vs mounted (×1.2); +10% with adjacent Phalanx ally (×1.1). Vs close combat: −20% damage taken (×0.8)."
+  },
+  {
+    icon: "🩸",
+    title: "Blood Oath",
+    detail: "Round 1: +20% attack (×1.2) and +1 move. At ≤50% HP: +10% attack (×1.1)."
+  },
+  {
+    icon: "🔥",
+    title: "Fury Charge",
+    detail: "When attacking: +15% (×1.15); vs target with no adjacent allies: +10% extra (×1.1). On plains tile: +1 move."
+  },
+  {
+    icon: "🌲",
+    title: "Wild Ambush",
+    detail: "On forest: +15% attack (×1.15), +1 move. In forest or on hill vs ranged: −15% damage taken (×0.85)."
+  },
+  {
+    icon: "🐘",
+    title: "Battle Cohesion",
+    detail:
+      "Adjacent different ally role: +10% attack (×1.1), −10% taken (×0.9). War Elephant with any adjacent ally: +10% attack (×1.1)."
+  },
+  {
+    icon: "☀️",
+    title: "Sun Chariot",
+    detail:
+      "Ranged unit adjacent to Sun Chariot ally: −20% damage taken (×0.8). Chariot role after moving before attack: +15% (×1.15). On desert: +1 move."
+  },
+  {
+    icon: "🗡️",
+    title: "Rhomphaia Fury",
+    detail:
+      "Vs Shield Wall or Guarded abilities: +20% (×1.2). As close combat: +10% (×1.1). Pierce: vs active Guarded/Shield Wall, incoming damage ×1.15 from defenses."
+  },
+  {
+    icon: "🪓",
+    title: "Falx Dominion",
+    detail:
+      "Vs elite infantry (role match): +25% (×1.25). Adjacent Falx Dominion ally: +10% (×1.1). Pierce: vs active Guarded, Shield Wall, or Brace vs mounted — ×1.2 damage through defensive mitigation."
+  },
+  {
+    icon: "🏹",
+    title: "Nomad Strike",
+    detail:
+      "After moving, same turn attack: +10% (×1.1). With ammo: +1 move (skipped if Skirmish Step already grants +1). At 0 ammo: no −50% melee attack penalty."
+  },
+  {
+    icon: "🏛️",
+    title: "Imperial Cohort",
+    detail:
+      "Adjacent Seleucid cohort role: +10% (×1.1). Cataphract or elephant with any adjacent ally: +10% (×1.1). Adjacent cohort ally of different troop class: −10% taken (×0.9)."
+  },
+  {
+    icon: "🛡️",
+    title: "Iron Shield",
+    detail:
+      "Vs close combat: −20% damage taken (×0.8). Vs ranged with adjacent Iron Shield ally: −15% taken (×0.85). With adjacent Iron Shield ally: +10% attack (×1.1)."
   }
 ] as const;
 

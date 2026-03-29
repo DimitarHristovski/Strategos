@@ -1330,7 +1330,8 @@ function CodeConq() {
     }
   };
   const getRangeForBattle = (unit: any) => (gameOptions.terrainEffectsEnabled ? getEffectiveRange(unit, battlefieldTerrain) : unit.range);
-  const getMoveForBattle = (unit: any) => (gameOptions.terrainEffectsEnabled ? getEffectiveMove(unit, battlefieldTerrain) : unit.move);
+  const getMoveForBattle = (unit: any) =>
+    gameOptions.terrainEffectsEnabled ? getEffectiveMove(unit, battlefieldTerrain, { round }) : unit.move;
   const getTileOccupant = (battleUnits: any[], x: number, y: number, ignoredUnitId?: string) =>
     battleUnits.find((candidate) => candidate.id !== ignoredUnitId && candidate.hp > 0 && candidate.x === x && candidate.y === y);
   const getReachableTiles = (unit: any, battleUnits: any[]) => {
@@ -1524,7 +1525,10 @@ function CodeConq() {
 
         if (canAttackAtRange || closeCombatDestination) {
           const simulatedAttacker = closeCombatDestination ? { ...unit, ...closeCombatDestination } : unit;
-          const attackOutcome = getAttackDamage(simulatedAttacker, target, battleUnits, terrainEffectMap);
+          const attackOutcome = getAttackDamage(simulatedAttacker, target, battleUnits, terrainEffectMap, {
+            round,
+            attackerMovedThisTurn: Boolean(closeCombatDestination)
+          });
           let attackScore = targetPriority + attackOutcome.damage / 3;
           if (attackOutcome.damage >= target.hp) attackScore += 180;
           if (attackOutcome.hasAdvantage) attackScore += 28;
@@ -1668,21 +1672,31 @@ function CodeConq() {
   const inspectedTileInfo = inspectedTileTerrainType
     ? TERRAIN_MECHANICS_INFO.find((terrainInfo) => terrainInfo.terrain === inspectedTileTerrainType) ?? null
     : null;
-  const inspectedEffectiveAttack = inspectedUnit ? getDisplayedAttack(inspectedUnit, currentBattleUnits, terrainEffectMap) : 0;
+  const inspectedEffectiveAttack = inspectedUnit
+    ? getDisplayedAttack(inspectedUnit, currentBattleUnits, terrainEffectMap, { round })
+    : 0;
   const inspectedEffectiveRange = inspectedUnit
     ? (gameOptions.terrainEffectsEnabled ? getEffectiveRange(inspectedUnit, battlefieldTerrain) : inspectedUnit.range)
     : 0;
   const inspectedUnitAbilities = inspectedUnit ? getTroopAbilities(inspectedUnit.role) : [];
-  const selectedEffectiveMove = selected ? (gameOptions.terrainEffectsEnabled ? getEffectiveMove(selected, battlefieldTerrain) : selected.move) : 0;
+  const selectedEffectiveMove = selected
+    ? gameOptions.terrainEffectsEnabled
+      ? getEffectiveMove(selected, battlefieldTerrain, { round })
+      : selected.move
+    : 0;
   const selectedEffectiveRange = selected ? getRangeForBattle(selected) : 0;
   const inspectedEffectNotes = inspectedUnit
-    ? getUnitEffectNotes(inspectedUnit, currentBattleUnits, battlefieldTerrain, gameOptions.terrainEffectsEnabled)
+    ? getUnitEffectNotes(inspectedUnit, currentBattleUnits, battlefieldTerrain, gameOptions.terrainEffectsEnabled, {
+        round
+      })
     : [];
   const focusedBattleUnit = inspectedUnit ?? selected ?? null;
   const focusedUnitAbilities = focusedBattleUnit ? getTroopAbilities(focusedBattleUnit.role) : [];
   const focusedTerrainType = focusedBattleUnit ? getTerrainAt(battlefieldTerrain, focusedBattleUnit.x, focusedBattleUnit.y) : null;
   const focusedEffectNotes = focusedBattleUnit
-    ? getUnitEffectNotes(focusedBattleUnit, currentBattleUnits, battlefieldTerrain, gameOptions.terrainEffectsEnabled)
+    ? getUnitEffectNotes(focusedBattleUnit, currentBattleUnits, battlefieldTerrain, gameOptions.terrainEffectsEnabled, {
+        round
+      })
     : [];
   const focusedFeedbackKinds = focusedBattleUnit ? (cellFeedback[`${focusedBattleUnit.x},${focusedBattleUnit.y}`] ?? []) : [];
   const useEightByEightViewport = !isBattlefieldFullscreen;
@@ -1869,7 +1883,10 @@ function CodeConq() {
         }
 
         const movedAttacker = aiDecision.moveTo ? { ...actingUnit, ...aiDecision.moveTo } : actingUnit;
-        const attackOutcome = getAttackDamage(movedAttacker, targetUnit, units, terrainEffectMap);
+        const attackOutcome = getAttackDamage(movedAttacker, targetUnit, units, terrainEffectMap, {
+          round,
+          attackerMovedThisTurn: Boolean(aiDecision.moveTo)
+        });
         const remainingAmmo = actingUnit.ammo && actingUnit.ammo > 0 ? actingUnit.ammo - 1 : actingUnit.ammo;
         const updatedTargetHp = targetUnit.hp - attackOutcome.damage;
         const runsOutOfAmmo = Boolean(actingUnit.ammo && actingUnit.ammo > 0 && remainingAmmo === 0);
@@ -2137,7 +2154,10 @@ function CodeConq() {
         }
         
         // Attack enemy with troop-mechanic matchup bonus
-        const attackOutcome = getAttackDamage(attackingUnit, clicked, units, terrainEffectMap);
+        const attackOutcome = getAttackDamage(attackingUnit, clicked, units, terrainEffectMap, {
+          round,
+          attackerMovedThisTurn: Boolean(attackerPosition)
+        });
         const dmg = attackOutcome.damage;
         const updatedTargetHp = nextClickedHp - dmg;
         const nextAmmo = selected.ammo && selected.ammo > 0 ? selected.ammo - 1 : selected.ammo;
@@ -3924,8 +3944,8 @@ function CodeConq() {
                     <h2 className="mt-2 text-xl font-bold text-yellow-100 sm:text-2xl">Tactical battles across living battlefields</h2>
                     <p className="mt-3 text-sm leading-7 text-yellow-50/85">
                       Strategos is a tactical grid war game where historical-inspired factions clash across changing terrain. Each
-                      battle is shaped by troop roles, formation buffs, civilization passives, signature unit abilities, and
-                      battlefield feedback that helps you read momentum in real time.
+                      battle is shaped by troop roles, formation buffs, civilization passives, signature abilities, faction
+                      skills on many units, and battlefield feedback that helps you read momentum in real time.
                     </p>
                   </div>
 
@@ -4378,7 +4398,9 @@ function CodeConq() {
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                 <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">HP {focusedBattleUnit.hp}/{focusedBattleUnit.maxHp}</div>
-                <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">ATK {getDisplayedAttack(focusedBattleUnit, currentBattleUnits, terrainEffectMap)}</div>
+                <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">
+                          ATK {getDisplayedAttack(focusedBattleUnit, currentBattleUnits, terrainEffectMap, { round })}
+                        </div>
                 <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">RNG {getRangeForBattle(focusedBattleUnit)}</div>
                 <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">MOV {getMoveForBattle(focusedBattleUnit)}</div>
               </div>

@@ -14,7 +14,7 @@ export const AVAILABLE_TROOPS: Record<TeamName, TroopCatalogEntry[]> = {
     { role: "Archer", name: "Archer", Icon: "🏹" },
     { role: "Velites", name: "Velites", Icon: "🏹" },
     { role: "Ballista", name: "Ballista", Icon: "⚙️" },
-    { role: "Scorpion", name: "Scorpion", Icon: "⚙️" },
+    { role: "Heavy Cavalry", name: "Heavy Cavalry", Icon: "🐎" },
     { role: "Onager", name: "Onager", Icon: "⚙️" }
   ],
   Barbarians: [

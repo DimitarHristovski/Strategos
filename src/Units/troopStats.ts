@@ -24,19 +24,31 @@ export type TroopReferenceStats = {
 };
 
 export type TroopAbilityKey =
+  | "battleCohesion"
+  | "bloodOath"
   | "brace"
+  | "charge"
+  | "command"
+  | "crush"
+  | "deadeye"
+  | "falxDominion"
+  | "ferocity"
+  | "furyCharge"
+  | "guarded"
+  | "harrier"
+  | "imperialCohort"
+  | "ironShield"
+  | "nomadStrike"
+  | "phalanx"
+  | "resolve"
+  | "rhomphaiaFury"
   | "shieldWall"
   | "shock"
-  | "charge"
-  | "harrier"
-  | "guarded"
-  | "ferocity"
-  | "deadeye"
-  | "crush"
-  | "command"
   | "siegeMastery"
   | "skirmishStep"
-  | "resolve";
+  | "sunChariot"
+  | "testudo"
+  | "wildAmbush";
 
 export type TroopAbilityDefinition = {
   key: TroopAbilityKey;
@@ -109,75 +121,147 @@ const TROOP_ABILITY_DEFINITIONS: Record<TroopAbilityKey, TroopAbilityDefinition>
     key: "resolve",
     name: "Resolve",
     description: "+10% attack while adjacent to an allied unit at or below 50% HP."
+  },
+  testudo: {
+    key: "testudo",
+    name: "Testudo",
+    description:
+      "Ranged damage taken ×0.65; skirmisher-style attacks ×0.85 (multiplicative); adjacent Testudo ally ×0.9 on top."
+  },
+  phalanx: {
+    key: "phalanx",
+    name: "Phalanx",
+    description:
+      "+20% attack (×1.2) vs mounted; +10% (×1.1) with adjacent Phalanx ally; close-combat damage taken ×0.8."
+  },
+  bloodOath: {
+    key: "bloodOath",
+    name: "Blood Oath",
+    description:
+      "Round 1: +20% attack (×1.2), +1 move. At ≤50% HP: +10% attack (×1.1)."
+  },
+  furyCharge: {
+    key: "furyCharge",
+    name: "Fury Charge",
+    description:
+      "When attacking: +15% (×1.15). Vs target with no adjacent allies: +10% (×1.1). On plains: +1 move."
+  },
+  wildAmbush: {
+    key: "wildAmbush",
+    name: "Wild Ambush",
+    description:
+      "Forest: +15% attack (×1.15), +1 move. On forest/hill vs ranged: damage taken ×0.85."
+  },
+  battleCohesion: {
+    key: "battleCohesion",
+    name: "Battle Cohesion",
+    description:
+      "Adjacent ally different role: +10% attack (×1.1), damage taken ×0.9. Elephant with adjacent ally: +10% attack (×1.1)."
+  },
+  sunChariot: {
+    key: "sunChariot",
+    name: "Sun Chariot",
+    description:
+      "Adjacent ranged ally: damage taken ×0.8 from Sun Chariot support. Chariot after move: +15% (×1.15). Desert: +1 move."
+  },
+  rhomphaiaFury: {
+    key: "rhomphaiaFury",
+    name: "Rhomphaia Fury",
+    description:
+      "Vs Guarded/Shield Wall abilities: +20% (×1.2). Close combat: +10% (×1.1). Pierce active Guard/Shield: ×1.15 damage through defenses."
+  },
+  falxDominion: {
+    key: "falxDominion",
+    name: "Falx Dominion",
+    description:
+      "Vs elite infantry (role match): +25% (×1.25). Adjacent Falx ally: +10% (×1.1). Pierce Guard/Shield/Brace (mounted): ×1.2 through defenses."
+  },
+  nomadStrike: {
+    key: "nomadStrike",
+    name: "Nomad Strike",
+    description:
+      "After move: +10% (×1.1). With ammo: +1 move (skips if Skirmish Step already +1). At 0 ammo: full attack (no ×0.5)."
+  },
+  imperialCohort: {
+    key: "imperialCohort",
+    name: "Imperial Cohort",
+    description:
+      "Adjacent cohort unit: +10% (×1.1). Cataphract/elephant with ally: +10% (×1.1). Cohort ally other class: damage taken ×0.9."
+  },
+  ironShield: {
+    key: "ironShield",
+    name: "Iron Shield",
+    description:
+      "Vs close combat: damage taken ×0.8. Vs ranged with Iron ally adjacent: ×0.85. Adjacent Iron ally: +10% attack (×1.1)."
   }
 };
 
 const TROOP_ROLE_ABILITIES: Record<string, TroopAbilityKey[]> = {
   "Roman King": ["command"],
-  Legionary: ["guarded"],
-  Centurion: ["resolve"],
+  Legionary: ["guarded", "testudo"],
+  Centurion: ["resolve", "testudo"],
   Auxiliary: ["ferocity"],
   Triarii: ["brace"],
   Archer: ["deadeye"],
-  Hoplite: ["brace"],
-  Phalangite: ["brace"],
-  "Seleucid Phalangite": ["brace"],
+  Hoplite: ["brace", "phalanx"],
+  Phalangite: ["brace", "phalanx"],
+  "Seleucid Phalangite": ["brace", "imperialCohort"],
   "Eastern Spearman": ["brace"],
   "Parthian Spearman": ["guarded"],
   "Dacian Spearman": ["brace"],
   "Thracian Spearman": ["brace"],
   "Bondi Spearman": ["brace"],
-  "African Pikeman": ["brace"],
+  "African Pikeman": ["brace", "battleCohesion"],
   "Punic Spearman": ["brace"],
-  Praetorian: ["shieldWall"],
+  Praetorian: ["shieldWall", "testudo"],
   "Royal Guard": ["shieldWall"],
   "Shield Bearer": ["shieldWall"],
   "Dacian Shield Bearer": ["shieldWall"],
-  "Sacred Band": ["shieldWall"],
-  "Silver Shield Infantry": ["shieldWall"],
-  Medjay: ["guarded"],
-  Thorakitai: ["guarded"],
-  Hirdman: ["guarded"],
-  Shieldmaiden: ["guarded"],
-  "Thracian Guard": ["guarded"],
-  "Dacian Guard": ["guarded"],
-  "Libyan Infantry": ["guarded"],
+  "Sacred Band": ["shieldWall", "battleCohesion"],
+  "Silver Shield Infantry": ["shieldWall", "phalanx", "imperialCohort"],
+  Medjay: ["guarded", "sunChariot"],
+  Thorakitai: ["guarded", "imperialCohort"],
+  Hirdman: ["guarded", "ironShield"],
+  Shieldmaiden: ["guarded", "ironShield"],
+  "Thracian Guard": ["guarded", "rhomphaiaFury"],
+  "Dacian Guard": ["guarded", "falxDominion"],
+  "Libyan Infantry": ["guarded", "battleCohesion"],
   "Liby-Phoenician Infantry": ["guarded"],
   Hypaspist: ["guarded"],
-  Agema: ["resolve"],
+  Agema: ["resolve", "phalanx"],
   "Barbarian Spearman": ["guarded"],
   "Gallic Spearman": ["guarded"],
-  "Germanic Spearman": ["guarded"],
-  Hearthguard: ["guarded"],
-  Huscarl: ["shieldWall"],
-  "Varangian Guard": ["shieldWall"],
-  "Barbarian Berserker": ["shock"],
-  "Gallic Berserker": ["shock"],
+  "Germanic Spearman": ["guarded", "wildAmbush"],
+  Hearthguard: ["guarded", "wildAmbush"],
+  Huscarl: ["shieldWall", "ironShield"],
+  "Varangian Guard": ["shieldWall", "ironShield"],
+  "Barbarian Berserker": ["shock", "bloodOath"],
+  "Gallic Berserker": ["shock", "furyCharge"],
   Berserker: ["shock"],
   Ulfhednar: ["shock"],
-  "Falx Warrior": ["shock"],
-  Falxman: ["shock"],
-  "Rhomphaia Fighter": ["shock"],
-  "Barbarian Warrior": ["ferocity"],
-  "Barbarian Axeman": ["ferocity"],
+  "Falx Warrior": ["shock", "rhomphaiaFury"],
+  Falxman: ["shock", "falxDominion"],
+  "Rhomphaia Fighter": ["shock", "rhomphaiaFury"],
+  "Barbarian Warrior": ["ferocity", "bloodOath"],
+  "Barbarian Axeman": ["ferocity", "bloodOath"],
   "Barbarian Raider": ["ferocity"],
-  Oathsworn: ["resolve"],
+  Oathsworn: ["resolve", "bloodOath"],
   "Gallic Warrior": ["ferocity"],
   "Gallic Oathsworn": ["resolve"],
-  Gaesatae: ["ferocity"],
+  Gaesatae: ["ferocity", "furyCharge"],
   Fianna: ["resolve"],
-  "Germanic Warrior": ["ferocity"],
+  "Germanic Warrior": ["ferocity", "wildAmbush"],
   "Germanic Berserker": ["ferocity"],
-  "Germanic Raider": ["ferocity"],
-  "Chosen Axeman": ["ferocity"],
+  "Germanic Raider": ["ferocity", "wildAmbush"],
+  "Chosen Axeman": ["ferocity", "wildAmbush"],
   "Iberian Swordsman": ["ferocity"],
   "Egyptian Warrior": ["ferocity"],
   "Khopesh Warrior": ["ferocity"],
   "Thracian Warrior": ["ferocity"],
-  "Dacian Warrior": ["ferocity"],
+  "Dacian Warrior": ["ferocity", "falxDominion"],
   "Parthian Warrior": ["ferocity"],
   "Viking Raider": ["ferocity"],
-  Jomsviking: ["resolve"],
+  Jomsviking: ["resolve", "ironShield"],
   Cavalry: ["charge"],
   "Companion Cavalry": ["charge"],
   "Thessalian Cavalry": ["charge"],
@@ -186,26 +270,26 @@ const TROOP_ROLE_ABILITIES: Record<string, TroopAbilityKey[]> = {
   "Barbarian Noble Rider": ["ferocity"],
   "Gallic Noble Horseman": ["ferocity"],
   "Germanic Wolf Rider": ["ferocity"],
-  "Numidian Cavalry": ["charge"],
-  "War Chariot": ["charge"],
+  "Numidian Cavalry": ["charge", "battleCohesion"],
+  "War Chariot": ["charge", "sunChariot"],
   "Thracian Rider": ["charge"],
   "Thracian Noble Rider": ["charge"],
   "Dacian Rider": ["charge"],
   "Dacian Noble Rider": ["charge"],
   "Parthian Cataphract": ["charge"],
   "Parthian Noble Rider": ["ferocity"],
-  "Seleucid Cataphract": ["charge"],
+  "Seleucid Cataphract": ["charge", "imperialCohort"],
   "Seleucid Light Cavalry": ["skirmishStep"],
   "Gothic Lancer": ["charge"],
   "Suebi Rider": ["charge"],
-  "Royal Chariot": ["skirmishStep"],
+  "Royal Chariot": ["skirmishStep", "sunChariot"],
   "Scout Rider": ["skirmishStep"],
   "Camel Rider": ["ferocity"],
   Velites: ["harrier"],
   Peltast: ["harrier"],
   Thureophoroi: ["harrier"],
   "Gallic Skirmisher": ["harrier"],
-  "Balearic Slinger": ["harrier"],
+  "Balearic Slinger": ["harrier", "battleCohesion"],
   "Tribal Slinger": ["skirmishStep"],
   "Seleucid Slinger": ["skirmishStep"],
   "Dacian Slinger": ["harrier"],
@@ -213,17 +297,17 @@ const TROOP_ROLE_ABILITIES: Record<string, TroopAbilityKey[]> = {
   "Barbarian Scout": ["harrier"],
   Scout: ["harrier"],
   "Desert Scout": ["harrier"],
-  "Horse Archer": ["harrier"],
-  "Elite Horse Archer": ["harrier"],
-  "Camel Rider Archer": ["harrier"],
+  "Horse Archer": ["harrier", "nomadStrike"],
+  "Elite Horse Archer": ["harrier", "nomadStrike"],
+  "Camel Rider Archer": ["harrier", "nomadStrike"],
   "Barbarian Archer": ["deadeye"],
   "Barbarian Shaman": ["skirmishStep"],
   "Cretan Archer": ["deadeye"],
   "Gallic Archer": ["deadeye"],
   "Germanic Archer": ["deadeye"],
   "Carthaginian Archer": ["deadeye"],
-  "Egyptian Archer": ["deadeye"],
-  "Nubian Archer": ["deadeye"],
+  "Egyptian Archer": ["deadeye", "sunChariot"],
+  "Nubian Archer": ["deadeye", "sunChariot"],
   "Thracian Archer": ["deadeye"],
   "Dacian Archer": ["deadeye"],
   "Parthian Archer": ["deadeye"],
@@ -232,7 +316,7 @@ const TROOP_ROLE_ABILITIES: Record<string, TroopAbilityKey[]> = {
   "Elephant Archer": ["crush"],
   "Seleucid Elephant Archer": ["crush"],
   Ballista: ["siegeMastery"],
-  Scorpion: ["siegeMastery"],
+  "Heavy Cavalry": ["charge"],
   Onager: ["siegeMastery"],
   "Greek Catapult": ["siegeMastery"],
   Polybolos: ["siegeMastery"],
@@ -241,10 +325,10 @@ const TROOP_ROLE_ABILITIES: Record<string, TroopAbilityKey[]> = {
   "Dacian Catapult": ["siegeMastery"],
   "Parthian Ballista": ["siegeMastery"],
   "Seleucid Catapult": ["siegeMastery"],
-  "War Elephant": ["crush"],
-  "Seleucid War Elephant": ["crush"],
+  "War Elephant": ["crush", "battleCohesion"],
+  "Seleucid War Elephant": ["crush", "imperialCohort"],
   "Barbarian Chief": ["command"],
-  "Barbarian Warlord": ["command"],
+  "Barbarian Warlord": ["command", "bloodOath"],
   "Macedonian King": ["command"],
   "Gallic King": ["command"],
   "Germanic King": ["command"],
@@ -283,7 +367,6 @@ const ensureRangedAmmo = (role: string, stats: TroopStats): TroopStats => {
     "turcopole",
     "thureophoroi",
     "ballista",
-    "scorpion",
     "catapult",
     "trebuchet",
     "polybolos",
@@ -303,7 +386,7 @@ const ensureRangedAmmo = (role: string, stats: TroopStats): TroopStats => {
     return { ...stats, ammo: 0, range: 1 };
   }
 
-  const isSiegeUnit = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "onager", "bombard"].some((keyword) =>
+  const isSiegeUnit = ["ballista", "catapult", "trebuchet", "polybolos", "onager", "bombard"].some((keyword) =>
     normalizedRole.includes(keyword)
   );
   const isLongbowUnit = normalizedRole.includes("longbow");
@@ -342,7 +425,7 @@ const ensureRangedAmmo = (role: string, stats: TroopStats): TroopStats => {
 
 const ensureRoleMoveRules = (role: string, stats: TroopStats): TroopStats => {
   const normalizedRole = role.toLowerCase();
-  const siegeKeywords = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "onager", "bombard"];
+  const siegeKeywords = ["ballista", "catapult", "trebuchet", "polybolos", "onager", "bombard"];
   const mountedKeywords = [
     "cavalry",
     "chariot",
@@ -390,7 +473,7 @@ const TROOP_STAT_TEMPLATES: Record<string, TroopStatTemplate> = {
   Velites: { hp: [90, 130], attack: [50, 75], ammo: 10, range: 3, move: 1 },
   Cavalry: { hp: [220, 260], attack: [120, 150], ammo: 0, range: 1, move: 3 },
   Ballista: { hp: [10, 50], attack: [50, 100], ammo: 10, range: 6, move: 1 },
-  Scorpion: { hp: [10, 20], attack: [30, 80], ammo: 10, range: 3, move: 1 },
+  "Heavy Cavalry": { hp: [280, 340], attack: [150, 190], ammo: 0, range: 1, move: 3 },
   Onager: { hp: [60, 90], attack: [150, 190], ammo: 6, range: 6, move: 1 },
 
   // Barbarians

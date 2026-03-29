@@ -47,7 +47,6 @@ const usesAmmoRole = (unit: any) => {
     "turcopole",
     "thureophoroi",
     "ballista",
-    "scorpion",
     "catapult",
     "trebuchet",
     "polybolos",
@@ -62,7 +61,10 @@ const usesAmmoRole = (unit: any) => {
   ].some((keyword) => normalizedRole.includes(keyword));
 };
 
-export const hasNoAmmoPenalty = (unit: any) => usesAmmoRole(unit) && (unit?.ammo ?? 0) <= 0;
+export const hasNoAmmoPenalty = (unit: any) =>
+  !getTroopAbilities(unit?.role ?? "").some((a) => a.key === "nomadStrike") &&
+  usesAmmoRole(unit) &&
+  (unit?.ammo ?? 0) <= 0;
 
 export const ensureRangedAmmo = (unit: any) => {
   if (!unit) return unit;
@@ -82,7 +84,6 @@ export const ensureRangedAmmo = (unit: any) => {
     "turcopole",
     "thureophoroi",
     "ballista",
-    "scorpion",
     "catapult",
     "trebuchet",
     "polybolos",
@@ -104,7 +105,7 @@ export const ensureRangedAmmo = (unit: any) => {
     return normalizedUnit;
   }
 
-  const isSiegeUnit = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "onager", "bombard"].some((keyword) =>
+  const isSiegeUnit = ["ballista", "catapult", "trebuchet", "polybolos", "onager", "bombard"].some((keyword) =>
     normalizedRole.includes(keyword)
   );
   const isLongbowUnit = normalizedRole.includes("longbow");
@@ -144,7 +145,7 @@ export const getTroopMechanicType = (unit: any): TroopMechanicType => {
   if (!unit) return "closecombat";
 
   const role = String(unit.role ?? "").toLowerCase();
-  const siegeKeywords = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "siege tower", "onager", "bombard"];
+  const siegeKeywords = ["ballista", "catapult", "trebuchet", "polybolos", "siege tower", "onager", "bombard"];
   const mountedKeywords = ["cavalry", "chariot", "rider", "scout", "knight", "elephant", "horse", "camel", "cataphract"];
 
   if (siegeKeywords.some((keyword) => role.includes(keyword))) {
@@ -353,6 +354,37 @@ export const getAdjacentAllies = (unit: any, allUnits: any[] = []) =>
 export const unitHasAbility = (unit: any, abilityKey: string) =>
   getTroopAbilities(unit?.role ?? "").some((ability) => ability.key === abilityKey);
 
+const IMPERIAL_COHORT_ROLES = new Set([
+  "Seleucid Phalangite",
+  "Silver Shield Infantry",
+  "Thorakitai",
+  "Seleucid Cataphract",
+  "Seleucid War Elephant"
+]);
+
+const hasAdjacentAllyWithAbility = (unit: any, allUnits: any[], abilityKey: string) =>
+  getAdjacentAllies(unit, allUnits).some((ally) => unitHasAbility(ally, abilityKey));
+
+const hasAdjacentAllyWithDifferentRole = (unit: any, allUnits: any[]) =>
+  getAdjacentAllies(unit, allUnits).some((ally) => ally.role !== unit.role);
+
+const isSkirmisherAttacker = (attacker: any) => {
+  if (unitHasAbility(attacker, "harrier")) return true;
+  const r = String(attacker?.role ?? "").toLowerCase();
+  return ["skirmisher", "peltast", "velites", "slinger", "scout"].some((k) => r.includes(k));
+};
+
+const isFalxEliteInfantryTarget = (defender: any) => {
+  if (getTroopMechanicType(defender) !== "closecombat") return false;
+  const r = String(defender?.role ?? "");
+  return /legionary|praetorian|hoplite|phalangite|shield|guard|heavy|elite|infantry|spearman|pikeman|centurion|triarii/i.test(r);
+};
+
+export type AbilityEffectContext = {
+  round?: number;
+  attackerMovedThisTurn?: boolean;
+};
+
 export const getAdjacentCommanders = (unit: any, allUnits: any[] = []) =>
   getAdjacentAllies(unit, allUnits).filter((candidate) => unitHasAbility(candidate, "command"));
 
@@ -364,7 +396,8 @@ export const getAbilityEffects = (
   defender: any,
   allUnits: any[] = [],
   attackerTerrain: TerrainType,
-  defenderTerrain: TerrainType
+  defenderTerrain: TerrainType,
+  ctx: AbilityEffectContext = {}
 ) => {
   const attackerAbilities = getTroopAbilities(attacker?.role ?? "");
   const defenderAbilities = getTroopAbilities(defender?.role ?? "");
@@ -374,6 +407,8 @@ export const getAbilityEffects = (
   const defenderTags: string[] = [];
   let attackMultiplier = 1;
   let damageTakenMultiplier = 1;
+  const round = ctx.round ?? 1;
+  const attackerMoved = Boolean(ctx.attackerMovedThisTurn);
 
   attackerAbilities.forEach((ability) => {
     switch (ability.key) {
@@ -450,6 +485,107 @@ export const getAbilityEffects = (
           attackerTags.push("Resolve");
         }
         break;
+      case "phalanx":
+        if (defenderType === "mounted") {
+          attackMultiplier *= 1.2;
+          attackerTags.push("Phalanx");
+        }
+        if (hasAdjacentAllyWithAbility(attacker, allUnits, "phalanx")) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Phalanx Line");
+        }
+        break;
+      case "bloodOath":
+        if (round === 1) {
+          attackMultiplier *= 1.2;
+          attackerTags.push("Blood Oath (opening)");
+        }
+        if ((attacker?.hp ?? 0) <= Math.ceil((attacker?.maxHp ?? 0) * 0.5)) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Blood Oath");
+        }
+        break;
+      case "furyCharge":
+        attackMultiplier *= 1.15;
+        attackerTags.push("Fury Charge");
+        if (getAdjacentAllies(defender, allUnits).length === 0) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Fury Charge (unsupported)");
+        }
+        break;
+      case "wildAmbush":
+        if (attackerTerrain === "forest") {
+          attackMultiplier *= 1.15;
+          attackerTags.push("Wild Ambush");
+        }
+        break;
+      case "battleCohesion":
+        if (hasAdjacentAllyWithDifferentRole(attacker, allUnits)) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Battle Cohesion");
+        }
+        if (
+          String(attacker?.role ?? "").toLowerCase().includes("elephant") &&
+          getAdjacentAllies(attacker, allUnits).length > 0
+        ) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Battle Cohesion (elephant)");
+        }
+        break;
+      case "sunChariot":
+        if (attackerMoved && String(attacker?.role ?? "").toLowerCase().includes("chariot")) {
+          attackMultiplier *= 1.15;
+          attackerTags.push("Sun Chariot");
+        }
+        break;
+      case "rhomphaiaFury":
+        if (defenderAbilities.some((d) => d.key === "shieldWall" || d.key === "guarded")) {
+          attackMultiplier *= 1.2;
+          attackerTags.push("Rhomphaia Fury");
+        }
+        if (attackerType === "closecombat") {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Rhomphaia Fury (melee)");
+        }
+        break;
+      case "falxDominion":
+        if (isFalxEliteInfantryTarget(defender)) {
+          attackMultiplier *= 1.25;
+          attackerTags.push("Falx Dominion");
+        }
+        if (hasAdjacentAllyWithAbility(attacker, allUnits, "falxDominion")) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Falx Dominion (line)");
+        }
+        break;
+      case "nomadStrike":
+        if (attackerMoved) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Nomad Strike");
+        }
+        break;
+      case "imperialCohort":
+        if (getAdjacentAllies(attacker, allUnits).some((a) => IMPERIAL_COHORT_ROLES.has(String(a.role)))) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Imperial Cohort");
+        }
+        if (
+          (String(attacker?.role ?? "").toLowerCase().includes("cataphract") ||
+            String(attacker?.role ?? "").toLowerCase().includes("elephant")) &&
+          getAdjacentAllies(attacker, allUnits).length > 0
+        ) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Imperial Cohort (armored)");
+        }
+        break;
+      case "ironShield":
+        if (hasAdjacentAllyWithAbility(attacker, allUnits, "ironShield")) {
+          attackMultiplier *= 1.1;
+          attackerTags.push("Iron Shield");
+        }
+        break;
+      case "testudo":
+        break;
     }
   });
 
@@ -478,10 +614,99 @@ export const getAbilityEffects = (
           defenderTags.push("Guarded");
         }
         break;
+      case "testudo":
+        if (attackerType === "ranged") {
+          damageTakenMultiplier *= 0.65;
+          defenderTags.push("Testudo");
+        }
+        if (isSkirmisherAttacker(attacker)) {
+          damageTakenMultiplier *= 0.85;
+          defenderTags.push("Testudo (skirmishers)");
+        }
+        if (hasAdjacentAllyWithAbility(defender, allUnits, "testudo")) {
+          damageTakenMultiplier *= 0.9;
+          defenderTags.push("Testudo (linked)");
+        }
+        break;
+      case "phalanx":
+        if (attackerType === "closecombat") {
+          damageTakenMultiplier *= 0.8;
+          defenderTags.push("Phalanx");
+        }
+        break;
+      case "wildAmbush":
+        if ((defenderTerrain === "forest" || defenderTerrain === "hill") && attackerType === "ranged") {
+          damageTakenMultiplier *= 0.85;
+          defenderTags.push("Wild Ambush Cover");
+        }
+        break;
+      case "battleCohesion":
+        if (hasAdjacentAllyWithDifferentRole(defender, allUnits)) {
+          damageTakenMultiplier *= 0.9;
+          defenderTags.push("Battle Cohesion");
+        }
+        break;
+      case "imperialCohort":
+        if (
+          getAdjacentAllies(defender, allUnits).some(
+            (a) => IMPERIAL_COHORT_ROLES.has(String(a.role)) && getTroopMechanicType(a) !== getTroopMechanicType(defender)
+          )
+        ) {
+          damageTakenMultiplier *= 0.9;
+          defenderTags.push("Imperial Cohort");
+        }
+        break;
+      case "ironShield":
+        if (attackerType === "closecombat") {
+          damageTakenMultiplier *= 0.8;
+          defenderTags.push("Iron Shield");
+        }
+        if (
+          attackerType === "ranged" &&
+          getAdjacentAllies(defender, allUnits).some((a) => unitHasAbility(a, "ironShield"))
+        ) {
+          damageTakenMultiplier *= 0.85;
+          defenderTags.push("Iron Shield (ranged)");
+        }
+        break;
       default:
         break;
     }
   });
+
+  if (
+    defenderType === "ranged" &&
+    getAdjacentAllies(defender, allUnits).some((a) => unitHasAbility(a, "sunChariot"))
+  ) {
+    damageTakenMultiplier *= 0.8;
+    defenderTags.push("Sun Chariot Cover");
+  }
+
+  if (unitHasAbility(attacker, "rhomphaiaFury")) {
+    const guardedActive =
+      defenderAbilities.some((d) => d.key === "guarded") &&
+      (defender?.hp ?? 0) > Math.ceil((defender?.maxHp ?? 0) * 0.5);
+    const shieldWallActive =
+      defenderAbilities.some((d) => d.key === "shieldWall") && getAdjacentAllies(defender, allUnits).length > 0;
+    if (guardedActive || shieldWallActive) {
+      damageTakenMultiplier *= 1.15;
+      attackerTags.push("Rhomphaia Pierce");
+    }
+  }
+
+  if (unitHasAbility(attacker, "falxDominion")) {
+    const guardedActive =
+      defenderAbilities.some((d) => d.key === "guarded") &&
+      (defender?.hp ?? 0) > Math.ceil((defender?.maxHp ?? 0) * 0.5);
+    const shieldWallActive =
+      defenderAbilities.some((d) => d.key === "shieldWall") && getAdjacentAllies(defender, allUnits).length > 0;
+    const braceActive =
+      defenderAbilities.some((d) => d.key === "brace") && attackerType === "mounted";
+    if (guardedActive || shieldWallActive || braceActive) {
+      damageTakenMultiplier *= 1.2;
+      attackerTags.push("Falx Pierce");
+    }
+  }
 
   const defenderTerrainModifiers = getTerrainModifiers(defender, defenderTerrain);
   if (defenderTerrainModifiers.damageTakenMultiplier !== 1) {
@@ -497,7 +722,13 @@ export const getAbilityEffects = (
   };
 };
 
-export const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = [], terrainMap: TerrainType[][] = []) => {
+export const getAttackDamage = (
+  attacker: any,
+  defender: any,
+  allUnits: any[] = [],
+  terrainMap: TerrainType[][] = [],
+  effectContext: AbilityEffectContext = {}
+) => {
   const attackerType = getTroopMechanicType(attacker);
   const defenderType = getTroopMechanicType(defender);
   const hasAdvantage = TROOP_MECHANIC_ADVANTAGE[attackerType].includes(defenderType);
@@ -520,7 +751,7 @@ export const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = 
     damage = Math.round(damage * terrainModifiers.attackMultiplier);
   }
 
-  const abilityEffects = getAbilityEffects(attacker, defender, allUnits, attackerTerrain, defenderTerrain);
+  const abilityEffects = getAbilityEffects(attacker, defender, allUnits, attackerTerrain, defenderTerrain, effectContext);
   if (abilityEffects.attackMultiplier !== 1) {
     damage = Math.round(damage * abilityEffects.attackMultiplier);
   }
@@ -546,11 +777,19 @@ export const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = 
   };
 };
 
-export const getDisplayedAttack = (unit: any, allUnits: any[] = [], terrainMap: TerrainType[][] = []) => {
+export const getDisplayedAttack = (
+  unit: any,
+  allUnits: any[] = [],
+  terrainMap: TerrainType[][] = [],
+  opts?: { round?: number }
+) => {
   if (!unit) return 0;
 
   let displayedAttack = unit.attack;
-  const terrainModifiers = getTerrainModifiers(unit, getTerrainAt(terrainMap, unit.x, unit.y));
+  const terrainAt = getTerrainAt(terrainMap, unit.x, unit.y);
+  const terrainModifiers = getTerrainModifiers(unit, terrainAt);
+  const round = opts?.round ?? 1;
+  const abilities = getTroopAbilities(unit.role);
 
   if (hasNoAmmoPenalty(unit)) {
     displayedAttack = Math.round(displayedAttack * 0.5);
@@ -564,6 +803,18 @@ export const getDisplayedAttack = (unit: any, allUnits: any[] = [], terrainMap: 
     displayedAttack = Math.round(displayedAttack * terrainModifiers.attackMultiplier);
   }
 
+  let offensiveStanceMult = 1;
+  if (abilities.some((a) => a.key === "bloodOath")) {
+    if (round === 1) offensiveStanceMult *= 1.2;
+    if ((unit?.hp ?? 0) <= Math.ceil((unit?.maxHp ?? 0) * 0.5)) offensiveStanceMult *= 1.1;
+  }
+  if (abilities.some((a) => a.key === "wildAmbush") && terrainAt === "forest") {
+    offensiveStanceMult *= 1.15;
+  }
+  if (offensiveStanceMult !== 1) {
+    displayedAttack = Math.round(displayedAttack * offensiveStanceMult);
+  }
+
   return displayedAttack;
 };
 
@@ -571,11 +822,14 @@ export const getUnitEffectNotes = (
   unit: any,
   allUnits: any[] = [],
   terrainMap: TerrainType[][] = [],
-  terrainEffectsEnabled = true
+  terrainEffectsEnabled = true,
+  opts?: { round?: number }
 ) => {
   if (!unit) return [] as string[];
 
   const notes: string[] = [];
+  const round = opts?.round ?? 1;
+  const terrainAt = getTerrainAt(terrainMap, unit.x, unit.y);
 
   if (unit.civPassiveName && unit.civPassiveEffect) {
     notes.push(`${unit.civPassiveName}: ${unit.civPassiveEffect}`);
@@ -600,74 +854,152 @@ export const getUnitEffectNotes = (
   }
 
   if (terrainEffectsEnabled) {
-    const terrainNotes = getTerrainModifiers(unit, getTerrainAt(terrainMap, unit.x, unit.y)).notes;
+    const terrainNotes = getTerrainModifiers(unit, terrainAt).notes;
     terrainNotes.forEach((note) => notes.push(`Terrain: ${note}`));
   }
 
   getTroopAbilities(unit.role).forEach((ability) => {
     switch (ability.key) {
+      case "brace":
+        notes.push(`${ability.name}: +15% attack vs mounted (×1.15); −15% damage taken from mounted (×0.85)`);
+        break;
       case "shieldWall":
         if (getAdjacentAllies(unit, allUnits).length > 0) {
-          notes.push(`${ability.name}: active while holding formation next to an ally`);
+          notes.push(`${ability.name}: −10% damage taken (×0.9) — adjacent ally`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: −10% damage taken (×0.9) when adjacent to an ally`);
         }
         break;
+      case "shock":
+        notes.push(`${ability.name}: +20% attack (×1.2) vs targets at ≤50% HP`);
+        break;
       case "charge":
-        if (getTerrainAt(terrainMap, unit.x, unit.y) === "plain") {
-          notes.push(`${ability.name}: active on open ground`);
+        if (terrainAt === "plain") {
+          notes.push(`${ability.name}: mounted — +15% attack (×1.15) on plains; +10% (×1.1) vs ranged/siege`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: mounted — +15% (×1.15) on plains; +10% (×1.1) vs ranged or siege`);
         }
+        break;
+      case "harrier":
+        notes.push(`${ability.name}: with ammo — +10% (×1.1) vs move ≤1 or siege`);
         break;
       case "guarded":
         if ((unit?.hp ?? 0) > Math.ceil((unit?.maxHp ?? 0) * 0.5)) {
-          notes.push(`${ability.name}: active while above half health`);
+          notes.push(`${ability.name}: −10% damage taken (×0.9) while above 50% HP`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: −10% damage taken (×0.9) while above 50% HP (inactive now)`);
         }
         break;
       case "ferocity":
         if (getAdjacentAllies(unit, allUnits).length === 0) {
-          notes.push(`${ability.name}: active while fighting away from allied support`);
+          notes.push(`${ability.name}: +10% attack (×1.1) — no adjacent allies`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: +10% attack (×1.1) when not adjacent to allies`);
         }
         break;
       case "deadeye":
-        if (getTerrainAt(terrainMap, unit.x, unit.y) === "hill") {
-          notes.push(`${ability.name}: active high-ground range bonus`);
-        } else {
-          notes.push(`${ability.name}: ${ability.description}`);
-        }
+        notes.push(`${ability.name}: +1 range on hills; +10% attack (×1.1) vs unsupported ranged/siege`);
         break;
       case "crush":
-        notes.push(`${ability.name}: extra damage against close-combat and defensive units`);
+        notes.push(`${ability.name}: +15% (×1.15) vs close combat; +5% (×1.05) vs Guarded or Shield Wall`);
         break;
       case "command":
-        notes.push(`${ability.name}: adjacent allies gain +5% attack`);
+        notes.push(`${ability.name}: adjacent allies +5% attack (×1.05)`);
         break;
       case "siegeMastery":
-        if (getTerrainAt(terrainMap, unit.x, unit.y) === "hill") {
-          notes.push(`${ability.name}: active elevated range and damage bonus`);
-        } else if (getTerrainAt(terrainMap, unit.x, unit.y) === "plain") {
-          notes.push(`${ability.name}: active stable-ground damage bonus`);
+        if (terrainAt === "hill") {
+          notes.push(`${ability.name}: siege — +10% (×1.1) attack; +1 range on hills`);
+        } else if (terrainAt === "plain") {
+          notes.push(`${ability.name}: siege — +10% (×1.1) on plains or hills; +1 range on hills`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: siege — +10% (×1.1) on plains/hills; +1 range on hills`);
         }
         break;
       case "skirmishStep":
         if ((unit?.ammo ?? 0) > 0) {
-          notes.push(`${ability.name}: active +1 move while ammunition lasts`);
+          notes.push(`${ability.name}: +1 move while ammo remains`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: +1 move while ammo > 0 (inactive — no ammo)`);
         }
         break;
       case "resolve":
         if (hasAdjacentWoundedAlly(unit, allUnits)) {
-          notes.push(`${ability.name}: active near a wounded ally`);
+          notes.push(`${ability.name}: +10% attack (×1.1) — adjacent ally at ≤50% HP`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: +10% attack (×1.1) when adjacent ally at ≤50% HP`);
+        }
+        break;
+      case "testudo":
+        notes.push(
+          `${ability.name}: vs ranged −35% taken (×0.65); vs skirmishers −15% more (×0.85); adjacent Testudo ally −10% (×0.9) — multiplicative`
+        );
+        break;
+      case "phalanx":
+        notes.push(
+          `${ability.name}: +20% (×1.2) vs mounted; +10% (×1.1) with adjacent Phalanx ally; vs melee −20% taken (×0.8)`
+        );
+        break;
+      case "bloodOath":
+        if (round === 1) {
+          notes.push(`${ability.name}: round 1 — +20% attack (×1.2), +1 move`);
+        } else {
+          notes.push(`${ability.name}: round 1 — +20% (×1.2) attack & +1 move (expired)`);
+        }
+        if ((unit?.hp ?? 0) <= Math.ceil((unit?.maxHp ?? 0) * 0.5)) {
+          notes.push(`${ability.name}: ≤50% HP — +10% attack (×1.1)`);
+        }
+        break;
+      case "furyCharge":
+        notes.push(
+          `${ability.name}: when attacking +15% (×1.15); vs target with no adjacent allies +10% (×1.1); on plains tile +1 move`
+        );
+        break;
+      case "wildAmbush":
+        if (terrainAt === "forest") {
+          notes.push(`${ability.name}: forest — +15% attack (×1.15), +1 move`);
+        }
+        notes.push(`${ability.name}: on forest/hill vs ranged −15% taken (×0.85)`);
+        break;
+      case "battleCohesion":
+        if (hasAdjacentAllyWithDifferentRole(unit, allUnits)) {
+          notes.push(`${ability.name}: adjacent different role — +10% attack (×1.1), −10% taken (×0.9)`);
+        } else {
+          notes.push(`${ability.name}: adjacent different role — +10% (×1.1) atk, −10% (×0.9) taken`);
+        }
+        if (String(unit?.role ?? "").toLowerCase().includes("elephant")) {
+          notes.push(`${ability.name}: elephant with adjacent ally — +10% attack (×1.1)`);
+        }
+        break;
+      case "sunChariot":
+        notes.push(
+          `${ability.name}: ranged ally touching Sun Chariot — −20% taken (×0.8); chariot after move +15% (×1.15); desert +1 move`
+        );
+        break;
+      case "rhomphaiaFury":
+        notes.push(
+          `${ability.name}: vs Guarded/Shield Wall abilities +20% (×1.2); close combat +10% (×1.1); pierce active Guard/Shield +15% damage through (×1.15)`
+        );
+        break;
+      case "falxDominion":
+        notes.push(
+          `${ability.name}: vs elite infantry +25% (×1.25); adjacent Falx ally +10% (×1.1); pierce Guard/Shield/Brace(mounted) +20% through (×1.2)`
+        );
+        break;
+      case "nomadStrike":
+        if ((unit?.ammo ?? 0) > 0) {
+          notes.push(`${ability.name}: +1 move with ammo (if Skirmish Step not already +1); after move +10% (×1.1)`);
+        }
+        notes.push(`${ability.name}: at 0 ammo — no −50% melee penalty (full attack)`);
+        break;
+      case "imperialCohort":
+        notes.push(
+          `${ability.name}: adjacent Seleucid cohort unit — +10% attack (×1.1); cataphract/elephant with any adjacent ally — +10% (×1.1); cohort ally of different troop class — −10% taken (×0.9)`
+        );
+        break;
+      case "ironShield":
+        notes.push(`${ability.name}: vs close combat −20% taken (×0.8); vs ranged with Iron ally adjacent −15% (×0.85)`);
+        if (hasAdjacentAllyWithAbility(unit, allUnits, "ironShield")) {
+          notes.push(`${ability.name}: adjacent Iron Shield ally — +10% attack (×1.1)`);
         }
         break;
       default:
@@ -709,12 +1041,25 @@ export const rotateUnitCoordinates = (units: any[], steps: number, battlefieldSi
   });
 };
 
-export const getEffectiveMove = (unit: any, terrainMap: TerrainType[][]) => {
+export const getEffectiveMove = (
+  unit: any,
+  terrainMap: TerrainType[][],
+  opts?: { round?: number }
+) => {
   if (!unit) return 0;
   const terrainType = getTerrainAt(terrainMap, unit.x, unit.y);
   const modifiers = getTerrainModifiers(unit, terrainType);
-  const skirmishStepBonus = getTroopAbilities(unit.role).some((ability) => ability.key === "skirmishStep") && (unit?.ammo ?? 0) > 0 ? 1 : 0;
-  return Math.max(1, unit.move + modifiers.moveDelta + skirmishStepBonus);
+  const abilities = getTroopAbilities(unit.role);
+  const round = opts?.round ?? 1;
+  const skirmishStepBonus = abilities.some((a) => a.key === "skirmishStep") && (unit?.ammo ?? 0) > 0 ? 1 : 0;
+  const nomadAmmoBonus =
+    abilities.some((a) => a.key === "nomadStrike") && (unit?.ammo ?? 0) > 0 && skirmishStepBonus === 0 ? 1 : 0;
+  let extra = skirmishStepBonus + nomadAmmoBonus;
+  if (abilities.some((a) => a.key === "bloodOath") && round === 1) extra += 1;
+  if (abilities.some((a) => a.key === "furyCharge") && terrainType === "plain") extra += 1;
+  if (abilities.some((a) => a.key === "wildAmbush") && terrainType === "forest") extra += 1;
+  if (abilities.some((a) => a.key === "sunChariot") && terrainType === "desert") extra += 1;
+  return Math.max(1, unit.move + modifiers.moveDelta + extra);
 };
 
 export const getEffectiveRange = (unit: any, terrainMap: TerrainType[][]) => {

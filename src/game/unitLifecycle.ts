@@ -16,7 +16,6 @@ export const isInfantryRole = (role: string) => {
     "archer",
     "slinger",
     "ballista",
-    "scorpion",
     "catapult",
     "polybolos",
     "trebuchet",
@@ -53,9 +52,11 @@ export const stripUnitForStorage = (unit: any) => {
 
 export const restoreUnitFromStorage = (unit: any) => {
   if (!unit) return null;
+  const role = unit.role === "Scorpion" ? "Heavy Cavalry" : unit.role;
+  const migrated = { ...unit, role };
   return {
-    ...unit,
-    Icon: getUnitDisplayIcon(unit)
+    ...migrated,
+    Icon: getUnitDisplayIcon(migrated)
   };
 };
 
