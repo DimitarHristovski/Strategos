@@ -1,600 +1,350 @@
-import {
-    GiSwordman,
-    GiArcher,
-    GiCavalry,
-    GiCrossedSwords,
-    GiHelmet,
-    GiBo,
-    GiAce,
-    GiCrown,
-  } from "react-icons/gi";
-  import { FaCrown } from "react-icons/fa";
-  
-// 
-  const getIconComponent = (IconComponent: React.ElementType) => () => <IconComponent />;
+import { generateTroopStats } from "./troopStats";
 
-// Function to merge troops of the same type
-export const mergeTroops = (troops: any[]) => {
-  const mergedTroops: any[] = [];
-  const processedTroops = new Set<string>();
+const createUnit = (
+  id: string,
+  team: string,
+  name: string,
+  role: string,
+  x: number,
+  y: number,
+  Icon: string
+) => ({
+  id,
+  team,
+  name,
+  ...generateTroopStats(role),
+  x,
+  y,
+  role,
+  Icon
+});
 
-  // Helper function to check if two troops are adjacent
-  const areAdjacent = (a: any, b: any) => {
-    const dx = Math.abs(a.x - b.x);
-    const dy = Math.abs(a.y - b.y);
-    return (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
-  };
-
-  // Find the first pair of adjacent troops of the same type to merge
-  let foundMerge = false;
-  
-  for (const troop1 of troops) {
-    if (processedTroops.has(troop1.id) || foundMerge) continue;
-    
-    for (const troop2 of troops) {
-      if (processedTroops.has(troop2.id) || troop1.id === troop2.id) continue;
-      
-      // Check if troops are adjacent and can be merged
-      if (areAdjacent(troop1, troop2) && 
-          troop1.team === troop2.team && 
-          troop1.role === troop2.role) {
-        
-        // Merge these two troops
-        const mergedTroop = { ...troop1 };
-        mergedTroop.hp = troop1.hp + troop2.hp;
-        mergedTroop.maxHp = troop1.maxHp + troop2.maxHp;
-        mergedTroop.attack = Math.floor((troop1.attack + troop2.attack) * 1.5); // Bonus for merging
-        mergedTroop.id = `${mergedTroop.team}_merged_${mergedTroop.role}_${Date.now()}`;
-        
-        // Position the merged troop at the center of the two troops
-        mergedTroop.x = Math.round((troop1.x + troop2.x) / 2);
-        mergedTroop.y = Math.round((troop1.y + troop2.y) / 2);
-        
-        mergedTroops.push(mergedTroop);
-        processedTroops.add(troop1.id);
-        processedTroops.add(troop2.id);
-        foundMerge = true;
-        break;
-      }
-    }
-    
-    if (foundMerge) break;
-  }
-  
-  // Add all remaining unprocessed troops
-  troops.forEach(troop => {
-    if (!processedTroops.has(troop.id)) {
-      mergedTroops.push(troop);
-    }
-  });
-
-  return mergedTroops;
+export const levels = {
+  Level1: [
+    createUnit("roman_king", "Romans", "Roman King", "Roman King", 3, 0, "👑"),
+    createUnit("roman_ballista_left", "Romans", "Ballista", "Ballista", 0, 0, "⚔️"),
+    createUnit("roman_ballista_right", "Romans", "Ballista", "Ballista", 7, 0, "⚔️"),
+    createUnit("roman_praetorian", "Romans", "Praetorian", "Praetorian", 4, 0, "🪖"),
+    createUnit("roman_cavalry_left", "Romans", "Cavalry", "Cavalry", 1, 1, "🐎"),
+    createUnit("roman_archer_left", "Romans", "Archer", "Archer", 2, 1, "🏹"),
+    createUnit("roman_archer_right", "Romans", "Archer", "Archer", 5, 1, "🏹"),
+    createUnit("roman_cavalry_right", "Romans", "Cavalry", "Cavalry", 6, 1, "🐎"),
+    createUnit("roman_legionary_1", "Romans", "Legionary", "Legionary", 0, 2, "⚔️"),
+    createUnit("roman_legionary_2", "Romans", "Legionary", "Legionary", 1, 2, "⚔️"),
+    createUnit("roman_legionary_3", "Romans", "Legionary", "Legionary", 2, 2, "⚔️"),
+    createUnit("roman_legionary_4", "Romans", "Legionary", "Legionary", 3, 2, "⚔️"),
+    createUnit("roman_legionary_5", "Romans", "Legionary", "Legionary", 4, 2, "⚔️"),
+    createUnit("roman_legionary_6", "Romans", "Legionary", "Legionary", 5, 2, "⚔️"),
+    createUnit("roman_legionary_7", "Romans", "Legionary", "Legionary", 6, 2, "⚔️"),
+    createUnit("roman_legionary_8", "Romans", "Legionary", "Legionary", 7, 2, "⚔️"),
+    createUnit("barbarian_chief", "Barbarians", "Barbarian Chief", "Barbarian Chief", 4, 7, "👑"),
+    createUnit("barbarian_axeman_left", "Barbarians", "Barbarian Axeman", "Barbarian Axeman", 0, 7, "⚔️"),
+    createUnit("barbarian_berserker", "Barbarians", "Barbarian Berserker", "Barbarian Berserker", 3, 7, "⚔️"),
+    createUnit("barbarian_axeman_right", "Barbarians", "Barbarian Axeman", "Barbarian Axeman", 7, 7, "⚔️"),
+    createUnit("barbarian_scout_left", "Barbarians", "Barbarian Scout", "Barbarian Scout", 1, 6, "🐎🏹"),
+    createUnit("barbarian_archer_left", "Barbarians", "Barbarian Archer", "Barbarian Archer", 2, 6, "🏹"),
+    createUnit("barbarian_archer_right", "Barbarians", "Barbarian Archer", "Barbarian Archer", 5, 6, "🏹"),
+    createUnit("barbarian_scout_right", "Barbarians", "Barbarian Scout", "Barbarian Scout", 6, 6, "🐎🏹"),
+    createUnit("barbarian_warrior_1", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 0, 5, "🪓"),
+    createUnit("barbarian_warrior_2", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 1, 5, "🪓"),
+    createUnit("barbarian_warrior_3", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 2, 5, "🪓"),
+    createUnit("barbarian_warrior_4", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 3, 5, "🪓"),
+    createUnit("barbarian_warrior_5", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 4, 5, "🪓"),
+    createUnit("barbarian_warrior_6", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 5, 5, "🪓"),
+    createUnit("barbarian_warrior_7", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 6, 5, "🪓"),
+    createUnit("barbarian_warrior_8", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 7, 5, "🪓")
+  ],
+  Level2: [
+    createUnit("greek_king", "Greeks", "Macedonian King", "Macedonian King", 3, 0, "👑"),
+    createUnit("greek_hoplite_1", "Greeks", "Hoplite", "Hoplite", 2, 1, "⚔️"),
+    createUnit("greek_hoplite_2", "Greeks", "Hoplite", "Hoplite", 3, 1, "⚔️"),
+    createUnit("greek_hoplite_3", "Greeks", "Hoplite", "Hoplite", 4, 1, "⚔️"),
+    createUnit("greek_hoplite_4", "Greeks", "Hoplite", "Hoplite", 3, 2, "⚔️"),
+    createUnit("greek_archer_1", "Greeks", "Cretan Archer", "Cretan Archer", 1, 2, "🏹"),
+    createUnit("greek_archer_2", "Greeks", "Cretan Archer", "Cretan Archer", 5, 2, "🏹"),
+    createUnit("greek_cavalry", "Greeks", "Companion Cavalry", "Companion Cavalry", 6, 1, "🐎"),
+    createUnit("celt_king", "Gauls", "Gallic King", "Gallic King", 4, 7, "👑"),
+    createUnit("celt_warrior_1", "Gauls", "Gallic Warrior", "Gallic Warrior", 1, 6, "⚔️"),
+    createUnit("celt_warrior_2", "Gauls", "Gallic Warrior", "Gallic Warrior", 2, 5, "⚔️"),
+    createUnit("celt_warrior_3", "Gauls", "Gallic Warrior", "Gallic Warrior", 5, 5, "⚔️"),
+    createUnit("celt_warrior_4", "Gauls", "Gallic Warrior", "Gallic Warrior", 6, 6, "⚔️"),
+    createUnit("celt_archer_1", "Gauls", "Gallic Archer", "Gallic Archer", 2, 7, "🏹"),
+    createUnit("celt_archer_2", "Gauls", "Gallic Archer", "Gallic Archer", 5, 7, "🏹"),
+    createUnit("celt_cavalry", "Gauls", "Gallic Cavalry", "Gallic Cavalry", 3, 5, "🐎")
+  ],
+  Level3: [
+    createUnit("carthage_general", "Carthage", "Carthaginian General", "Carthaginian General", 2, 0, "👑"),
+    createUnit("sacred_band", "Carthage", "Sacred Band", "Sacred Band", 3, 1, "🛡️"),
+    createUnit("libyan_1", "Carthage", "Libyan Infantry", "Libyan Infantry", 2, 2, "⚔️"),
+    createUnit("libyan_2", "Carthage", "Libyan Infantry", "Libyan Infantry", 3, 2, "⚔️"),
+    createUnit("libyan_3", "Carthage", "Libyan Infantry", "Libyan Infantry", 4, 2, "⚔️"),
+    createUnit("numidian", "Carthage", "Numidian Cavalry", "Numidian Cavalry", 6, 1, "🐎"),
+    createUnit("slinger", "Carthage", "Balearic Slinger", "Balearic Slinger", 1, 3, "🏹"),
+    createUnit("elephant", "Carthage", "War Elephant", "War Elephant", 5, 2, "🐘"),
+    createUnit("jarl", "Vikings", "Viking Jarl", "Jarl", 5, 7, "👑"),
+    createUnit("shieldmaiden_1", "Vikings", "Shieldmaiden", "Shieldmaiden", 4, 6, "🛡️"),
+    createUnit("shieldmaiden_2", "Vikings", "Shieldmaiden", "Shieldmaiden", 5, 6, "🛡️"),
+    createUnit("raider_1", "Vikings", "Viking Raider", "Viking Raider", 3, 5, "🪓"),
+    createUnit("raider_2", "Vikings", "Viking Raider", "Viking Raider", 5, 4, "🪓"),
+    createUnit("raider_3", "Vikings", "Viking Raider", "Viking Raider", 6, 5, "🪓"),
+    createUnit("viking_archer", "Vikings", "Viking Archer", "Viking Archer", 2, 5, "🏹"),
+    createUnit("viking_scout", "Vikings", "Scout", "Scout", 6, 4, "🐎🏹")
+  ],
+  Level4: [
+    createUnit("germanic_king", "Germanic", "Germanic King", "Germanic King", 3, 0, "👑"),
+    createUnit("germanic_warrior_1", "Germanic", "Germanic Warrior", "Germanic Warrior", 1, 1, "🪓"),
+    createUnit("germanic_warrior_2", "Germanic", "Germanic Warrior", "Germanic Warrior", 5, 1, "🪓"),
+    createUnit("germanic_warrior_3", "Germanic", "Germanic Warrior", "Germanic Warrior", 2, 2, "🪓"),
+    createUnit("germanic_warrior_4", "Germanic", "Germanic Warrior", "Germanic Warrior", 4, 2, "🪓"),
+    createUnit("germanic_archer_1", "Germanic", "Germanic Archer", "Germanic Archer", 0, 2, "🏹"),
+    createUnit("germanic_archer_2", "Germanic", "Germanic Archer", "Germanic Archer", 6, 2, "🏹"),
+    createUnit("wolf_rider", "Germanic", "Germanic Wolf Rider", "Germanic Wolf Rider", 3, 3, "🐎"),
+    createUnit("egypt_pharaoh_l4", "Egypt", "Pharaoh", "Pharaoh", 4, 7, "👑"),
+    createUnit("egypt_guard_l4a", "Egypt", "Royal Guard", "Royal Guard", 2, 6, "⚔️"),
+    createUnit("egypt_guard_l4b", "Egypt", "Royal Guard", "Royal Guard", 5, 6, "⚔️"),
+    createUnit("egypt_medjay_l4", "Egypt", "Medjay", "Medjay", 3, 6, "⚔️"),
+    createUnit("egypt_warrior_l4", "Egypt", "Egyptian Warrior", "Egyptian Warrior", 4, 6, "⚔️"),
+    createUnit("egypt_archer_l4", "Egypt", "Egyptian Archer", "Egyptian Archer", 1, 5, "🏹"),
+    createUnit("egypt_archer_l4b", "Egypt", "Nubian Archer", "Nubian Archer", 6, 5, "🏹"),
+    createUnit("egypt_chariot_l4", "Egypt", "War Chariot", "War Chariot", 4, 4, "🐎")
+  ],
+  Level5: [
+    createUnit("roman_legionary_a", "Romans", "Legionary", "Legionary", 0, 1, "⚔️"),
+    createUnit("roman_legionary_b", "Romans", "Legionary", "Legionary", 2, 0, "⚔️"),
+    createUnit("roman_legionary_c", "Romans", "Legionary", "Legionary", 4, 1, "⚔️"),
+    createUnit("roman_centurion", "Romans", "Centurion", "Centurion", 1, 2, "🪖"),
+    createUnit("roman_legionary_d", "Romans", "Legionary", "Legionary", 3, 2, "⚔️"),
+    createUnit("roman_archer_a", "Romans", "Archer", "Archer", 5, 0, "🏹"),
+    createUnit("roman_archer_b", "Romans", "Archer", "Archer", 6, 1, "🏹"),
+    createUnit("roman_archer_c", "Romans", "Archer", "Archer", 7, 2, "🏹"),
+    createUnit("roman_cavalry_a", "Romans", "Cavalry", "Cavalry", 1, 3, "🐎"),
+    createUnit("roman_cavalry_b", "Romans", "Cavalry", "Cavalry", 4, 3, "🐎"),
+    createUnit("carthage_general_b", "Carthage", "Carthaginian General", "Carthaginian General", 6, 7, "👑"),
+    createUnit("libyan_a", "Carthage", "Libyan Infantry", "Libyan Infantry", 2, 7, "⚔️"),
+    createUnit("libyan_b", "Carthage", "Libyan Infantry", "Libyan Infantry", 4, 6, "⚔️"),
+    createUnit("libyan_c", "Carthage", "Libyan Infantry", "Libyan Infantry", 6, 5, "⚔️"),
+    createUnit("sacred_band_b", "Carthage", "Sacred Band", "Sacred Band", 5, 6, "🛡️"),
+    createUnit("archer_carthage_a", "Carthage", "Carthaginian Archer", "Carthaginian Archer", 0, 6, "🏹"),
+    createUnit("archer_carthage_b", "Carthage", "Carthaginian Archer", "Carthaginian Archer", 1, 5, "🏹"),
+    createUnit("slinger_b", "Carthage", "Balearic Slinger", "Balearic Slinger", 3, 5, "🏹"),
+    createUnit("numidian_a", "Carthage", "Numidian Cavalry", "Numidian Cavalry", 5, 4, "🐎"),
+    createUnit("elephant_b", "Carthage", "War Elephant", "War Elephant", 7, 4, "🐘")
+  ],
+  Level6: [
+    createUnit("greek_king_delta", "Greeks", "Macedonian King", "Macedonian King", 3, 0, "👑"),
+    createUnit("hoplite_1", "Greeks", "Hoplite", "Hoplite", 2, 1, "⚔️"),
+    createUnit("hoplite_2", "Greeks", "Hoplite", "Hoplite", 3, 1, "⚔️"),
+    createUnit("hoplite_3", "Greeks", "Hoplite", "Hoplite", 4, 1, "⚔️"),
+    createUnit("hoplite_4", "Greeks", "Hoplite", "Hoplite", 3, 2, "⚔️"),
+    createUnit("greek_archer_delta_1", "Greeks", "Cretan Archer", "Cretan Archer", 1, 1, "🏹"),
+    createUnit("greek_archer_delta_2", "Greeks", "Cretan Archer", "Cretan Archer", 5, 1, "🏹"),
+    createUnit("greek_cavalry_delta", "Greeks", "Thessalian Cavalry", "Thessalian Cavalry", 6, 3, "🐎"),
+    createUnit("germanic_king_delta", "Germanic", "Germanic King", "Germanic King", 4, 7, "👑"),
+    createUnit("germanic_warrior_a", "Germanic", "Germanic Warrior", "Germanic Warrior", 2, 6, "🪓"),
+    createUnit("germanic_warrior_b", "Germanic", "Germanic Warrior", "Germanic Warrior", 4, 6, "🪓"),
+    createUnit("germanic_warrior_c", "Germanic", "Germanic Warrior", "Germanic Warrior", 6, 6, "🪓"),
+    createUnit("germanic_warrior_d", "Germanic", "Germanic Warrior", "Germanic Warrior", 3, 5, "🪓"),
+    createUnit("germanic_archer_a", "Germanic", "Germanic Archer", "Germanic Archer", 1, 5, "🏹"),
+    createUnit("germanic_archer_b", "Germanic", "Germanic Archer", "Germanic Archer", 5, 5, "🏹"),
+    createUnit("wolf_rider_delta", "Germanic", "Germanic Wolf Rider", "Germanic Wolf Rider", 0, 6, "🐎")
+  ],
+  Level7: [
+    createUnit("celt_king_tercio", "Gauls", "Gallic King", "Gallic King", 2, 0, "👑"),
+    createUnit("celt_spear_1", "Gauls", "Gallic Spearman", "Gallic Spearman", 1, 1, "⚔️"),
+    createUnit("celt_spear_2", "Gauls", "Gallic Spearman", "Gallic Spearman", 3, 1, "⚔️"),
+    createUnit("celt_warrior_t1", "Gauls", "Gallic Warrior", "Gallic Warrior", 0, 2, "⚔️"),
+    createUnit("celt_warrior_t2", "Gauls", "Gallic Warrior", "Gallic Warrior", 2, 2, "⚔️"),
+    createUnit("celt_warrior_t3", "Gauls", "Gallic Warrior", "Gallic Warrior", 4, 2, "⚔️"),
+    createUnit("celt_archer_t", "Gauls", "Gallic Archer", "Gallic Archer", 1, 3, "🏹"),
+    createUnit("celt_cavalry_t", "Gauls", "Gallic Cavalry", "Gallic Cavalry", 5, 2, "🐎"),
+    createUnit("jarl_tercio", "Vikings", "Viking Jarl", "Jarl", 5, 7, "👑"),
+    createUnit("raider_t1", "Vikings", "Viking Raider", "Viking Raider", 3, 6, "🪓"),
+    createUnit("raider_t2", "Vikings", "Viking Raider", "Viking Raider", 5, 6, "🪓"),
+    createUnit("raider_t3", "Vikings", "Viking Raider", "Viking Raider", 2, 5, "🪓"),
+    createUnit("raider_t4", "Vikings", "Viking Raider", "Viking Raider", 4, 5, "🪓"),
+    createUnit("raider_t5", "Vikings", "Viking Raider", "Viking Raider", 6, 5, "🪓"),
+    createUnit("viking_archer_t", "Vikings", "Viking Archer", "Viking Archer", 3, 4, "🏹"),
+    createUnit("viking_scout_t", "Vikings", "Scout", "Scout", 6, 4, "🐎🏹")
+  ],
+  Level8: [
+    createUnit("barbarian_king_p", "Barbarians", "Barbarian Chief", "Barbarian Chief", 3, 0, "👑"),
+    createUnit("barbarian_w1_p", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 0, 1, "🪓"),
+    createUnit("barbarian_w2_p", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 1, 2, "🪓"),
+    createUnit("barbarian_w3_p", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 5, 2, "🪓"),
+    createUnit("barbarian_w4_p", "Barbarians", "Barbarian Warrior", "Barbarian Warrior", 6, 1, "🪓"),
+    createUnit("barbarian_archer_p1", "Barbarians", "Barbarian Archer", "Barbarian Archer", 2, 1, "🏹"),
+    createUnit("barbarian_archer_p2", "Barbarians", "Barbarian Archer", "Barbarian Archer", 4, 1, "🏹"),
+    createUnit("barbarian_scout_p", "Barbarians", "Barbarian Scout", "Barbarian Scout", 7, 3, "🐎🏹"),
+    createUnit("egypt_pharaoh_l8", "Egypt", "Pharaoh", "Pharaoh", 4, 7, "👑"),
+    createUnit("egypt_shield_l8a", "Egypt", "Shield Bearer", "Shield Bearer", 2, 6, "⚔️"),
+    createUnit("egypt_shield_l8b", "Egypt", "Shield Bearer", "Shield Bearer", 5, 6, "⚔️"),
+    createUnit("egypt_warrior_l8a", "Egypt", "Egyptian Warrior", "Egyptian Warrior", 3, 6, "⚔️"),
+    createUnit("egypt_warrior_l8b", "Egypt", "Egyptian Warrior", "Egyptian Warrior", 4, 6, "⚔️"),
+    createUnit("egypt_archer_l8", "Egypt", "Egyptian Archer", "Egyptian Archer", 1, 5, "🏹"),
+    createUnit("egypt_archer_l8b", "Egypt", "Nubian Archer", "Nubian Archer", 6, 5, "🏹"),
+    createUnit("egypt_catapult_l8", "Egypt", "Egyptian Catapult", "Egyptian Catapult", 4, 4, "⚙️")
+  ],
+  Level9: [
+    createUnit("egypt_pharaoh_1", "Egypt", "Pharaoh", "Pharaoh", 3, 0, "👑"),
+    createUnit("egypt_guard_1", "Egypt", "Royal Guard", "Royal Guard", 2, 1, "⚔️"),
+    createUnit("egypt_guard_2", "Egypt", "Royal Guard", "Royal Guard", 4, 1, "⚔️"),
+    createUnit("egypt_khopesh_1", "Egypt", "Khopesh Warrior", "Khopesh Warrior", 1, 2, "⚔️"),
+    createUnit("egypt_medjay_1", "Egypt", "Medjay", "Medjay", 3, 2, "⚔️"),
+    createUnit("egypt_shield_1", "Egypt", "Shield Bearer", "Shield Bearer", 5, 2, "⚔️"),
+    createUnit("egypt_archer_1", "Egypt", "Egyptian Archer", "Egyptian Archer", 2, 3, "🏹"),
+    createUnit("egypt_archer_2", "Egypt", "Nubian Archer", "Nubian Archer", 4, 3, "🏹"),
+    createUnit("egypt_chariot_1", "Egypt", "War Chariot", "War Chariot", 0, 3, "🐎"),
+    createUnit("egypt_scout_1", "Egypt", "Desert Scout", "Desert Scout", 7, 3, "🐎🏹"),
+    createUnit("roman_king_9", "Romans", "Roman King", "Roman King", 4, 7, "👑"),
+    createUnit("roman_praetorian_9", "Romans", "Praetorian", "Praetorian", 3, 6, "🪖"),
+    createUnit("roman_centurion_9", "Romans", "Centurion", "Centurion", 5, 6, "🪖"),
+    createUnit("roman_legionary_9a", "Romans", "Legionary", "Legionary", 2, 5, "⚔️"),
+    createUnit("roman_legionary_9b", "Romans", "Legionary", "Legionary", 4, 5, "⚔️"),
+    createUnit("roman_legionary_9c", "Romans", "Legionary", "Legionary", 6, 5, "⚔️"),
+    createUnit("roman_archer_9", "Romans", "Archer", "Archer", 1, 4, "🏹"),
+    createUnit("roman_ballista_9", "Romans", "Ballista", "Ballista", 4, 4, "⚙️"),
+    createUnit("roman_cavalry_9a", "Romans", "Cavalry", "Cavalry", 0, 4, "🐎"),
+    createUnit("roman_cavalry_9b", "Romans", "Cavalry", "Cavalry", 7, 4, "🐎")
+  ],
+  Level10: [
+    createUnit("egypt_pharaoh_2", "Egypt", "Pharaoh", "Pharaoh", 3, 0, "👑"),
+    createUnit("egypt_warrior_10a", "Egypt", "Egyptian Warrior", "Egyptian Warrior", 2, 1, "⚔️"),
+    createUnit("egypt_warrior_10b", "Egypt", "Egyptian Warrior", "Egyptian Warrior", 4, 1, "⚔️"),
+    createUnit("egypt_guard_10", "Egypt", "Royal Guard", "Royal Guard", 3, 2, "⚔️"),
+    createUnit("egypt_archer_10a", "Egypt", "Egyptian Archer", "Egyptian Archer", 1, 2, "🏹"),
+    createUnit("egypt_archer_10b", "Egypt", "Nubian Archer", "Nubian Archer", 5, 2, "🏹"),
+    createUnit("egypt_chariot_10", "Egypt", "Royal Chariot", "Royal Chariot", 6, 3, "🐎🏹"),
+    createUnit("egypt_catapult_10", "Egypt", "Egyptian Catapult", "Egyptian Catapult", 0, 3, "⚙️"),
+    createUnit("greek_king_10", "Greeks", "Macedonian King", "Macedonian King", 4, 7, "👑"),
+    createUnit("greek_hoplite_10a", "Greeks", "Hoplite", "Hoplite", 2, 6, "⚔️"),
+    createUnit("greek_hoplite_10b", "Greeks", "Hoplite", "Hoplite", 3, 6, "⚔️"),
+    createUnit("greek_hoplite_10c", "Greeks", "Hoplite", "Hoplite", 4, 6, "⚔️"),
+    createUnit("greek_hoplite_10d", "Greeks", "Hoplite", "Hoplite", 5, 6, "⚔️"),
+    createUnit("greek_archer_10a", "Greeks", "Cretan Archer", "Cretan Archer", 1, 5, "🏹"),
+    createUnit("greek_archer_10b", "Greeks", "Cretan Archer", "Cretan Archer", 6, 5, "🏹"),
+    createUnit("greek_cavalry_10a", "Greeks", "Companion Cavalry", "Companion Cavalry", 0, 5, "🐎"),
+    createUnit("greek_cavalry_10b", "Greeks", "Thessalian Cavalry", "Thessalian Cavalry", 7, 5, "🐎")
+  ],
+  Level11: [
+    createUnit("gaul_king_11", "Gauls", "Gallic King", "Gallic King", 3, 0, "👑"),
+    createUnit("gaul_warrior_11a", "Gauls", "Gallic Warrior", "Gallic Warrior", 2, 1, "⚔️"),
+    createUnit("gaul_warrior_11b", "Gauls", "Gallic Warrior", "Gallic Warrior", 4, 1, "⚔️"),
+    createUnit("gaul_spear_11a", "Gauls", "Gallic Spearman", "Gallic Spearman", 1, 2, "⚔️"),
+    createUnit("gaul_spear_11b", "Gauls", "Gallic Spearman", "Gallic Spearman", 5, 2, "⚔️"),
+    createUnit("gaul_archer_11a", "Gauls", "Gallic Archer", "Gallic Archer", 2, 3, "🏹"),
+    createUnit("gaul_archer_11b", "Gauls", "Gallic Archer", "Gallic Archer", 4, 3, "🏹"),
+    createUnit("gaul_cavalry_11", "Gauls", "Gallic Cavalry", "Gallic Cavalry", 6, 2, "🐎"),
+    createUnit("carthage_general_11", "Carthage", "Carthaginian General", "Carthaginian General", 4, 7, "👑"),
+    createUnit("carthage_band_11", "Carthage", "Sacred Band", "Sacred Band", 3, 6, "🛡️"),
+    createUnit("carthage_libyan_11a", "Carthage", "Libyan Infantry", "Libyan Infantry", 2, 5, "⚔️"),
+    createUnit("carthage_libyan_11b", "Carthage", "Libyan Infantry", "Libyan Infantry", 4, 5, "⚔️"),
+    createUnit("carthage_archer_11", "Carthage", "Carthaginian Archer", "Carthaginian Archer", 1, 5, "🏹"),
+    createUnit("carthage_slinger_11", "Carthage", "Balearic Slinger", "Balearic Slinger", 5, 5, "🏹"),
+    createUnit("carthage_numidian_11", "Carthage", "Numidian Cavalry", "Numidian Cavalry", 6, 4, "🐎"),
+    createUnit("carthage_elephant_11", "Carthage", "War Elephant", "War Elephant", 3, 4, "🐘")
+  ],
+  Level12: [
+    createUnit("viking_jarl_12", "Vikings", "Viking Jarl", "Jarl", 3, 0, "👑"),
+    createUnit("viking_huscarl_12a", "Vikings", "Huscarl", "Huscarl", 2, 1, "⚔️"),
+    createUnit("viking_huscarl_12b", "Vikings", "Huscarl", "Huscarl", 4, 1, "⚔️"),
+    createUnit("viking_ulf_12", "Vikings", "Ulfhednar", "Ulfhednar", 1, 2, "⚔️"),
+    createUnit("viking_raider_12a", "Vikings", "Viking Raider", "Viking Raider", 3, 2, "🪓"),
+    createUnit("viking_raider_12b", "Vikings", "Viking Raider", "Viking Raider", 5, 2, "🪓"),
+    createUnit("viking_archer_12", "Vikings", "Viking Archer", "Viking Archer", 2, 3, "🏹"),
+    createUnit("viking_varangian_12", "Vikings", "Varangian Guard", "Varangian Guard", 6, 2, "⚔️"),
+    createUnit("egypt_pharaoh_12", "Egypt", "Pharaoh", "Pharaoh", 4, 7, "👑"),
+    createUnit("egypt_guard_12", "Egypt", "Royal Guard", "Royal Guard", 5, 6, "⚔️"),
+    createUnit("egypt_medjay_12", "Egypt", "Medjay", "Medjay", 2, 6, "⚔️"),
+    createUnit("egypt_khopesh_12", "Egypt", "Khopesh Warrior", "Khopesh Warrior", 3, 6, "⚔️"),
+    createUnit("egypt_shield_12", "Egypt", "Shield Bearer", "Shield Bearer", 4, 6, "⚔️"),
+    createUnit("egypt_archer_12", "Egypt", "Nubian Archer", "Nubian Archer", 1, 5, "🏹"),
+    createUnit("egypt_chariot_12", "Egypt", "Royal Chariot", "Royal Chariot", 6, 5, "🐎🏹"),
+    createUnit("egypt_catapult_12", "Egypt", "Egyptian Catapult", "Egyptian Catapult", 4, 4, "⚙️")
+  ],
+  Level13: [
+    createUnit("thracian_king_13", "Thracians", "Thracian King", "Thracian King", 3, 0, "👑"),
+    createUnit("thracian_guard_13", "Thracians", "Thracian Guard", "Thracian Guard", 3, 1, "🪖"),
+    createUnit("thracian_warrior_13a", "Thracians", "Thracian Warrior", "Thracian Warrior", 2, 2, "⚔️"),
+    createUnit("thracian_rhomphaia_13", "Thracians", "Rhomphaia Fighter", "Rhomphaia Fighter", 4, 2, "⚔️"),
+    createUnit("thracian_falx_13", "Thracians", "Falx Warrior", "Falx Warrior", 1, 3, "⚔️"),
+    createUnit("thracian_spear_13", "Thracians", "Thracian Spearman", "Thracian Spearman", 5, 3, "⚔️"),
+    createUnit("thracian_peltast_13", "Thracians", "Thracian Peltast", "Thracian Peltast", 2, 1, "🏹"),
+    createUnit("thracian_archer_13", "Thracians", "Thracian Archer", "Thracian Archer", 4, 1, "🏹"),
+    createUnit("thracian_rider_13", "Thracians", "Thracian Rider", "Thracian Rider", 0, 2, "🐎"),
+    createUnit("thracian_noble_13", "Thracians", "Thracian Noble Rider", "Thracian Noble Rider", 7, 2, "🐎"),
+    createUnit("dacian_king_13", "Dacians", "Dacian King", "Dacian King", 4, 7, "👑"),
+    createUnit("dacian_guard_13", "Dacians", "Dacian Guard", "Dacian Guard", 4, 6, "🪖"),
+    createUnit("dacian_warrior_13a", "Dacians", "Dacian Warrior", "Dacian Warrior", 3, 5, "⚔️"),
+    createUnit("dacian_falx_13", "Dacians", "Falxman", "Falxman", 5, 5, "⚔️"),
+    createUnit("dacian_spear_13", "Dacians", "Dacian Spearman", "Dacian Spearman", 2, 4, "⚔️"),
+    createUnit("dacian_shield_13", "Dacians", "Dacian Shield Bearer", "Dacian Shield Bearer", 6, 4, "🛡️"),
+    createUnit("dacian_slinger_13", "Dacians", "Dacian Slinger", "Dacian Slinger", 3, 6, "🏹"),
+    createUnit("dacian_archer_13", "Dacians", "Dacian Archer", "Dacian Archer", 5, 6, "🏹"),
+    createUnit("dacian_rider_13", "Dacians", "Dacian Rider", "Dacian Rider", 1, 5, "🐎"),
+    createUnit("dacian_noble_13", "Dacians", "Dacian Noble Rider", "Dacian Noble Rider", 7, 5, "🐎")
+  ],
+  Level14: [
+    createUnit("parthian_king_14", "Parthians", "Parthian King", "Parthian King", 3, 0, "👑"),
+    createUnit("parthian_cataphract_14", "Parthians", "Cataphract", "Parthian Cataphract", 1, 1, "🐎"),
+    createUnit("parthian_noble_14", "Parthians", "Parthian Noble Rider", "Parthian Noble Rider", 6, 1, "🐎"),
+    createUnit("parthian_warrior_14", "Parthians", "Parthian Warrior", "Parthian Warrior", 2, 2, "⚔️"),
+    createUnit("parthian_spear_14", "Parthians", "Parthian Spearman", "Parthian Spearman", 4, 2, "⚔️"),
+    createUnit("parthian_horse_archer_14a", "Parthians", "Horse Archer", "Horse Archer", 0, 3, "🏹🐎"),
+    createUnit("parthian_horse_archer_14b", "Parthians", "Elite Horse Archer", "Elite Horse Archer", 7, 3, "🏹🐎"),
+    createUnit("parthian_archer_14", "Parthians", "Parthian Archer", "Parthian Archer", 3, 1, "🏹"),
+    createUnit("parthian_camel_14", "Parthians", "Camel Rider", "Camel Rider", 5, 3, "🐪"),
+    createUnit("parthian_ballista_14", "Parthians", "Parthian Ballista", "Parthian Ballista", 3, 2, "⚙️"),
+    createUnit("seleucid_king_14", "Seleucids", "Seleucid King", "Seleucid King", 4, 7, "👑"),
+    createUnit("seleucid_silver_14", "Seleucids", "Silver Shield Infantry", "Silver Shield Infantry", 4, 6, "🪖"),
+    createUnit("seleucid_phalanx_14a", "Seleucids", "Phalangite", "Seleucid Phalangite", 2, 5, "⚔️"),
+    createUnit("seleucid_phalanx_14b", "Seleucids", "Phalangite", "Seleucid Phalangite", 5, 5, "⚔️"),
+    createUnit("seleucid_thorakitai_14", "Seleucids", "Thorakitai", "Thorakitai", 3, 5, "⚔️"),
+    createUnit("seleucid_archer_14", "Seleucids", "Eastern Archer", "Eastern Archer", 2, 6, "🏹"),
+    createUnit("seleucid_slinger_14", "Seleucids", "Slinger", "Seleucid Slinger", 6, 6, "🏹"),
+    createUnit("seleucid_cavalry_14", "Seleucids", "Light Cavalry", "Seleucid Light Cavalry", 1, 4, "🐎"),
+    createUnit("seleucid_elephant_14", "Seleucids", "War Elephant", "Seleucid War Elephant", 6, 4, "🐘"),
+    createUnit("seleucid_catapult_14", "Seleucids", "Seleucid Catapult", "Seleucid Catapult", 4, 4, "⚙️")
+  ],
+  Level15: [
+    createUnit("thracian_king_15", "Thracians", "Thracian King", "Thracian King", 2, 0, "👑"),
+    createUnit("thracian_guard_15", "Thracians", "Thracian Guard", "Thracian Guard", 3, 1, "🪖"),
+    createUnit("thracian_warrior_15", "Thracians", "Thracian Warrior", "Thracian Warrior", 2, 2, "⚔️"),
+    createUnit("thracian_falx_15", "Thracians", "Falx Warrior", "Falx Warrior", 4, 2, "⚔️"),
+    createUnit("thracian_spear_15", "Thracians", "Thracian Spearman", "Thracian Spearman", 1, 3, "⚔️"),
+    createUnit("thracian_peltast_15", "Thracians", "Thracian Peltast", "Thracian Peltast", 0, 2, "🏹"),
+    createUnit("thracian_archer_15", "Thracians", "Thracian Archer", "Thracian Archer", 5, 1, "🏹"),
+    createUnit("thracian_drummer_15", "Thracians", "War Drummer", "War Drummer", 3, 2, "🥁"),
+    createUnit("thracian_catapult_15", "Thracians", "Thracian Catapult", "Thracian Catapult", 7, 2, "⚙️"),
+    createUnit("parthian_king_15", "Parthians", "Parthian King", "Parthian King", 5, 7, "👑"),
+    createUnit("parthian_cataphract_15", "Parthians", "Cataphract", "Parthian Cataphract", 6, 6, "🐎"),
+    createUnit("parthian_warrior_15", "Parthians", "Parthian Warrior", "Parthian Warrior", 4, 5, "⚔️"),
+    createUnit("parthian_spear_15", "Parthians", "Parthian Spearman", "Parthian Spearman", 5, 5, "⚔️"),
+    createUnit("parthian_archer_15", "Parthians", "Parthian Archer", "Parthian Archer", 6, 5, "🏹"),
+    createUnit("parthian_horse_archer_15", "Parthians", "Horse Archer", "Horse Archer", 1, 6, "🏹🐎"),
+    createUnit("parthian_elite_15", "Parthians", "Elite Horse Archer", "Elite Horse Archer", 7, 5, "🏹🐎"),
+    createUnit("parthian_camel_15", "Parthians", "Camel Rider", "Camel Rider", 2, 5, "🐪"),
+    createUnit("parthian_scout_15", "Parthians", "Scout Rider", "Scout Rider", 0, 5, "🐎"),
+    createUnit("parthian_ballista_15", "Parthians", "Parthian Ballista", "Parthian Ballista", 3, 4, "⚙️")
+  ],
+  Level16: [
+    createUnit("dacian_king_16", "Dacians", "Dacian King", "Dacian King", 3, 0, "👑"),
+    createUnit("dacian_guard_16", "Dacians", "Dacian Guard", "Dacian Guard", 3, 1, "🪖"),
+    createUnit("dacian_warrior_16a", "Dacians", "Dacian Warrior", "Dacian Warrior", 2, 2, "⚔️"),
+    createUnit("dacian_warrior_16b", "Dacians", "Dacian Warrior", "Dacian Warrior", 4, 2, "⚔️"),
+    createUnit("dacian_falx_16", "Dacians", "Falxman", "Falxman", 1, 3, "⚔️"),
+    createUnit("dacian_shield_16", "Dacians", "Dacian Shield Bearer", "Dacian Shield Bearer", 5, 3, "🛡️"),
+    createUnit("dacian_slinger_16", "Dacians", "Dacian Slinger", "Dacian Slinger", 2, 1, "🏹"),
+    createUnit("dacian_archer_16", "Dacians", "Dacian Archer", "Dacian Archer", 4, 1, "🏹"),
+    createUnit("dacian_catapult_16", "Dacians", "Dacian Catapult", "Dacian Catapult", 7, 2, "⚙️"),
+    createUnit("seleucid_king_16", "Seleucids", "Seleucid King", "Seleucid King", 4, 7, "👑"),
+    createUnit("seleucid_silver_16", "Seleucids", "Silver Shield Infantry", "Silver Shield Infantry", 4, 6, "🪖"),
+    createUnit("seleucid_phalanx_16a", "Seleucids", "Phalangite", "Seleucid Phalangite", 2, 5, "⚔️"),
+    createUnit("seleucid_phalanx_16b", "Seleucids", "Phalangite", "Seleucid Phalangite", 5, 5, "⚔️"),
+    createUnit("seleucid_spear_16", "Seleucids", "Eastern Spearman", "Eastern Spearman", 3, 5, "⚔️"),
+    createUnit("seleucid_archer_16", "Seleucids", "Eastern Archer", "Eastern Archer", 2, 6, "🏹"),
+    createUnit("seleucid_slinger_16", "Seleucids", "Slinger", "Seleucid Slinger", 6, 6, "🏹"),
+    createUnit("seleucid_cataphract_16", "Seleucids", "Cataphract", "Seleucid Cataphract", 1, 5, "🐎"),
+    createUnit("seleucid_elephant_16", "Seleucids", "War Elephant", "Seleucid War Elephant", 6, 4, "🐘"),
+    createUnit("seleucid_catapult_16", "Seleucids", "Seleucid Catapult", "Seleucid Catapult", 4, 4, "⚙️")
+  ]
 };
-
-// Function to generate random stats based on role
-const generateRandomStats = (role: string) => {
-  let hp, maxHp, attack, ammo, range, move;
-
-  switch (role) {
-    // Roman Units
-    case "Roman King":
-      hp = Math.floor(Math.random() * (440 - 400) + 400);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (310 - 280) + 280);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-      case "Legionary":
-        hp = Math.floor(Math.random() * (300 - 200) + 200);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (150 - 100) + 100);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 1;
-        break;
-    case "Centurion":
-      hp = Math.floor(Math.random() * (400 - 300) + 300);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (200 - 150) + 150);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-    case "Archer":
-      hp = Math.floor(Math.random() * (200 - 100) + 100);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (100 - 50) + 50);
-      ammo = 10; // Ranged unit with 10 shots
-      range = 3;
-      move = 1;
-      break;
-    case "Cavalry":
-      hp = Math.floor(Math.random() * (250 - 200) + 200);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (150 - 100) + 100);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 3;
-      break;
-    case "Praetorian":
-      hp = Math.floor(Math.random() * (500 - 400) + 400);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (250 - 200) + 200);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-    case "Ballista":
-      hp = Math.floor(Math.random() * (50 - 10) + 10);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (100 - 50) + 50);
-      ammo = 10; // Ranged unit with 10 shots
-      range = 6;
-      move = 0;
-      break;
-    case "Scorpion":
-      hp = Math.floor(Math.random() * (20 - 10) + 10);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (80 - 30) + 30);
-      ammo = 10; // Ranged unit with 10 shots
-      range = 3;
-      move = 1;
-      break;
-    case "Auxiliary":
-      hp = Math.floor(Math.random() * (180 - 130) + 130);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (120 - 80) + 80);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-    case "Velites":
-      hp = Math.floor(Math.random() * (100 - 60) + 60);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (80 - 40) + 40);
-      ammo = 10; // Ranged unit with 10 shots
-      range = 3;
-      move = 1;
-      break;
-    case "Triarii":
-      hp = Math.floor(Math.random() * (350 - 250) + 250);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (180 - 130) + 130);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-      // Barbarian Units
-    case "Barbarian Warrior":
-      hp = Math.floor(Math.random() * (300 - 270) + 270);
-      maxHp = hp;
-      attack = Math.floor(Math.random() * (150 - 100) + 100);
-      ammo = 0; // Melee unit
-      range = 1;
-      move = 1;
-      break;
-      case "Barbarian Archer":
-        hp = Math.floor(Math.random() * (150 - 100) + 100);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (100 - 50) + 50);
-        ammo = 10; // Ranged unit with 10 shots
-        range = 3;
-        move = 1;
-        break;
-      case "Barbarian Chief":
-        hp = Math.floor(Math.random() * (440 - 400) + 400);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (310 - 280) + 280);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 1;
-        break;
-        case "Barbarian Berserker":
-          hp = Math.floor(Math.random() * (350 - 300) + 300);
-          maxHp = hp;
-          attack = Math.floor(Math.random() * (250 - 200) + 200);
-          ammo = 0; // Melee unit
-          range = 1;
-          move = 2;
-          break;
-       
-      case "Barbarian Scout":
-        hp = Math.floor(Math.random() * (300 - 250) + 250);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (250 - 200) + 200);
-        ammo = 5; // Melee unit
-        range = 3;
-        move = 3;
-        break;
-      case "Barbarian Shaman":
-        hp = Math.floor(Math.random() * (200 - 150) + 150);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (180 - 130) + 130);
-        ammo = 10; // Ranged unit with 10 shots
-        range = 3;
-        move = 1;
-        break;
-      case "Barbarian Axeman":
-        hp = Math.floor(Math.random() * (400 - 300) + 300);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (200 - 150) + 150);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 1;
-        break;
-      case "Barbarian Spearman":
-        hp = Math.floor(Math.random() * (250 - 200) + 200);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (120 - 80) + 80);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 1;
-        break;
-      case "Barbarian Raider":
-        hp = Math.floor(Math.random() * (180 - 130) + 130);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (160 - 110) + 110);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 2;
-        break;
-      case "Barbarian Warlord":
-        hp = Math.floor(Math.random() * (600 - 450) + 450);
-        maxHp = hp;
-        attack = Math.floor(Math.random() * (300 - 250) + 250);
-        ammo = 0; // Melee unit
-        range = 1;
-        move = 1;
-        break;
-        // === Greek / Macedonian Units ===
-case "Hoplite":
-  hp = Math.floor(Math.random() * (320 - 240) + 240);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (150 - 110) + 110);
-  ammo = 0;        // spear + shield wall
-  range = 1;
-  move = 1;
-  break;
-
-case "Phalangite": // sarissa phalanx
-  hp = Math.floor(Math.random() * (360 - 280) + 280);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (170 - 130) + 130);
-  ammo = 0;
-  range = 2;       // long reach of sarissa
-  move = 1;        // slow formation
-  break;
-
-case "Hypaspist":
-  hp = Math.floor(Math.random() * (340 - 260) + 260);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (200 - 150) + 150);
-  ammo = 0;        // elite guard, flexible
-  range = 1;
-  move = 2;        // quicker than phalanx
-  break;
-
-case "Companion Cavalry":
-  hp = Math.floor(Math.random() * (300 - 240) + 240);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (230 - 180) + 180);
-  ammo = 0;        // shock cavalry
-  range = 1;
-  move = 3;
-  break;
-
-case "Thessalian Cavalry":
-  hp = Math.floor(Math.random() * (280 - 220) + 220);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (200 - 150) + 150);
-  ammo = 0;
-  range = 1;
-  move = 3;
-  break;
-
-case "Peltast":
-  hp = Math.floor(Math.random() * (180 - 120) + 120);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (110 - 70) + 70);
-  ammo = 12;       // javelins
-  range = 2;
-  move = 2;
-  break;
-
-case "Thureophoroi":
-  hp = Math.floor(Math.random() * (220 - 160) + 160);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (140 - 100) + 100);
-  ammo = 6;        // mixed javelin + spear
-  range = 2;
-  move = 2;
-  break;
-
-case "Cretan Archer":
-  hp = Math.floor(Math.random() * (170 - 120) + 120);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (130 - 90) + 90);
-  ammo = 12;       // elite archers
-  range = 4;
-  move = 1;
-  break;
-
-case "Rhodian Slinger":
-  hp = Math.floor(Math.random() * (160 - 110) + 110);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (120 - 80) + 80);
-  ammo = 14;       // high ammo, long arc
-  range = 4;
-  move = 1;
-  break;
-
-case "Greek Catapult":
-  hp = Math.floor(Math.random() * (60 - 30) + 30);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (160 - 110) + 110);
-  ammo = 8;        // heavy stones/bolts
-  range = 6;
-  move = 0;        // static
-  break;
-
-case "Polybolos":
-  hp = Math.floor(Math.random() * (70 - 40) + 40);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (140 - 90) + 90);
-  ammo = 16;       // repeating ballista
-  range = 5;
-  move = 0;
-  break;
-
-case "Agema":
-  hp = Math.floor(Math.random() * (380 - 300) + 300);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (220 - 170) + 170);
-  ammo = 0;        // elite assault infantry
-  range = 1;
-  move = 2;
-  break;
-
-case "Greek Standard Bearer":
-  hp = Math.floor(Math.random() * (240 - 200) + 200);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (110 - 80) + 80);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-  case "Macedonian King":
-  hp = Math.floor(Math.random() * (440 - 400) + 400);
-  maxHp = hp;
-  attack = Math.floor(Math.random() * (310 - 280) + 280);
-  ammo = 0;
-  range = 1;
-  move = 1;
-  break;
-
-    default:
-      hp = 1;
-      maxHp = 1;
-      attack = 1;
-      ammo = 0;
-      range = 1;
-      move = 1;
-  }
-
-  return { hp, maxHp, attack, ammo, range, move };
-}; 
-
-  export const formations = {
-      // Formation 0: Chess (16 troops each) - Chess board formation
-      Phalanx: [
-        // ROMAN UNITS (16 total) - Chess board formation
-        { id: "King", team: "Romans", name: "Roman King", ...generateRandomStats("Roman King"), x: 3, y: 0, role: "Roman King", Icon: getIconComponent(GiCrown) },
-        { id: "archer3", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 2, y: 0, role: "Archer", Icon: getIconComponent(GiArcher) },
-        { id: "archer5", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 5, y: 0, role: "Archer", Icon: getIconComponent(GiArcher) },
-        { id: "cavalry1", team: "Romans", name: "Cavalry", ...generateRandomStats("Cavalry"), x: 1, y: 0, role: "Cavalry", Icon: getIconComponent(GiCavalry) },
-        { id: "cavalry2", team: "Romans", name: "Cavalry", ...generateRandomStats("Cavalry"), x: 6, y: 0, role: "Cavalry", Icon: getIconComponent(GiCavalry) },
-        { id: "praetorian2", team: "Romans", name: "Praetorian", ...generateRandomStats("Praetorian"), x: 4, y: 0, role: "Praetorian", Icon: getIconComponent(GiHelmet) },
-        { id: "ballista1", team: "Romans", name: "Ballista", ...generateRandomStats("Ballista"), x: 0, y: 0, role: "Ballista", Icon: getIconComponent(GiCrossedSwords) },
-        { id: "ballista2", team: "Romans", name: "Ballista", ...generateRandomStats("Ballista"), x: 7, y: 0, role: "Ballista", Icon: getIconComponent(GiCrossedSwords) },
-       //Legionary
-        { id: "legionary1", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 0, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-        { id: "legionary2", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 1, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-        { id: "legionary3", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 2, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-        { id: "legionary4", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 4, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-        { id: "legionary5", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 5, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-        { id: "legionary6", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 6, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-        { id: "legionary7", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 7, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-        { id: "legionary8", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 3, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-        
-  
-      
-        // BARBARIAN UNITS (16 total) - Chess board formation
-        { id: "barbarian_chief", team: "Barbarians", name: "Barbarian Chief", ...generateRandomStats("Barbarian Chief"), x: 3, y: 7, role: "Barbarian Chief", Icon: getIconComponent(FaCrown) },
-        { id: "barbarian_archer5", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 5, y: 7, role: "Barbarian Archer", Icon: getIconComponent(GiArcher) },
-        { id: "barbarian_scout1", team: "Barbarians", name: "Barbarian Scout", ...generateRandomStats("Barbarian Scout"), x: 1, y: 7, role: "Barbarian Scout", Icon: getIconComponent(GiCavalry) },
-        { id: "barbarian_scout2", team: "Barbarians", name: "Barbarian Scout", ...generateRandomStats("Barbarian Scout"), x: 6, y: 7, role: "Barbarian Scout", Icon: getIconComponent(GiCavalry) },
-        { id: "barbarian_archer2", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 2, y: 7, role: "Barbarian Archer", Icon: getIconComponent(GiArcher) },
-        { id: "barbarian_berserker2", team: "Barbarians", name: "Barbarian Berserker", ...generateRandomStats("Barbarian Berserker"), x: 4, y: 7, role: "Barbarian Berserker", Icon: getIconComponent(GiCrossedSwords) },
-        { id: "barbarian_axeman1", team: "Barbarians", name: "Barbarian Axeman", ...generateRandomStats("Barbarian Axeman"), x: 0, y: 7, role: "Barbarian Axeman", Icon: getIconComponent(GiCrossedSwords) },
-        { id: "barbarian_axeman2", team: "Barbarians", name: "Barbarian Axeman", ...generateRandomStats("Barbarian Axeman"), x: 7, y: 7, role: "Barbarian Axeman", Icon: getIconComponent(GiCrossedSwords) },
-        //Barbarian Warriors
-        { id: "barbarian1", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 0, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-        { id: "barbarian2", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 1, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-        { id: "barbarian3", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 2, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-        { id: "barbarian4", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 4, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-        { id: "barbarian5", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 5, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-        { id: "barbarian6", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 6, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-        { id: "barbarian7", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 7, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-        { id: "barbarian8", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 3, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) }
-      ],
-    
-      Arch: [
-      // ROMAN UNITS (8 total) - Curved formation
-      { id: "legionary1", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 1, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary2", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 2, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "centurion", team: "Romans", name: "Centurion", ...generateRandomStats("Centurion"), x: 3, y: 0, role: "Centurion", Icon: getIconComponent(GiHelmet) },
-      { id: "legionary3", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 4, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary4", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 5, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "archer1", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 2, y: 1, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "archer2", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 4, y: 1, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "cavalry1", team: "Romans", name: "Cavalry", ...generateRandomStats("Cavalry"), x: 3, y: 2, role: "Cavalry", Icon: getIconComponent(GiCavalry) },
-
-      // BARBARIAN UNITS (8 total) - Curved formation
-      { id: "barbarian1", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 1, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian2", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 2, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_chief", team: "Barbarians", name: "Barbarian Chief", ...generateRandomStats("Barbarian Chief"), x: 3, y: 7, role: "Barbarian Chief", Icon: getIconComponent(FaCrown) },
-      { id: "barbarian3", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 4, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian4", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 5, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_archer1", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 2, y: 6, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_archer2", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 4, y: 6, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_scout", team: "Barbarians", name: "Barbarian Scout", ...generateRandomStats("Barbarian Scout"), x: 3, y: 5, role: "Barbarian Scout", Icon: getIconComponent(GiCavalry) }
-    ],
-
-    
-
-    // Formation 8: Testudo (8 troops each)
-    Testudo: [
-      // ROMAN UNITS (8 total) - Turtle shell formation
-      { id: "legionary1", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 3, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary2", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 2, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary3", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 3, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary4", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 4, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary5", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 1, y: 2, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "centurion", team: "Romans", name: "Centurion", ...generateRandomStats("Centurion"), x: 3, y: 2, role: "Centurion", Icon: getIconComponent(GiHelmet) },
-      { id: "legionary6", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 5, y: 2, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "archer1", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 3, y: 3, role: "Archer", Icon: getIconComponent(GiArcher) },
-
-      // BARBARIAN UNITS (8 total) - Turtle shell formation
-      { id: "barbarian_chief", team: "Barbarians", name: "Barbarian Chief", ...generateRandomStats("Barbarian Chief"), x: 3, y: 7, role: "Barbarian Chief", Icon: getIconComponent(FaCrown) },
-      { id: "barbarian1", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 2, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian2", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 3, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian3", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 4, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian4", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 1, y: 5, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian5", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 3, y: 5, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian6", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 5, y: 5, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_archer1", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 3, y: 4, role: "Barbarian Archer", Icon: getIconComponent(GiBo) }
-    ],
-
-    // Formation 9: Circle (8 troops each)
-    Circle: [
-      // ROMAN UNITS (8 total) - Circular formation
-      { id: "legionary1", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 1, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary2", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 2, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "centurion", team: "Romans", name: "Centurion", ...generateRandomStats("Centurion"), x: 3, y: 0, role: "Centurion", Icon: getIconComponent(GiHelmet) },
-      { id: "legionary3", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 4, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary4", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 5, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "archer1", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 2, y: 1, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "archer2", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 4, y: 1, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "cavalry1", team: "Romans", name: "Cavalry", ...generateRandomStats("Cavalry"), x: 3, y: 2, role: "Cavalry", Icon: getIconComponent(GiCavalry) },
-
-      // BARBARIAN UNITS (8 total) - Circular formation
-      { id: "barbarian1", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 1, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian2", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 2, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_chief", team: "Barbarians", name: "Barbarian Chief", ...generateRandomStats("Barbarian Chief"), x: 3, y: 7, role: "Barbarian Chief", Icon: getIconComponent(FaCrown) },
-      { id: "barbarian3", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 4, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian4", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 5, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_archer1", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 2, y: 6, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_archer2", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 4, y: 6, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_scout", team: "Barbarians", name: "Barbarian Scout", ...generateRandomStats("Barbarian Scout"), x: 3, y: 5, role: "Barbarian Scout", Icon: getIconComponent(GiCavalry) }
-    ],
-
-    // Formation 10: Staggered (10 troops each)
-    Staggered: [
-      // ROMAN UNITS (10 total) - Alternating positions
-      { id: "legionary1", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 1, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary2", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 3, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary3", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 5, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "centurion", team: "Romans", name: "Centurion", ...generateRandomStats("Centurion"), x: 2, y: 1, role: "Centurion", Icon: getIconComponent(GiHelmet) },
-      { id: "legionary4", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 4, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "archer1", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 1, y: 2, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "archer2", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 3, y: 2, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "archer3", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 5, y: 2, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "cavalry1", team: "Romans", name: "Cavalry", ...generateRandomStats("Cavalry"), x: 2, y: 3, role: "Cavalry", Icon: getIconComponent(GiCavalry) },
-      { id: "cavalry2", team: "Romans", name: "Cavalry", ...generateRandomStats("Cavalry"), x: 4, y: 3, role: "Cavalry", Icon: getIconComponent(GiCavalry) },
-
-      // BARBARIAN UNITS (10 total) - Alternating positions
-      { id: "barbarian1", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 1, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian2", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 3, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian3", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 5, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_chief", team: "Barbarians", name: "Barbarian Chief", ...generateRandomStats("Barbarian Chief"), x: 2, y: 6, role: "Barbarian Chief", Icon: getIconComponent(FaCrown) },
-      { id: "barbarian4", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 4, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_archer1", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 1, y: 5, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_archer2", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 3, y: 5, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_archer3", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 5, y: 5, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_scout1", team: "Barbarians", name: "Barbarian Scout", ...generateRandomStats("Barbarian Scout"), x: 2, y: 4, role: "Barbarian Scout", Icon: getIconComponent(GiCavalry) },
-      { id: "barbarian_scout2", team: "Barbarians", name: "Barbarian Scout", ...generateRandomStats("Barbarian Scout"), x: 4, y: 4, role: "Barbarian Scout", Icon: getIconComponent(GiCavalry) }
-    ],
-
-    // Formation 11: Delta (8 troops each)
-    Delta: [
-      // ROMAN UNITS (8 total) - Triangle formation
-      { id: "legionary1", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 1, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary2", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 2, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "centurion", team: "Romans", name: "Centurion", ...generateRandomStats("Centurion"), x: 3, y: 0, role: "Centurion", Icon: getIconComponent(GiHelmet) },
-      { id: "legionary3", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 4, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary4", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 5, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "archer1", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 2, y: 1, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "archer2", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 4, y: 1, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "cavalry1", team: "Romans", name: "Cavalry", ...generateRandomStats("Cavalry"), x: 3, y: 2, role: "Cavalry", Icon: getIconComponent(GiCavalry) },
-
-      // BARBARIAN UNITS (8 total) - Triangle formation
-      { id: "barbarian1", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 1, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian2", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 2, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_chief", team: "Barbarians", name: "Barbarian Chief", ...generateRandomStats("Barbarian Chief"), x: 3, y: 7, role: "Barbarian Chief", Icon: getIconComponent(FaCrown) },
-      { id: "barbarian3", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 4, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian4", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 5, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_archer1", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 2, y: 6, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_archer2", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 4, y: 6, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_scout", team: "Barbarians", name: "Barbarian Scout", ...generateRandomStats("Barbarian Scout"), x: 3, y: 5, role: "Barbarian Scout", Icon: getIconComponent(GiCavalry) }
-    ],
-
-    // Formation 12: Tercio (8 troops each)
-    Tercio: [
-      // ROMAN UNITS (8 total) - Spanish square formation
-      { id: "centurion", team: "Romans", name: "Centurion", ...generateRandomStats("Centurion"), x: 3, y: 0, role: "Centurion", Icon: getIconComponent(GiHelmet) },
-      { id: "legionary1", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 2, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary2", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 4, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary3", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 1, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary4", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 3, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary5", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 5, y: 1, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "archer1", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 2, y: 2, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "cavalry1", team: "Romans", name: "Cavalry", ...generateRandomStats("Cavalry"), x: 4, y: 2, role: "Cavalry", Icon: getIconComponent(GiCavalry) },
-
-      // BARBARIAN UNITS (8 total) - Spanish square formation
-      { id: "barbarian_chief", team: "Barbarians", name: "Barbarian Chief", ...generateRandomStats("Barbarian Chief"), x: 3, y: 7, role: "Barbarian Chief", Icon: getIconComponent(FaCrown) },
-      { id: "barbarian1", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 2, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian2", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 4, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian3", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 1, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian4", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 3, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian5", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 5, y: 6, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_archer1", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 2, y: 5, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_scout", team: "Barbarians", name: "Barbarian Scout", ...generateRandomStats("Barbarian Scout"), x: 4, y: 5, role: "Barbarian Scout", Icon: getIconComponent(GiCavalry) }
-    ],
-
-    // Formation 13: Pincer (8 troops each)
-    Pincer: [
-      // ROMAN UNITS (8 total) - Pincer movement formation
-      { id: "legionary1", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 1, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary2", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 2, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "centurion", team: "Romans", name: "Centurion", ...generateRandomStats("Centurion"), x: 3, y: 0, role: "Centurion", Icon: getIconComponent(GiHelmet) },
-      { id: "legionary3", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 4, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "legionary4", team: "Romans", name: "Legionary", ...generateRandomStats("Legionary"), x: 5, y: 0, role: "Legionary", Icon: getIconComponent(GiSwordman) },
-      { id: "archer1", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 2, y: 1, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "archer2", team: "Romans", name: "Archer", ...generateRandomStats("Archer"), x: 4, y: 1, role: "Archer", Icon: getIconComponent(GiArcher) },
-      { id: "cavalry1", team: "Romans", name: "Cavalry", ...generateRandomStats("Cavalry"), x: 3, y: 2, role: "Cavalry", Icon: getIconComponent(GiCavalry) },
-
-      // BARBARIAN UNITS (8 total) - Pincer movement formation
-      { id: "barbarian1", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 1, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian2", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 2, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_chief", team: "Barbarians", name: "Barbarian Chief", ...generateRandomStats("Barbarian Chief"), x: 3, y: 7, role: "Barbarian Chief", Icon: getIconComponent(FaCrown) },
-      { id: "barbarian3", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 4, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian4", team: "Barbarians", name: "Barbarian Warrior", ...generateRandomStats("Barbarian Warrior"), x: 5, y: 7, role: "Barbarian Warrior", Icon: getIconComponent(GiAce) },
-      { id: "barbarian_archer1", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 2, y: 6, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_archer2", team: "Barbarians", name: "Barbarian Archer", ...generateRandomStats("Barbarian Archer"), x: 4, y: 6, role: "Barbarian Archer", Icon: getIconComponent(GiBo) },
-      { id: "barbarian_scout", team: "Barbarians", name: "Barbarian Scout", ...generateRandomStats("Barbarian Scout"), x: 3, y: 5, role: "Barbarian Scout", Icon: getIconComponent(GiCavalry) }
-    ]
-
-  
-  }; 

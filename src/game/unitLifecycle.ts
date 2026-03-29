@@ -1,0 +1,213 @@
+import { generateTroopStats } from "../Units/troopStats";
+import { ensureRangedAmmo, getTroopMechanicType } from "./battleEngine";
+import { getUnitDisplayIcon } from "./unitCatalog";
+import type { TeamName } from "./types";
+
+export const adjustStatPercent = (value: number, percent: number) => Math.max(0, Math.round(value * (1 + percent)));
+
+export const adjustMovePercent = (value: number, percent: number) => {
+  if (value <= 0) return 0;
+  return Math.max(1, Math.floor(value * (1 + percent)));
+};
+
+export const isInfantryRole = (role: string) => {
+  const lowerRole = role.toLowerCase();
+  const nonInfantryKeywords = [
+    "archer",
+    "slinger",
+    "ballista",
+    "scorpion",
+    "catapult",
+    "polybolos",
+    "trebuchet",
+    "onager",
+    "bombard",
+    "cavalry",
+    "chariot",
+    "elephant",
+    "rider",
+    "horseman",
+    "lancer",
+    "equites",
+    "xystophoroi",
+    "turcopole",
+    "scout",
+    "knight",
+    "horse",
+    "camel",
+    "cataphract",
+    "king",
+    "jarl",
+    "general",
+    "marshal"
+  ];
+
+  return !nonInfantryKeywords.some((keyword) => lowerRole.includes(keyword));
+};
+
+export const stripUnitForStorage = (unit: any) => {
+  if (!unit) return null;
+  const { Icon, ...serializableUnit } = unit;
+  return serializableUnit;
+};
+
+export const restoreUnitFromStorage = (unit: any) => {
+  if (!unit) return null;
+  return {
+    ...unit,
+    Icon: getUnitDisplayIcon(unit)
+  };
+};
+
+export const CIV_PASSIVES: Record<TeamName, { name: string; effect: string }> = {
+  Romans: { name: "Roman Discipline", effect: "+10% hp, +10% attack" },
+  Barbarians: { name: "Barbarian Fury", effect: "+20% attack, -10% hp" },
+  Greeks: { name: "Phalanx Mastery", effect: "+1 range (infantry), -1 move (infantry)" },
+  Gauls: { name: "Swift Warriors", effect: "+1 move, -10% hp" },
+  Germanic: { name: "Brutal Strength", effect: "+15% attack" },
+  Carthage: { name: "Mercenary Tactics", effect: "+10% hp, +10% attack, -10% move" },
+  Egypt: { name: "Chariot Kingdom", effect: "+1 move (mounted), +10% attack (ranged)" },
+  Thracians: { name: "Hill Raiders", effect: "+10% attack (infantry), +1 move (ranged)" },
+  Dacians: { name: "Falx Discipline", effect: "+10% hp, +10% attack" },
+  Parthians: { name: "Parthian Shot", effect: "+1 move (mounted), +10% attack (ranged)" },
+  Seleucids: { name: "Imperial Arms", effect: "+10% hp (infantry), +10% attack (siege and elephants)" },
+  Vikings: { name: "Relentless Raiders", effect: "+1 move, +10% attack, -10% hp" }
+};
+
+export const PASSIVE_ICONS: Record<TeamName, string> = {
+  Romans: "🛡️",
+  Barbarians: "🔥",
+  Greeks: "🗡️",
+  Gauls: "🍃",
+  Germanic: "🪓",
+  Carthage: "🐘",
+  Egypt: "☀️",
+  Thracians: "🗡️",
+  Dacians: "🐺",
+  Parthians: "🏹",
+  Seleucids: "🏺",
+  Vikings: "⛵"
+};
+
+export const applyCivilizationPassive = (unit: any) => {
+  if (!unit) return null;
+
+  const normalizedUnit = ensureRangedAmmo(unit);
+  if (normalizedUnit.civPassiveApplied) return normalizedUnit;
+
+  const team = normalizedUnit.team as TeamName;
+  const passive = CIV_PASSIVES[team];
+  if (!passive) return normalizedUnit;
+
+  switch (team) {
+    case "Romans":
+      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
+      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
+      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      break;
+    case "Barbarians":
+      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, -0.1);
+      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, -0.1);
+      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.2);
+      break;
+    case "Greeks":
+      if (isInfantryRole(normalizedUnit.role)) {
+        normalizedUnit.range += 1;
+        normalizedUnit.move = Math.max(0, normalizedUnit.move - 1);
+      }
+      break;
+    case "Gauls":
+      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, -0.1);
+      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, -0.1);
+      normalizedUnit.move += 1;
+      break;
+    case "Germanic":
+      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.15);
+      break;
+    case "Carthage":
+      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
+      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
+      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      normalizedUnit.move = adjustMovePercent(normalizedUnit.move, -0.1);
+      break;
+    case "Egypt": {
+      const troopType = getTroopMechanicType(normalizedUnit);
+      if (troopType === "mounted") {
+        normalizedUnit.move += 1;
+      }
+      if (troopType === "ranged") {
+        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      }
+      break;
+    }
+    case "Thracians":
+      if (isInfantryRole(normalizedUnit.role)) {
+        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      }
+      if (getTroopMechanicType(normalizedUnit) === "ranged") {
+        normalizedUnit.move += 1;
+      }
+      break;
+    case "Dacians":
+      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
+      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
+      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      break;
+    case "Parthians": {
+      const normalizedRole = String(normalizedUnit.role ?? "").toLowerCase();
+      if (["cavalry", "rider", "horse", "camel", "cataphract", "scout"].some((keyword) => normalizedRole.includes(keyword))) {
+        normalizedUnit.move += 1;
+      }
+      if (getTroopMechanicType(normalizedUnit) === "ranged") {
+        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      }
+      break;
+    }
+    case "Seleucids": {
+      const normalizedRole = String(normalizedUnit.role ?? "").toLowerCase();
+      if (isInfantryRole(normalizedUnit.role)) {
+        normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
+        normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
+      }
+      if (normalizedRole.includes("elephant") || getTroopMechanicType(normalizedUnit) === "sieged") {
+        normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      }
+      break;
+    }
+    case "Vikings":
+      normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, -0.1);
+      normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, -0.1);
+      normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
+      normalizedUnit.move += 1;
+      break;
+  }
+
+  normalizedUnit.civPassiveApplied = true;
+  normalizedUnit.civPassiveName = passive.name;
+  normalizedUnit.civPassiveEffect = passive.effect;
+
+  return ensureRangedAmmo(normalizedUnit);
+};
+
+export const prepareUnitsForBattle = (units: any[]) =>
+  units.map((unit) =>
+    applyCivilizationPassive({
+      ...unit,
+      Icon: getUnitDisplayIcon(unit)
+    })
+  );
+
+export const rerollUnitStats = (unit: any) => {
+  const rerolledStats = generateTroopStats(unit.role);
+
+  return applyCivilizationPassive({
+    ...unit,
+    ...rerolledStats,
+    Icon: getUnitDisplayIcon(unit),
+    civPassiveApplied: false,
+    civPassiveName: undefined,
+    civPassiveEffect: undefined
+  });
+};
+
+export const rerollUnits = (units: any[]) => units.map((unit) => rerollUnitStats(unit));

@@ -2,6 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Battle timings — defaults; runtime overrides via .battlefield-container inline style from battleAnimation.ts */
+:root {
+    --battle-ranged-ms: 2000ms;
+    --battle-melee-ms: 3000ms;
+    --battle-windup-ms: 220ms;
+    --battle-hit-flash-ms: 720ms;
+    --siege-impact-delay: 2000ms;
+    --siege-fog-duration: 3200ms;
+    /* Emoji cursors: SVG data URIs (32×32 + hotspot); trailing keyword is fallback if emoji fails */
+    --cc-cursor-target: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2224%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%8E%AF%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 16, crosshair;
+    --cc-cursor-hand: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%A4%9A%3C%2Ftext%3E%3C%2Fsvg%3E")
+        14 10, pointer;
+    --cc-cursor-boot: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2224%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%A5%BE%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 20, cell;
+    --cc-cursor-sword: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2224%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9A%94%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 16, pointer;
+    --cc-cursor-scroll: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2224%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%93%9C%3C%2Ftext%3E%3C%2Fsvg%3E")
+        14 12, pointer;
+    --cc-cursor-help: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2224%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9D%93%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 16, help;
+    --cc-cursor-text: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9C%8F%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        4 20, text;
+    --cc-cursor-grab-unit: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9C%8A%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 18, grab;
+    --cc-cursor-grabbing-unit: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9C%8A%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 18, grabbing;
+    --cc-cursor-map-grab: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%96%90%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 12, grab;
+    --cc-cursor-map-grabbing: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2222%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9C%8A%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 18, grabbing;
+    --cc-cursor-rail-n: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2218%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%AC%86%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 6, n-resize;
+    --cc-cursor-rail-s: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%AC%87%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 26, s-resize;
+    --cc-cursor-rail-w: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2220%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%AC%85%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        8 16, w-resize;
+    --cc-cursor-rail-e: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2220%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9E%A1%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        24 16, e-resize;
+    --cc-cursor-deploy: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%93%8D%3C%2Ftext%3E%3C%2Fsvg%3E")
+        12 8, copy;
+    --cc-cursor-blocked: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%9A%AB%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 16, not-allowed;
+}
+
 .text-xxs {
     margin-top: 0;
     font-size: 0.5rem;
@@ -15,9 +60,505 @@
     background-size: 60px 60px;
     background-color: #4a7c59;
     border: 3px solid #8b4513;
+    position: relative;
+    isolation: isolate;
     box-shadow: 
         inset 0 0 20px rgba(0,0,0,0.3),
         0 8px 16px rgba(0,0,0,0.4);
+}
+
+/* Atmospheric lighting + SVG film grain (see index.html #cc-film-grain) — sits under tiles */
+.battlefield-grid::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background:
+        radial-gradient(ellipse 110% 60% at 50% -18%, rgba(255, 255, 255, 0.1), transparent 52%),
+        radial-gradient(ellipse 95% 50% at 50% 118%, rgba(0, 0, 0, 0.28), transparent 58%),
+        linear-gradient(180deg, rgba(20, 30, 18, 0.15) 0%, transparent 40%, rgba(5, 8, 4, 0.2) 100%);
+    mix-blend-mode: soft-light;
+    opacity: 0.92;
+    filter: url(#cc-film-grain);
+}
+
+.battlefield-grid > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* Day/night tint — must span full grid (abspos grid items default to one cell otherwise). */
+.battlefield-grid > .battlefield-daynight-overlay {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    align-self: stretch;
+    justify-self: stretch;
+    z-index: 14;
+    pointer-events: none;
+    border-radius: inherit;
+    isolation: isolate;
+}
+
+/* Birds + clouds — same full-grid span as overlay */
+.battlefield-grid > .battlefield-sky-layer {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    align-self: stretch;
+    justify-self: stretch;
+    z-index: 12;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: inherit;
+}
+
+/* Ranged/charge visuals use left/top in px from the full grid origin — must not sit in implicit extra rows. */
+.battlefield-grid > .battle-projectile-wrap {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    align-self: start;
+    justify-self: start;
+}
+
+.battlefield-sky-layer__clouds,
+.battlefield-sky-layer__birds {
+    position: absolute;
+    inset: 0;
+}
+
+.battlefield-sky-layer__clouds {
+    z-index: 1;
+}
+
+.battlefield-sky-layer__birds {
+    z-index: 2;
+}
+
+/* Cumulus: no #fff / paper highlights — brightest = cool mist (blue-gray), ::before removed (was flat white) */
+.battlefield-cloud {
+    --cc-lit: rgba(220, 230, 242, 0.55);
+    --cc-body: rgba(185, 200, 218, 0.58);
+    --cc-core: rgba(155, 172, 198, 0.46);
+    --cc-shade: rgba(105, 125, 155, 0.36);
+    --cc-puff-a: rgba(195, 210, 228, 0.48);
+    --cc-puff-b: rgba(145, 165, 190, 0.4);
+    --cc-puff-c: rgba(95, 115, 145, 0.3);
+    position: absolute;
+    border-radius: 50%;
+    background:
+        radial-gradient(ellipse 90% 78% at 30% 30%, var(--cc-lit) 0%, transparent 48%),
+        radial-gradient(ellipse 100% 90% at 50% 52%, var(--cc-body) 0%, transparent 56%),
+        radial-gradient(ellipse 88% 78% at 58% 64%, var(--cc-core) 0%, transparent 54%),
+        radial-gradient(ellipse 72% 62% at 74% 80%, var(--cc-shade) 0%, transparent 48%);
+    box-shadow:
+        26px 7px 0 -5px var(--cc-puff-a),
+        -20px 5px 0 -4px var(--cc-puff-b),
+        12px 20px 0 -7px var(--cc-puff-c),
+        -8px 16px 0 -6px rgba(75, 92, 118, 0.26);
+    opacity: 0.82;
+    filter: blur(0.85px) saturate(0.88);
+    animation: battlefieldCloudDrift linear infinite;
+    will-change: transform;
+}
+
+.battlefield-cloud--a {
+    --cc-cloud-scale: 1.1;
+    --cc-lit: rgba(228, 236, 246, 0.58);
+    --cc-body: rgba(198, 212, 230, 0.62);
+    --cc-core: rgba(168, 185, 208, 0.5);
+    --cc-shade: rgba(118, 138, 168, 0.38);
+    width: 88px;
+    height: 34px;
+    left: 8%;
+    top: 6%;
+    animation-duration: 42s;
+    animation-delay: -12s;
+}
+
+.battlefield-cloud--b {
+    --cc-cloud-scale: 0.95;
+    --cc-lit: rgba(215, 226, 240, 0.52);
+    --cc-body: rgba(178, 195, 215, 0.56);
+    --cc-core: rgba(148, 168, 195, 0.44);
+    --cc-shade: rgba(102, 122, 152, 0.34);
+    --cc-puff-a: rgba(188, 205, 225, 0.46);
+    width: 112px;
+    height: 42px;
+    left: 42%;
+    top: 3%;
+    opacity: 0.76;
+    animation-duration: 120s;
+    animation-delay: -44s;
+}
+
+.battlefield-cloud--c {
+    --cc-cloud-scale: 1.05;
+    --cc-lit: rgba(222, 232, 244, 0.54);
+    --cc-body: rgba(188, 205, 225, 0.58);
+    --cc-shade: rgba(92, 115, 145, 0.32);
+    width: 78px;
+    height: 30px;
+    right: 12%;
+    top: 10%;
+    animation-duration: 34s;
+    animation-delay: -8s;
+}
+
+.battlefield-cloud--d {
+    --cc-cloud-scale: 0.88;
+    --cc-lit: rgba(208, 222, 238, 0.48);
+    --cc-body: rgba(168, 188, 212, 0.52);
+    --cc-core: rgba(142, 162, 188, 0.42);
+    --cc-shade: rgba(92, 112, 142, 0.36);
+    width: 100px;
+    height: 38px;
+    left: 18%;
+    top: 38%;
+    opacity: 0.72;
+    animation-duration: 110s;
+    animation-delay: -70s;
+}
+
+.battlefield-cloud--e {
+    --cc-cloud-scale: 1;
+    --cc-lit: rgba(200, 216, 232, 0.45);
+    --cc-body: rgba(178, 195, 218, 0.52);
+    --cc-shade: rgba(85, 105, 135, 0.34);
+    width: 68px;
+    height: 26px;
+    right: 22%;
+    top: 52%;
+    opacity: 0.7;
+    animation-duration: 38s;
+    animation-delay: -33s;
+}
+
+.battlefield-cloud--f {
+    --cc-cloud-scale: 1.02;
+    --cc-lit: rgba(218, 228, 240, 0.52);
+    --cc-body: rgba(190, 205, 225, 0.56);
+    --cc-puff-b: rgba(155, 175, 200, 0.42);
+    width: 92px;
+    height: 36px;
+    left: 55%;
+    top: 22%;
+    opacity: 0.74;
+    animation-duration: 44s;
+    animation-delay: -91s;
+}
+
+.battlefield-cloud--g {
+    --cc-cloud-scale: 0.92;
+    --cc-lit: rgba(212, 224, 240, 0.52);
+    --cc-body: rgba(178, 198, 220, 0.54);
+    --cc-shade: rgba(88, 108, 138, 0.33);
+    width: 72px;
+    height: 28px;
+    left: 25%;
+    top: 14%;
+    opacity: 0.68;
+    animation-duration: 36s;
+    animation-delay: -19s;
+}
+
+.battlefield-cloud--h {
+    --cc-cloud-scale: 1.08;
+    --cc-body: rgba(192, 208, 228, 0.56);
+    width: 98px;
+    height: 36px;
+    right: 8%;
+    top: 44%;
+    opacity: 0.7;
+    animation-duration: 40s;
+    animation-delay: -52s;
+}
+
+.battlefield-cloud--i {
+    --cc-cloud-scale: 0.85;
+    --cc-shade: rgba(95, 115, 145, 0.34);
+    width: 62px;
+    height: 24px;
+    left: 4%;
+    top: 62%;
+    opacity: 0.58;
+    animation-duration: 32s;
+    animation-delay: -7s;
+}
+
+.battlefield-cloud--j {
+    --cc-cloud-scale: 1;
+    --cc-lit: rgba(224, 232, 244, 0.54);
+    width: 84px;
+    height: 32px;
+    right: 18%;
+    top: 28%;
+    opacity: 0.66;
+    animation-duration: 46s;
+    animation-delay: -61s;
+}
+
+.battlefield-cloud--k {
+    --cc-cloud-scale: 0.96;
+    --cc-puff-a: rgba(188, 205, 222, 0.46);
+    width: 76px;
+    height: 30px;
+    left: 34%;
+    top: 56%;
+    opacity: 0.62;
+    animation-duration: 38s;
+    animation-delay: -28s;
+}
+
+.battlefield-cloud--l {
+    --cc-cloud-scale: 1.12;
+    --cc-body: rgba(200, 215, 232, 0.58);
+    width: 104px;
+    height: 40px;
+    left: 58%;
+    top: 7%;
+    opacity: 0.72;
+    animation-duration: 44s;
+    animation-delay: -83s;
+}
+
+.battlefield-cloud--m {
+    --cc-cloud-scale: 0.9;
+    width: 70px;
+    height: 27px;
+    left: 46%;
+    top: 70%;
+    opacity: 0.6;
+    animation-duration: 34s;
+    animation-delay: -41s;
+}
+
+.battlefield-cloud--n {
+    --cc-cloud-scale: 1.04;
+    --cc-lit: rgba(218, 228, 242, 0.53);
+    width: 90px;
+    height: 34px;
+    left: 12%;
+    top: 30%;
+    opacity: 0.64;
+    animation-duration: 42s;
+    animation-delay: -95s;
+}
+
+@keyframes battlefieldCloudDrift {
+    0% {
+        transform: translate3d(0, 0, 0) scale(var(--cc-cloud-scale, 1));
+    }
+    50% {
+        transform: translate3d(18%, -8px, 0) scale(var(--cc-cloud-scale, 1));
+    }
+    100% {
+        transform: translate3d(-14%, 10px, 0) scale(var(--cc-cloud-scale, 1));
+    }
+}
+
+/* 4 flocks — winding paths (multi-stop keyframes), slow; dots scattered inside each flock */
+.battlefield-bird-flock {
+    position: absolute;
+    width: 0;
+    height: 0;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-duration: var(--bird-dur, 52s);
+    animation-delay: var(--bird-delay, 0s);
+    pointer-events: none;
+}
+
+.battlefield-bird-flock--path-a {
+    animation-name: battlefieldBirdPathA;
+}
+.battlefield-bird-flock--path-b {
+    animation-name: battlefieldBirdPathB;
+}
+.battlefield-bird-flock--path-c {
+    animation-name: battlefieldBirdPathC;
+}
+.battlefield-bird-flock--path-d {
+    animation-name: battlefieldBirdPathD;
+}
+
+.battlefield-bird-dot {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 3px;
+    height: 3px;
+    margin: -1.5px 0 0 -1.5px;
+    border-radius: 50%;
+    background: #0a0a0c;
+    box-shadow:
+        0 0 1px rgba(255, 255, 255, 0.22),
+        0 0 2px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+}
+
+/* Winding paths — direction changes at each stop; loop repeats */
+@keyframes battlefieldBirdPathA {
+    0% {
+        transform: translate3d(-14vw, 12vh, 0);
+        opacity: 0;
+    }
+    4% {
+        opacity: 1;
+    }
+    18% {
+        transform: translate3d(18vw, -6vh, 0);
+    }
+    35% {
+        transform: translate3d(42vw, 14vh, 0);
+    }
+    52% {
+        transform: translate3d(58vw, -10vh, 0);
+    }
+    68% {
+        transform: translate3d(78vw, 8vh, 0);
+    }
+    85% {
+        transform: translate3d(102vw, -4vh, 0);
+    }
+    95% {
+        opacity: 1;
+    }
+    100% {
+        transform: translate3d(122vw, 6vh, 0);
+        opacity: 0;
+    }
+}
+
+@keyframes battlefieldBirdPathB {
+    0% {
+        transform: translate3d(118vw, -8vh, 0);
+        opacity: 0;
+    }
+    4% {
+        opacity: 1;
+    }
+    22% {
+        transform: translate3d(72vw, 16vh, 0);
+    }
+    38% {
+        transform: translate3d(48vw, -12vh, 0);
+    }
+    55% {
+        transform: translate3d(22vw, 10vh, 0);
+    }
+    72% {
+        transform: translate3d(-6vw, -4vh, 0);
+    }
+    88% {
+        transform: translate3d(-22vw, 12vh, 0);
+    }
+    95% {
+        opacity: 1;
+    }
+    100% {
+        transform: translate3d(-38vw, -2vh, 0);
+        opacity: 0;
+    }
+}
+
+@keyframes battlefieldBirdPathC {
+    0% {
+        transform: translate3d(8vw, 22vh, 0);
+        opacity: 0;
+    }
+    4% {
+        opacity: 1;
+    }
+    20% {
+        transform: translate3d(32vw, -8vh, 0);
+    }
+    36% {
+        transform: translate3d(52vw, 18vh, 0);
+    }
+    50% {
+        transform: translate3d(68vw, 2vh, 0);
+    }
+    64% {
+        transform: translate3d(88vw, -14vh, 0);
+    }
+    78% {
+        transform: translate3d(108vw, 6vh, 0);
+    }
+    92% {
+        opacity: 1;
+    }
+    100% {
+        transform: translate3d(124vw, -6vh, 0);
+        opacity: 0;
+    }
+}
+
+@keyframes battlefieldBirdPathD {
+    0% {
+        transform: translate3d(96vw, 20vh, 0);
+        opacity: 0;
+    }
+    4% {
+        opacity: 1;
+    }
+    25% {
+        transform: translate3d(62vw, -10vh, 0);
+    }
+    42% {
+        transform: translate3d(38vw, 14vh, 0);
+    }
+    58% {
+        transform: translate3d(12vw, -6vh, 0);
+    }
+    74% {
+        transform: translate3d(-12vw, 10vh, 0);
+    }
+    90% {
+        transform: translate3d(-28vw, -8vh, 0);
+    }
+    95% {
+        opacity: 1;
+    }
+    100% {
+        transform: translate3d(-42vw, 4vh, 0);
+        opacity: 0;
+    }
+}
+
+/* Sky is decorative only — do not hide when data-battle-motion is reduced (that tracks OS reduce-motion for battle FX). */
+@media (prefers-reduced-motion: reduce) {
+    .battlefield-sky-layer .battlefield-cloud,
+    .battlefield-sky-layer .battlefield-bird-flock {
+        animation: none !important;
+    }
+}
+
+.battlefield-container[data-battle-motion="reduced"] .battlefield-grid::before {
+    filter: none;
+    opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .battlefield-grid::before {
+        filter: none;
+    }
 }
 
 /* Grass texture for empty cells */
@@ -60,6 +601,123 @@
     background: 
         linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.1) 50%, transparent 60%);
     pointer-events: none;
+}
+
+/* Rotated straight/corner terrain art (river / hill / forest) — inside .terrain-cell */
+.terrain-cell__autotile-art {
+    pointer-events: none;
+}
+
+.terrain-cell {
+    border: 1px solid rgba(61, 77, 31, 0.75);
+    position: relative;
+    /* visible so shared layout moves aren’t clipped mid-flight (was popping tile-to-tile) */
+    overflow: visible;
+    z-index: 1;
+    background-size: cover;
+    background-position: center;
+    /* Depth without ::before/::after (melee clash uses those for sword graphics) */
+    box-shadow:
+        inset 0 1px 2px rgba(255, 255, 255, 0.09),
+        inset 0 -1px 2px rgba(0, 0, 0, 0.2),
+        inset 3px 3px 8px rgba(255, 255, 255, 0.03);
+}
+
+/* Slow background pan — “alive” terrain without extra DOM (melee uses ::before/::after only during clash) */
+.terrain-cell--living {
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+    animation-delay: var(--terrain-drift-delay, 0s);
+}
+
+.terrain-cell--living[data-terrain="plain"] {
+    animation-name: terrainLivingPlain;
+    animation-duration: 22s;
+}
+
+.terrain-cell--living[data-terrain="forest"] {
+    animation-name: terrainLivingForest;
+    animation-duration: 28s;
+}
+
+.terrain-cell--living[data-terrain="hill"] {
+    animation-name: terrainLivingHill;
+    animation-duration: 26s;
+}
+
+.terrain-cell--living[data-terrain="river"],
+.terrain-cell__autotile-art.terrain-cell--living[data-terrain="river"] {
+    animation-name: terrainLivingRiver;
+    animation-duration: 16s;
+}
+
+.terrain-cell--living[data-terrain="desert"] {
+    animation-name: terrainLivingDesert;
+    animation-duration: 20s;
+}
+
+@keyframes terrainLivingPlain {
+    0% {
+        background-position: 44% 46%;
+    }
+    100% {
+        background-position: 56% 54%;
+    }
+}
+
+@keyframes terrainLivingForest {
+    0% {
+        background-position: 48% 42%;
+    }
+    100% {
+        background-position: 52% 58%;
+    }
+}
+
+@keyframes terrainLivingHill {
+    0% {
+        background-position: 46% 48%;
+    }
+    100% {
+        background-position: 54% 52%;
+    }
+}
+
+@keyframes terrainLivingRiver {
+    0% {
+        background-position: 38% 50%;
+    }
+    100% {
+        background-position: 62% 50%;
+    }
+}
+
+@keyframes terrainLivingDesert {
+    0% {
+        background-position: 50% 44%;
+    }
+    100% {
+        background-position: 50% 56%;
+    }
+}
+
+.battlefield-container[data-battle-motion="reduced"] .terrain-cell--living {
+    animation: none !important;
+    background-size: cover !important;
+    background-position: center !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .terrain-cell--living {
+        animation: none !important;
+        background-size: cover !important;
+        background-position: center !important;
+    }
+}
+
+.terrain-cell--has-unit {
+    z-index: 6;
 }
 
 /* Unit styling with realistic shadows */
@@ -150,28 +808,1198 @@
     animation: pulse 1.5s infinite;
 }
 
+.battle-feedback-hit {
+    position: relative;
+    animation: battleHitFlashCell var(--battle-hit-flash-ms, 720ms) cubic-bezier(0.34, 1.3, 0.64, 1);
+    box-shadow:
+        inset 0 0 0 2px rgba(251, 146, 60, 0.95),
+        0 0 20px rgba(249, 115, 22, 0.6),
+        0 0 40px rgba(234, 88, 12, 0.2);
+}
+
+/* Splinter / spark burst on projectile impact (same timing as hit flash) */
+.battle-feedback-hit::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    z-index: 45;
+    pointer-events: none;
+    border-radius: 4px;
+    opacity: 0;
+    background:
+        radial-gradient(circle at 42% 38%, rgba(255, 255, 255, 0.95) 0%, transparent 28%),
+        radial-gradient(circle at 58% 52%, rgba(251, 191, 36, 0.65) 0%, transparent 32%),
+        radial-gradient(circle at 50% 48%, rgba(249, 115, 22, 0.35) 0%, transparent 45%),
+        radial-gradient(ellipse 120% 80% at 50% 50%, rgba(254, 243, 199, 0.5) 0%, transparent 55%);
+    mix-blend-mode: screen;
+    animation: rangedImpactBurst var(--battle-hit-flash-ms, 720ms) ease-out forwards;
+}
+
+/** Attacker: short wind-up before strike (pairs with MELEE_WINDUP_MS) */
+.battle-feedback-melee-windup {
+    animation: meleeWindupTelegraph var(--battle-windup-ms, 220ms) cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
+    box-shadow:
+        inset 0 0 0 1px rgba(251, 191, 36, 0.65),
+        0 0 14px rgba(245, 158, 11, 0.35);
+}
+
+/* Close-combat strike sequence — brightness via box-shadow (avoid filter on whole tile for perf) */
+.battle-feedback-melee-hit {
+    animation: battleMeleeFight var(--battle-melee-ms, 3000ms) cubic-bezier(0.34, 1.15, 0.55, 1) forwards;
+    box-shadow:
+        inset 0 0 0 2px rgba(251, 146, 60, 0.95),
+        0 0 20px rgba(249, 115, 22, 0.6),
+        0 0 40px rgba(234, 88, 12, 0.2);
+    isolation: isolate;
+}
+
+/* Crossed blades + sparks above the unit (pseudo-elements sit above tile chrome) */
+.battle-feedback-melee-hit::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 46%;
+    z-index: 55;
+    width: 3px;
+    height: 34px;
+    border-radius: 1px;
+    transform: translate(-50%, -50%) rotate(-52deg);
+    transform-origin: 50% 92%;
+    pointer-events: none;
+    background: linear-gradient(
+        165deg,
+        #f1f5f9 0%,
+        #cbd5e1 28%,
+        #64748b 72%,
+        #334155 100%
+    );
+    box-shadow:
+        inset 1px 0 0 rgba(255, 255, 255, 0.35),
+        -1px 0 2px rgba(15, 23, 42, 0.35);
+    animation: meleeSwordBladeA var(--battle-melee-ms, 3000ms) cubic-bezier(0.42, 0, 0.58, 1) forwards;
+}
+
+.battle-feedback-melee-hit::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 46%;
+    z-index: 56;
+    width: 3px;
+    height: 34px;
+    border-radius: 1px;
+    transform: translate(-50%, -50%) rotate(52deg);
+    transform-origin: 50% 92%;
+    pointer-events: none;
+    background: linear-gradient(
+        195deg,
+        #e7e5e4 0%,
+        #a8a29e 32%,
+        #57534e 70%,
+        #292524 100%
+    );
+    box-shadow:
+        inset -1px 0 0 rgba(255, 255, 255, 0.22),
+        1px 0 2px rgba(15, 23, 42, 0.4);
+    animation: meleeSwordBladeB var(--battle-melee-ms, 3000ms) cubic-bezier(0.42, 0, 0.58, 1) forwards;
+}
+
+.battle-feedback-death {
+    animation: battleDeathFlash 0.85s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow:
+        inset 0 0 0 3px rgba(248, 113, 113, 0.98),
+        0 0 28px rgba(185, 28, 28, 0.65);
+}
+
+.battle-feedback-charge {
+    animation: battleChargeSurge var(--battle-melee-ms, 3000ms) cubic-bezier(0.25, 0.9, 0.35, 1.15) forwards;
+    box-shadow:
+        inset 0 0 0 2px rgba(251, 191, 36, 0.95),
+        0 0 22px rgba(245, 158, 11, 0.58),
+        0 0 36px rgba(234, 88, 12, 0.25);
+}
+
+.battle-feedback-morale {
+    animation: battleMoraleShake 1.5s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+    filter: saturate(0.72) contrast(1.05);
+    box-shadow:
+        inset 0 0 0 2px rgba(168, 85, 247, 0.78),
+        0 0 22px rgba(107, 33, 168, 0.42);
+}
+
+.battle-feedback-ranged {
+    animation: battleRangedPulse var(--battle-ranged-ms, 2000ms) cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.battle-feedback-move {
+    animation: battleMoveDust var(--battle-ranged-ms, 2000ms) cubic-bezier(0.33, 1, 0.68, 1) forwards;
+    box-shadow:
+        inset 0 0 0 2px rgba(52, 211, 153, 0.45),
+        0 0 20px rgba(16, 185, 129, 0.35);
+}
+
+/* Set by CodeConq on .battlefield-container when useReducedMotion is true (mirrors battleAnimation.ts). */
+[data-battle-motion="reduced"] .battle-arrow-salvo,
+[data-battle-motion="reduced"] .battle-rock-salvo,
+[data-battle-motion="reduced"] .battle-charge-salvo {
+    animation: none !important;
+    left: 100%;
+    transform: translateY(-50%) translateX(-100%);
+    opacity: 0.92;
+}
+
+[data-battle-motion="reduced"] .battle-rock {
+    animation: none !important;
+}
+
+[data-battle-motion="reduced"] .battle-feedback-ranged {
+    animation: none;
+    filter: none;
+    box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.45);
+}
+
+[data-battle-motion="reduced"] .battle-feedback-morale {
+    animation: none;
+    filter: none;
+    box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.55);
+}
+
+[data-battle-motion="reduced"] .battle-feedback-hit::before {
+    animation: none;
+    opacity: 0.45;
+}
+
+[data-battle-motion="reduced"] .battle-feedback-siege-fog {
+    animation: none;
+}
+
+/* Siege rocks: dust / powder fog on the target tile when the volley lands (timed with projectile travel). */
+.battle-feedback-siege-fog {
+    position: relative;
+    animation: siegeTileShake 0.42s cubic-bezier(0.36, 1, 0.52, 1) var(--siege-impact-delay, 2000ms) both;
+}
+
+.battle-feedback-siege-fog::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    z-index: 35;
+    pointer-events: none;
+    border-radius: 6px;
+    background:
+        radial-gradient(ellipse 130% 90% at 50% 58%, rgba(241, 245, 249, 0.55) 0%, rgba(148, 163, 184, 0.42) 38%, rgba(71, 85, 105, 0.28) 58%, transparent 76%),
+        radial-gradient(ellipse 80% 55% at 28% 42%, rgba(255, 255, 255, 0.4) 0%, transparent 52%),
+        radial-gradient(ellipse 75% 50% at 72% 48%, rgba(203, 213, 225, 0.38) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(100, 116, 139, 0.2) 0%, transparent 65%);
+    mix-blend-mode: screen;
+    animation: siegeImpactFog var(--siege-fog-duration, 3200ms) ease-out forwards;
+    opacity: 0;
+}
+
+@keyframes siegeImpactFog {
+    0% {
+        opacity: 0;
+        transform: scale(0.82);
+        filter: blur(5px);
+    }
+    12% {
+        opacity: 0.92;
+        filter: blur(2px);
+    }
+    45% {
+        opacity: 0.88;
+        filter: blur(1px);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.12);
+        filter: blur(8px);
+    }
+}
+
+/* Smoother shared-layout moves between grid cells (pairs with Framer layout tween). */
+.battle-unit-layout-root {
+    position: relative;
+    z-index: 30;
+    backface-visibility: hidden;
+}
+
+/* Outer: position + rotation. Inner: CSS “props” (arrows / rocks / charge embers) flying along the arc. */
+.battle-projectile-wrap {
+    position: absolute;
+    pointer-events: none;
+    z-index: 20;
+    transform-origin: left center;
+}
+
+.battle-projectile-volley {
+    position: relative;
+    width: 100%;
+    height: 22px;
+    overflow: visible;
+}
+
+.battle-projectile-volley--arrow {
+    height: 24px;
+}
+
+.battle-projectile-volley--siege {
+    height: 32px;
+}
+
+.battle-projectile-volley--charge {
+    height: 26px;
+}
+
+/* —— Arrow volley (wood + steel tip + fletching) —— */
+.battle-arrow-salvo {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    /* transform driven by battleArrowSalvoPath so the cluster can finish at the target (right edge of track) */
+    animation: battleArrowSalvoPath var(--battle-ranged-ms, 2000ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.55));
+}
+
+/* Many smaller shafts in one volley — grid cluster (not a single file) */
+.battle-arrow-salvo--compact {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    grid-auto-rows: auto;
+    gap: 2px 4px;
+    align-items: center;
+    justify-items: center;
+    filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.45));
+}
+
+.battle-arrow-unit {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.battle-arrow-salvo--compact .battle-arrow-unit {
+    transform: scale(0.68);
+}
+
+.battle-arrow-unit--dim {
+    opacity: 0.72;
+    transform: scale(0.92);
+}
+
+.battle-arrow-unit--dim2 {
+    opacity: 0.52;
+    transform: scale(0.84);
+}
+
+.battle-arrow-unit--dim3 {
+    opacity: 0.38;
+    transform: scale(0.76);
+}
+
+.battle-arrow-salvo--compact .battle-arrow-unit--dim {
+    opacity: 0.68;
+    transform: scale(0.62);
+}
+
+.battle-arrow-salvo--compact .battle-arrow-unit--dim2 {
+    opacity: 0.5;
+    transform: scale(0.56);
+}
+
+.battle-arrow-salvo--compact .battle-arrow-unit--dim3 {
+    opacity: 0.36;
+    transform: scale(0.51);
+}
+
+.battle-arrow-feather {
+    width: 5px;
+    height: 11px;
+    margin-right: 1px;
+    border-radius: 1px;
+    background: repeating-linear-gradient(
+        180deg,
+        #92400e 0px,
+        #92400e 2px,
+        #451a03 2px,
+        #451a03 4px
+    );
+    box-shadow: inset 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.battle-arrow-stick {
+    width: 16px;
+    height: 3px;
+    border-radius: 1px;
+    background: linear-gradient(180deg, #78716c, #a8a29e 45%, #57534e);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.battle-arrow-tip {
+    width: 0;
+    height: 0;
+    margin-left: -1px;
+    border-style: solid;
+    border-width: 5px 0 5px 9px;
+    border-color: transparent transparent transparent #e2e8f0;
+    filter: drop-shadow(0 0 3px rgba(148, 163, 184, 0.75));
+}
+
+.battle-arrow-salvo--compact .battle-arrow-feather {
+    width: 3px;
+    height: 7px;
+    margin-right: 0;
+    background: repeating-linear-gradient(
+        180deg,
+        #92400e 0px,
+        #92400e 1px,
+        #451a03 1px,
+        #451a03 2px
+    );
+}
+
+.battle-arrow-salvo--compact .battle-arrow-stick {
+    width: 10px;
+    height: 2px;
+}
+
+.battle-arrow-salvo--compact .battle-arrow-tip {
+    margin-left: -1px;
+    border-width: 3px 0 3px 6px;
+    filter: drop-shadow(0 0 2px rgba(148, 163, 184, 0.65));
+}
+
+/* —— Siege: tumbling rocks —— */
+.battle-rock-salvo {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    grid-auto-rows: auto;
+    gap: 5px 6px;
+    align-items: center;
+    justify-items: center;
+    animation: battleRockSalvoPath var(--battle-ranged-ms, 2000ms) cubic-bezier(0.2, 0.85, 0.28, 1) forwards;
+}
+
+.battle-rock {
+    flex-shrink: 0;
+    background: radial-gradient(ellipse at 30% 25%, #d1d5db 0%, #6b7280 42%, #374151 78%, #111827 100%);
+    box-shadow:
+        inset 2px -3px 4px rgba(0, 0, 0, 0.45),
+        inset -1px 1px 2px rgba(255, 255, 255, 0.12),
+        1px 2px 3px rgba(0, 0, 0, 0.4);
+}
+
+.battle-rock--1 {
+    width: 9px;
+    height: 8px;
+    border-radius: 42% 58% 48% 52%;
+    animation: battleRockTumble var(--battle-ranged-ms, 2000ms) ease-out forwards;
+}
+
+.battle-rock--2 {
+    width: 12px;
+    height: 10px;
+    border-radius: 55% 45% 52% 48%;
+    animation: battleRockTumble var(--battle-ranged-ms, 2000ms) ease-out 0.14s forwards;
+}
+
+.battle-rock--3 {
+    width: 10px;
+    height: 9px;
+    border-radius: 48% 52% 45% 55%;
+    animation: battleRockTumble var(--battle-ranged-ms, 2000ms) ease-out 0.28s forwards;
+}
+
+.battle-rock--4 {
+    width: 11px;
+    height: 11px;
+    border-radius: 50% 50% 48% 52%;
+    animation: battleRockTumble var(--battle-ranged-ms, 2000ms) ease-out 0.07s forwards;
+}
+
+.battle-rock--5 {
+    width: 8px;
+    height: 7px;
+    border-radius: 52% 48% 55% 45%;
+    animation: battleRockTumble var(--battle-ranged-ms, 2000ms) ease-out 0.2s forwards;
+}
+
+/* —— Charge: sparks / dust (not a laser beam) —— */
+.battle-charge-salvo {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    grid-auto-rows: auto;
+    gap: 4px 5px;
+    align-items: center;
+    justify-items: center;
+    animation: battleChargeSalvoPath var(--battle-melee-ms, 3000ms) cubic-bezier(0.25, 1, 0.45, 1) forwards;
+}
+
+.battle-charge-ember {
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fef3c7 0%, #f59e0b 45%, #b45309 88%);
+    box-shadow:
+        0 0 8px rgba(251, 191, 36, 0.75),
+        0 0 14px rgba(234, 88, 12, 0.35);
+}
+
+.battle-charge-ember--1 {
+    width: 10px;
+    height: 10px;
+    animation: battleChargeSpark var(--battle-melee-ms, 3000ms) ease-out forwards;
+}
+
+.battle-charge-ember--2 {
+    width: 7px;
+    height: 7px;
+    animation: battleChargeSpark var(--battle-melee-ms, 3000ms) ease-out 0.33s forwards;
+}
+
+.battle-charge-ember--3 {
+    width: 9px;
+    height: 8px;
+    animation: battleChargeSpark var(--battle-melee-ms, 3000ms) ease-out 0.63s forwards;
+}
+
+.battle-charge-ember--4 {
+    width: 6px;
+    height: 6px;
+    animation: battleChargeSpark var(--battle-melee-ms, 3000ms) ease-out 0.21s forwards;
+}
+
+@keyframes battleArrowSalvoPath {
+    0% {
+        left: 0;
+        transform: translateY(-50%) translateX(0);
+        opacity: 0;
+        filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.2));
+    }
+    10% {
+        opacity: 1;
+    }
+    100% {
+        /* Right edge of volley meets the defender cell (full width of the shot line) */
+        left: 100%;
+        transform: translateY(-50%) translateX(-100%);
+        opacity: 1;
+        filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.35));
+    }
+}
+
+@keyframes battleRockSalvoPath {
+    0% {
+        left: 0;
+        transform: translateY(-50%) translateX(0);
+        opacity: 0;
+    }
+    12% {
+        opacity: 1;
+    }
+    100% {
+        left: 100%;
+        transform: translateY(-50%) translateX(-100%);
+        opacity: 1;
+    }
+}
+
+@keyframes battleRockTumble {
+    0% {
+        transform: rotate(-18deg) translateY(0);
+    }
+    50% {
+        transform: rotate(140deg) translateY(-3px);
+    }
+    100% {
+        transform: rotate(280deg) translateY(1px);
+    }
+}
+
+@keyframes battleChargeSalvoPath {
+    0% {
+        left: 0;
+        transform: translateY(-50%) translateX(0);
+        opacity: 0;
+    }
+    18% {
+        opacity: 1;
+    }
+    100% {
+        left: 100%;
+        transform: translateY(-50%) translateX(-100%);
+        opacity: 1;
+    }
+}
+
+@keyframes battleChargeSpark {
+    0% {
+        transform: scale(0.65);
+        opacity: 0.85;
+    }
+    45% {
+        transform: scale(1.15);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(0.9);
+        opacity: 0.35;
+    }
+}
+
 /* Pulse animation */
 @keyframes pulse {
     0%, 100% { opacity: 0.7; transform: scale(1); }
     50% { opacity: 1; transform: scale(1.05); }
 }
 
+@keyframes battleHitFlashCell {
+    0% {
+        transform: scale(1) rotate(0deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 146, 60, 0.95),
+            0 0 20px rgba(249, 115, 22, 0.6),
+            0 0 40px rgba(234, 88, 12, 0.2);
+    }
+    22% {
+        transform: scale(1.045) rotate(-0.6deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(253, 186, 116, 1),
+            0 0 32px rgba(249, 115, 22, 0.78),
+            0 0 52px rgba(234, 88, 12, 0.32);
+    }
+    45% {
+        transform: scale(1.02) rotate(0.4deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 146, 60, 0.98),
+            0 0 26px rgba(249, 115, 22, 0.68),
+            0 0 44px rgba(234, 88, 12, 0.22);
+    }
+    100% {
+        transform: scale(1) rotate(0deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 146, 60, 0.95),
+            0 0 20px rgba(249, 115, 22, 0.6),
+            0 0 40px rgba(234, 88, 12, 0.2);
+    }
+}
+
+@keyframes rangedImpactBurst {
+    0% {
+        opacity: 0;
+        transform: scale(0.65);
+    }
+    28% {
+        opacity: 1;
+        transform: scale(1.08);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.35);
+    }
+}
+
+@keyframes meleeWindupTelegraph {
+    0% {
+        transform: scale(1);
+        box-shadow:
+            inset 0 0 0 1px rgba(251, 191, 36, 0.45),
+            0 0 8px rgba(245, 158, 11, 0.2);
+    }
+    55% {
+        transform: scale(1.025);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 191, 36, 0.88),
+            0 0 20px rgba(245, 158, 11, 0.48);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow:
+            inset 0 0 0 1px rgba(251, 191, 36, 0.5),
+            0 0 10px rgba(245, 158, 11, 0.25);
+    }
+}
+
+@keyframes siegeTileShake {
+    0%,
+    100% {
+        transform: translate(0, 0);
+    }
+    18% {
+        transform: translate(-3px, 2px);
+    }
+    36% {
+        transform: translate(3px, -2px);
+    }
+    54% {
+        transform: translate(-2px, -2px);
+    }
+    72% {
+        transform: translate(2px, 1px);
+    }
+}
+
+@keyframes battleMeleeFight {
+    0%,
+    100% {
+        transform: scale(1) rotate(0deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 146, 60, 0.95),
+            0 0 20px rgba(249, 115, 22, 0.58),
+            0 0 40px rgba(234, 88, 12, 0.18);
+    }
+    6% {
+        transform: scale(1.042) rotate(-0.65deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(253, 186, 116, 1),
+            0 0 30px rgba(249, 115, 22, 0.72),
+            0 0 52px rgba(234, 88, 12, 0.3);
+    }
+    12% {
+        transform: scale(1.017) rotate(0.42deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 146, 60, 0.96),
+            0 0 22px rgba(249, 115, 22, 0.62),
+            0 0 42px rgba(234, 88, 12, 0.2);
+    }
+    20% {
+        transform: scale(1.036) rotate(-0.48deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(254, 215, 170, 0.98),
+            0 0 28px rgba(249, 115, 22, 0.68),
+            0 0 48px rgba(234, 88, 12, 0.26);
+    }
+    28% {
+        transform: scale(1.012) rotate(0.38deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 146, 60, 0.95),
+            0 0 21px rgba(249, 115, 22, 0.6),
+            0 0 40px rgba(234, 88, 12, 0.19);
+    }
+    36% {
+        transform: scale(1.04) rotate(0.58deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(253, 186, 116, 1),
+            0 0 29px rgba(249, 115, 22, 0.7),
+            0 0 50px rgba(234, 88, 12, 0.28);
+    }
+    44% {
+        transform: scale(1.018) rotate(-0.42deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 146, 60, 0.96),
+            0 0 22px rgba(249, 115, 22, 0.61),
+            0 0 41px rgba(234, 88, 12, 0.2);
+    }
+    52% {
+        transform: scale(1.035) rotate(-0.52deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(254, 215, 170, 0.98),
+            0 0 27px rgba(249, 115, 22, 0.66),
+            0 0 46px rgba(234, 88, 12, 0.24);
+    }
+    60% {
+        transform: scale(1.01) rotate(0.44deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 146, 60, 0.94),
+            0 0 20px rgba(249, 115, 22, 0.58),
+            0 0 39px rgba(234, 88, 12, 0.18);
+    }
+    68% {
+        transform: scale(1.033) rotate(0.48deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(253, 186, 116, 0.99),
+            0 0 26px rgba(249, 115, 22, 0.65),
+            0 0 45px rgba(234, 88, 12, 0.23);
+    }
+    76% {
+        transform: scale(1.014) rotate(-0.36deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 146, 60, 0.95),
+            0 0 21px rgba(249, 115, 22, 0.6),
+            0 0 40px rgba(234, 88, 12, 0.19);
+    }
+    84% {
+        transform: scale(1.026) rotate(-0.4deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(252, 211, 170, 0.97),
+            0 0 25px rgba(249, 115, 22, 0.64),
+            0 0 43px rgba(234, 88, 12, 0.22);
+    }
+    92% {
+        transform: scale(1.006) rotate(0.22deg);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 146, 60, 0.94),
+            0 0 19px rgba(249, 115, 22, 0.56),
+            0 0 38px rgba(234, 88, 12, 0.17);
+    }
+}
+
+/* Crossed steel: swing inward, spark on contact, separate — looped to match 3s melee */
+@keyframes meleeSwordBladeA {
+    0%,
+    100% {
+        transform: translate(-50%, -50%) translateX(-10px) rotate(-68deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    5% {
+        transform: translate(-50%, -50%) translateX(-2px) rotate(-30deg);
+        filter: drop-shadow(0 0 12px rgba(254, 243, 199, 0.98)) drop-shadow(0 0 4px rgba(251, 191, 36, 0.75));
+    }
+    9% {
+        transform: translate(-50%, -50%) translateX(-5px) rotate(-44deg);
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.45));
+    }
+    18% {
+        transform: translate(-50%, -50%) translateX(-10px) rotate(-64deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    23% {
+        transform: translate(-50%, -50%) translateX(-1px) rotate(-28deg);
+        filter: drop-shadow(0 0 11px rgba(254, 243, 199, 0.95)) drop-shadow(0 0 3px rgba(234, 179, 8, 0.65));
+    }
+    28% {
+        transform: translate(-50%, -50%) translateX(-6px) rotate(-46deg);
+        filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.35));
+    }
+    38% {
+        transform: translate(-50%, -50%) translateX(-10px) rotate(-66deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    43% {
+        transform: translate(-50%, -50%) translateX(-2px) rotate(-32deg);
+        filter: drop-shadow(0 0 10px rgba(255, 251, 235, 0.92));
+    }
+    48% {
+        transform: translate(-50%, -50%) translateX(-7px) rotate(-50deg);
+        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3));
+    }
+    58% {
+        transform: translate(-50%, -50%) translateX(-10px) rotate(-67deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    63% {
+        transform: translate(-50%, -50%) translateX(-1px) rotate(-26deg);
+        filter: drop-shadow(0 0 12px rgba(254, 243, 199, 0.98));
+    }
+    68% {
+        transform: translate(-50%, -50%) translateX(-6px) rotate(-48deg);
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
+    }
+    78% {
+        transform: translate(-50%, -50%) translateX(-10px) rotate(-65deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    83% {
+        transform: translate(-50%, -50%) translateX(-3px) rotate(-34deg);
+        filter: drop-shadow(0 0 9px rgba(255, 248, 220, 0.88));
+    }
+    90% {
+        transform: translate(-50%, -50%) translateX(-8px) rotate(-54deg);
+        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.25));
+    }
+}
+
+@keyframes meleeSwordBladeB {
+    0%,
+    100% {
+        transform: translate(-50%, -50%) translateX(10px) rotate(68deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    5% {
+        transform: translate(-50%, -50%) translateX(2px) rotate(30deg);
+        filter: drop-shadow(0 0 12px rgba(254, 243, 199, 0.98)) drop-shadow(0 0 4px rgba(251, 191, 36, 0.75));
+    }
+    9% {
+        transform: translate(-50%, -50%) translateX(5px) rotate(44deg);
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.45));
+    }
+    18% {
+        transform: translate(-50%, -50%) translateX(10px) rotate(64deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    23% {
+        transform: translate(-50%, -50%) translateX(1px) rotate(28deg);
+        filter: drop-shadow(0 0 11px rgba(254, 243, 199, 0.95)) drop-shadow(0 0 3px rgba(234, 179, 8, 0.65));
+    }
+    28% {
+        transform: translate(-50%, -50%) translateX(6px) rotate(46deg);
+        filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.35));
+    }
+    38% {
+        transform: translate(-50%, -50%) translateX(10px) rotate(66deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    43% {
+        transform: translate(-50%, -50%) translateX(2px) rotate(32deg);
+        filter: drop-shadow(0 0 10px rgba(255, 251, 235, 0.92));
+    }
+    48% {
+        transform: translate(-50%, -50%) translateX(7px) rotate(50deg);
+        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3));
+    }
+    58% {
+        transform: translate(-50%, -50%) translateX(10px) rotate(67deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    63% {
+        transform: translate(-50%, -50%) translateX(1px) rotate(26deg);
+        filter: drop-shadow(0 0 12px rgba(254, 243, 199, 0.98));
+    }
+    68% {
+        transform: translate(-50%, -50%) translateX(6px) rotate(48deg);
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
+    }
+    78% {
+        transform: translate(-50%, -50%) translateX(10px) rotate(65deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    83% {
+        transform: translate(-50%, -50%) translateX(3px) rotate(34deg);
+        filter: drop-shadow(0 0 9px rgba(255, 248, 220, 0.88));
+    }
+    90% {
+        transform: translate(-50%, -50%) translateX(8px) rotate(54deg);
+        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.25));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .battle-feedback-melee-hit::before {
+        animation: none;
+        transform: translate(-50%, -50%) translateX(-5px) rotate(-42deg);
+        filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.45));
+    }
+
+    .battle-feedback-melee-hit::after {
+        animation: none;
+        transform: translate(-50%, -50%) translateX(5px) rotate(42deg);
+        filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.45));
+    }
+}
+
+@keyframes battleDeathFlash {
+    0% {
+        filter: grayscale(0) brightness(1);
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+    35% {
+        filter: grayscale(0.35) brightness(1.35);
+        opacity: 0.88;
+        transform: scale(1.04) translateY(1px);
+    }
+    70% {
+        filter: grayscale(0.75) brightness(0.95);
+        opacity: 0.65;
+        transform: scale(0.96) translateY(4px);
+    }
+    100% {
+        filter: grayscale(0.92) brightness(0.78);
+        opacity: 0.42;
+        transform: scale(0.92) translateY(6px);
+    }
+}
+
+@keyframes battleChargeSurge {
+    0%,
+    100% {
+        transform: translateX(0) scale(1);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 191, 36, 0.95),
+            0 0 22px rgba(245, 158, 11, 0.58),
+            0 0 36px rgba(234, 88, 12, 0.25);
+    }
+    10% {
+        transform: translateX(11px) scale(1.1);
+        box-shadow:
+            inset 0 0 0 2px rgba(254, 215, 170, 1),
+            0 0 32px rgba(245, 158, 11, 0.78),
+            0 0 48px rgba(234, 88, 12, 0.38);
+    }
+    20% {
+        transform: translateX(-3px) scale(1.05);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 191, 36, 0.98),
+            0 0 24px rgba(245, 158, 11, 0.62),
+            0 0 38px rgba(234, 88, 12, 0.28);
+    }
+    34% {
+        transform: translateX(8px) scale(1.08);
+        box-shadow:
+            inset 0 0 0 2px rgba(253, 224, 180, 1),
+            0 0 30px rgba(245, 158, 11, 0.72),
+            0 0 44px rgba(234, 88, 12, 0.34);
+    }
+    48% {
+        transform: translateX(0) scale(1.04);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 191, 36, 0.96),
+            0 0 24px rgba(245, 158, 11, 0.6),
+            0 0 36px rgba(234, 88, 12, 0.26);
+    }
+    62% {
+        transform: translateX(7px) scale(1.07);
+        box-shadow:
+            inset 0 0 0 2px rgba(254, 215, 170, 0.99),
+            0 0 28px rgba(245, 158, 11, 0.68),
+            0 0 42px rgba(234, 88, 12, 0.32);
+    }
+    76% {
+        transform: translateX(-2px) scale(1.02);
+        box-shadow:
+            inset 0 0 0 2px rgba(251, 191, 36, 0.94),
+            0 0 20px rgba(245, 158, 11, 0.55),
+            0 0 34px rgba(234, 88, 12, 0.22);
+    }
+    90% {
+        transform: translateX(4px) scale(1.04);
+        box-shadow:
+            inset 0 0 0 2px rgba(252, 211, 170, 0.97),
+            0 0 26px rgba(245, 158, 11, 0.64),
+            0 0 38px rgba(234, 88, 12, 0.28);
+    }
+}
+
+@keyframes battleMoraleShake {
+    0%, 100% {
+        transform: translate(0, 0) rotate(0deg);
+    }
+    15% {
+        transform: translate(-3px, 1px) rotate(-0.8deg);
+    }
+    30% {
+        transform: translate(3px, -1px) rotate(0.8deg);
+    }
+    45% {
+        transform: translate(-2px, -1px) rotate(-0.5deg);
+    }
+    60% {
+        transform: translate(2px, 1px) rotate(0.5deg);
+    }
+    75% {
+        transform: translate(-1px, 0) rotate(-0.3deg);
+    }
+}
+
+@keyframes battleRangedPulse {
+    0% {
+        filter: brightness(1) saturate(1);
+        transform: scale(1);
+    }
+    40% {
+        filter: brightness(1.5) saturate(1.35);
+        transform: scale(1.04);
+    }
+    100% {
+        filter: brightness(1) saturate(1);
+        transform: scale(1);
+    }
+}
+
+@keyframes battleMoveDust {
+    0% {
+        filter: brightness(1);
+        transform: scale(1);
+        opacity: 1;
+    }
+    30% {
+        filter: brightness(1.2) saturate(1.15);
+        transform: scale(1.04);
+        opacity: 1;
+    }
+    100% {
+        filter: brightness(1);
+        transform: scale(1);
+        opacity: 0.92;
+    }
+}
+
 /* Battlefield container */
 .battlefield-container {
-    background: 
-        linear-gradient(135deg, #2d5016 0%, #4a7c59 50%, #6b8e23 100%);
+    background: transparent;
     border-radius: 15px;
-    padding: 20px;
-    box-shadow: 
-        0 10px 30px rgba(0,0,0,0.5),
-        inset 0 2px 4px rgba(255,255,255,0.1);
+    padding: 0;
+    box-shadow: none;
+    overflow: visible;
+    /* Allow shrinking inside flex parents so the scroll viewport can clip a wide grid */
+    min-width: 0;
+    max-width: 100%;
+}
+
+.battlefield-scroll-viewport {
+    overflow: auto;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    min-width: 0;
+    max-width: 100%;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    /* Allow finger/trackpad scrolling on large maps; mouse pan uses pointer handlers below. */
+    touch-action: pan-x pan-y;
+}
+
+.battlefield-scroll-viewport::-webkit-scrollbar {
+    display: none;
+}
+
+.battlefield-shell-8x8 {
+    width: min(calc(100dvw - 1rem), calc((10 * 84px) + (10 * 0.25rem) + 3rem));
+    max-width: 100%;
+}
+
+.battlefield-scroll-viewport-8x8 {
+    width: 100%;
+    height: calc((8 * 100px) + (8 * 0.25rem) + 3rem);
+    max-height: min(72dvh, calc(100dvh - 12rem));
+    user-select: none;
+}
+
+@media (min-width: 640px) {
+    .battlefield-shell-8x8 {
+        width: min(calc(100dvw - 2rem), calc((11 * 100px) + (11 * 0.25rem) + 3rem));
+    }
+
+    .battlefield-scroll-viewport-8x8 {
+        width: 100%;
+        height: calc((8 * 116px) + (8 * 0.25rem) + 3rem);
+        max-height: min(76dvh, calc(100dvh - 13rem));
+    }
+}
+
+.battlefield-shell-fullscreen-large {
+    width: min(calc(100dvw - 2rem), 1440px);
+    max-width: 100%;
+}
+
+.battlefield-scroll-viewport-fullscreen-large {
+    width: 100%;
+    min-height: 12rem;
+    height: calc(100dvh - 13rem);
+    max-height: min(88dvh, calc(100dvh - 10rem));
+    user-select: none;
+}
+
+.battlefield-nav-rail {
+    border: 1px solid rgba(250, 204, 21, 0.28);
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 6px 16px rgba(0,0,0,0.18);
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.battlefield-nav-rail-horizontal {
+    width: 100%;
+    height: 12px;
+    border-radius: 9999px;
+}
+
+.battlefield-nav-rail-vertical {
+    width: 12px;
+    height: 100%;
+    border-radius: 9999px;
+}
+
+.battlefield-container [class*="battlefield-nav-"]:hover .battlefield-nav-rail,
+.battlefield-container [class*="battlefield-nav-"]:focus-within .battlefield-nav-rail {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(250, 204, 21, 0.4);
+    opacity: 0.95;
+}
+
+@media (hover: none) and (pointer: coarse) {
+    .battlefield-nav-rail-horizontal {
+        height: 18px;
+    }
+
+    .battlefield-nav-rail-vertical {
+        width: 18px;
+    }
+}
+
+/* Fullscreen battlefield: single scroll surface inside the grid viewport (no double overflow). */
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen {
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    background:
+        linear-gradient(rgba(2, 6, 23, 0.82), rgba(15, 23, 42, 0.88)),
+        url("/gamebkg.png") center / cover no-repeat;
+}
+
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen .bf-main-stage,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .bf-main-stage {
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+}
+
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen .bf-fs-battlefield,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .bf-fs-battlefield {
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen .battlefield-shell-fullscreen-large.bf-fs-shell,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .battlefield-shell-fullscreen-large.bf-fs-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    max-height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen .bf-battlefield-inner,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .bf-battlefield-inner {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen .battlefield-scroll-viewport-fullscreen-large.bf-fs-viewport,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .battlefield-scroll-viewport-fullscreen-large.bf-fs-viewport {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    max-height: none;
+    height: auto;
 }
 
 /* Roman unit styling */
 .unit-roman {
     background: 
         radial-gradient(circle at 30% 30%, #cd853f 0%, #a0522d 70%, #8b4513 100%);
-    border: 2px solid #654321;
+    border: none;
     color: #fff;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
 }
@@ -180,7 +2008,7 @@
 .unit-barbarian {
     background: 
         radial-gradient(circle at 30% 30%, #8b0000 0%, #660000 70%, #4a0000 100%);
-    border: 2px solid #2d0000;
+    border: none;
     color: #fff;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
 }
@@ -189,7 +2017,88 @@
 .unit-greek {
     background: 
         radial-gradient(circle at 30% 30%, #228b22 0%, #006400 70%, #004d00 100%);
-    border: 2px solid #003300;
+    border: none;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Gallic unit styling */
+.unit-celtic {
+    background:
+        radial-gradient(circle at 30% 30%, #2f855a 0%, #22543d 70%, #163826 100%);
+    border: none;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Germanic unit styling */
+.unit-germanic {
+    background:
+        radial-gradient(circle at 30% 30%, #6b4f2a 0%, #4b3621 70%, #2f2417 100%);
+    border: none;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Carthaginian unit styling */
+.unit-carthage {
+    background:
+        radial-gradient(circle at 30% 30%, #7c3f00 0%, #5b2d00 70%, #3d1d00 100%);
+    border: none;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Egyptian unit styling */
+.unit-egypt {
+    background:
+        radial-gradient(circle at 30% 30%, #d4af37 0%, #b8860b 70%, #8b6508 100%);
+    border: none;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Thracian unit styling */
+.unit-thracian {
+    background:
+        radial-gradient(circle at 30% 30%, #7c3aed 0%, #5b21b6 70%, #3b0764 100%);
+    border: none;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Dacian unit styling */
+.unit-dacian {
+    background:
+        radial-gradient(circle at 30% 30%, #0f766e 0%, #115e59 70%, #134e4a 100%);
+    border: none;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Parthian unit styling */
+.unit-parthian {
+    background:
+        radial-gradient(circle at 30% 30%, #9f1239 0%, #881337 70%, #4c0519 100%);
+    border: none;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Seleucid unit styling */
+.unit-seleucid {
+    background:
+        radial-gradient(circle at 30% 30%, #1d4ed8 0%, #1e3a8a 70%, #172554 100%);
+    border: none;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Viking unit styling */
+.unit-viking {
+    background:
+        radial-gradient(circle at 30% 30%, #4a5568 0%, #2d3748 70%, #1a202c 100%);
+    border: none;
     color: #fff;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
 }
@@ -356,4 +2265,91 @@
     transform: scale(1.05);
     box-shadow: 0 0 30px #3b82f6, inset 0 0 30px rgba(59, 130, 246, 0.5);
   }
+}
+
+/* ---- Game cursors (mouse / fine pointer only; touch unchanged) ---- */
+@media (hover: hover) and (pointer: fine) {
+  .cc-game-cursors .battle-button:not(:disabled) {
+    cursor: var(--cc-cursor-sword);
+  }
+
+  .cc-game-cursors .battle-button:disabled {
+    cursor: var(--cc-cursor-blocked);
+  }
+
+  .cc-game-cursors .game-ui select,
+  .cc-game-cursors .game-ui label[for] {
+    cursor: var(--cc-cursor-scroll);
+  }
+
+  .cc-game-cursors .game-ui input[type="text"],
+  .cc-game-cursors .game-ui input[type="search"],
+  .cc-game-cursors .game-ui textarea {
+    cursor: var(--cc-cursor-text);
+  }
+
+  .battlefield-scroll-viewport.cc-map-pan-enabled {
+    cursor: var(--cc-cursor-map-grab);
+  }
+
+  .battlefield-scroll-viewport.cc-map-pan-active {
+    cursor: var(--cc-cursor-map-grabbing) !important;
+  }
+
+  /* Empty tile / attack aim; merge drag uses .cursor-grab below */
+  .battlefield-grid .terrain-cell:not(.terrain-cell--has-unit) {
+    cursor: var(--cc-cursor-target);
+  }
+
+  .battlefield-grid .terrain-cell.terrain-cell--has-unit {
+    cursor: var(--cc-cursor-hand);
+  }
+
+  .battlefield-grid .terrain-cell.cursor-grab {
+    cursor: var(--cc-cursor-grab-unit);
+  }
+
+  .battlefield-grid .terrain-cell.cursor-grab:active {
+    cursor: var(--cc-cursor-grabbing-unit);
+  }
+
+  .battlefield-grid .terrain-cell.movement-highlight {
+    cursor: var(--cc-cursor-boot);
+  }
+
+  .battlefield-grid .terrain-cell.attack-highlight {
+    cursor: var(--cc-cursor-target);
+  }
+
+  .battlefield-nav-rail.battlefield-nav-rail--edge-n {
+    pointer-events: auto;
+    cursor: var(--cc-cursor-rail-n);
+  }
+
+  .battlefield-nav-rail.battlefield-nav-rail--edge-s {
+    pointer-events: auto;
+    cursor: var(--cc-cursor-rail-s);
+  }
+
+  .battlefield-nav-rail.battlefield-nav-rail--edge-w {
+    pointer-events: auto;
+    cursor: var(--cc-cursor-rail-w);
+  }
+
+  .battlefield-nav-rail.battlefield-nav-rail--edge-e {
+    pointer-events: auto;
+    cursor: var(--cc-cursor-rail-e);
+  }
+
+  .cc-cursor-faction-info {
+    cursor: var(--cc-cursor-help);
+  }
+}
+
+body.cc-cursor-setup-deploy {
+  cursor: var(--cc-cursor-deploy) !important;
+}
+
+body.cc-cursor-setup-deploy * {
+  cursor: inherit !important;
 }
