@@ -38,11 +38,15 @@ import {
   DEFAULT_GAME_OPTIONS,
   DEFAULT_TERRAIN_GENERATION_SETTINGS,
   GAME_BUILD_LABEL,
+  readGameAudioPrefs,
+  writeGameAudioPrefs,
   GAME_STATE_STORAGE_KEY,
+  LEGACY_GAME_STATE_STORAGE_KEY,
   GAME_VERSION,
   GRID_ORIENTATIONS,
   LEVEL_MATCHUP_LABELS,
   TEAM_SELECT_GROUPS,
+  TURN_ACTION_BUDGET_MS,
   DESERT_TILE_VIDEO_SRC,
   FOREST_TILE_VIDEO_SRC,
   HILL_TILE_VIDEO_SRC,
@@ -62,6 +66,13 @@ import {
   TROOP_MECHANICS_INFO,
   UNIT_ABILITY_MECHANICS_INFO
 } from "./game/mechanicsInfo";
+import {
+  formatMatchCountdown,
+  getPerTeamTimeBudgetMinutes,
+  getPerTeamTimeBudgetMs,
+  getTeamsWithLivingUnits,
+  resolveTimedForfeitMessage
+} from "./game/matchTimer";
 import { getTerrainAutotileVisual, RIVER_CORNER_ASSET } from "./game/terrainAutotile";
 import { generateTerrainMap, getEnabledTerrainTypes, getTerrainAt, isValidTerrainMap } from "./game/terrainEngine";
 import {
@@ -114,6 +125,9 @@ import type {
 
 /** Stable when terrain combat modifiers are off — a fresh `[]` each render was resetting the AI `useEffect` timer every frame. */
 const EMPTY_TERRAIN_EFFECT_MAP: TerrainType[][] = [];
+
+/** About screen carousel: four panels (indices 0–3). */
+const ABOUT_SCREEN_SLIDE_LAST = 3;
 
 const renderTeamSelectOptions = (
   allowedTeams: readonly TeamName[],
@@ -419,6 +433,54 @@ function FactionPassiveRailCell({ team }: { team: TeamName }) {
   );
 }
 
+function AppVersionCorner() {
+  return (
+    <div
+      className="pointer-events-none fixed bottom-3 right-3 z-[200] select-none sm:bottom-4 sm:right-4"
+      aria-hidden
+    >
+      <span
+        className="inline-block rounded-md border border-yellow-600/45 bg-black/55 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-yellow-100/90 shadow-[0_4px_16px_rgba(0,0,0,0.35)] backdrop-blur-sm"
+        title={`Strategos v${GAME_VERSION}`}
+      >
+        v{GAME_VERSION}
+      </span>
+    </div>
+  );
+}
+
+type GameControlsReferenceBodyProps = {
+  /** Tighter typography for the pause menu panel */
+  dense?: boolean;
+};
+
+function GameControlsReferenceBody({ dense }: GameControlsReferenceBodyProps) {
+  const li = dense
+    ? "text-xs leading-relaxed text-yellow-100/85"
+    : "text-sm leading-relaxed text-yellow-50/85";
+  const gap = dense ? "space-y-2" : "space-y-2.5";
+  return (
+    <ul className={`${gap} list-disc pl-5 marker:text-yellow-500/80`}>
+      <li className={li}>
+        <span className="font-semibold text-yellow-100/95">Battle:</span> Click your unit&apos;s tile to select it. Move and attack highlights show legal tiles; click a highlight to move or attack. End your turn from the header when you are done.
+      </li>
+      <li className={li}>
+        <span className="font-semibold text-yellow-100/95">Setup:</span> Drag troops from the roster onto the grid and drag placed units to reposition. Follow on-screen hints for merge or deploy rules in each mode.
+      </li>
+      <li className={li}>
+        <span className="font-semibold text-yellow-100/95">Large maps:</span> Edge scroll rails and drag-pan on the map appear from 14×14 in a normal window, or from 9×9 in fullscreen. Scroll with the mouse wheel or trackpad when the grid overflows. With that chrome,{" "}
+        <strong className="font-semibold text-yellow-50">arrow keys</strong> and <strong className="font-semibold text-yellow-50">WASD</strong> pan the battlefield (disabled while focus is in a text field).
+      </li>
+      <li className={li}>
+        <span className="font-semibold text-yellow-100/95">Menu:</span> Open <strong className="font-semibold text-yellow-50">Game Menu</strong> in the header for pause, Options, Mechanics, Units, Graphics, and controls.
+      </li>
+      <li className={li}>
+        <span className="font-semibold text-yellow-100/95">Audio:</span> Toggle music and sound effects under Options.
+      </li>
+    </ul>
+  );
+}
+
 function CodeConq() {
   const [currentLevel, setCurrentLevel] = useState<keyof typeof levels>("Level1");
   const [terrainPreset, setTerrainPreset] = useState<TerrainPreset>("mixed");
@@ -429,6 +491,8 @@ function CodeConq() {
     log: [] as string[],
     round: 1
   }));
+  const setLogRef = useRef(setLog);
+  setLogRef.current = setLog;
   const [battlefieldTerrain, setBattlefieldTerrain] = useState<TerrainType[][]>(() => generateTerrainMap(DEFAULT_GAME_OPTIONS.battlefieldSize, "mixed", DEFAULT_TERRAIN_GENERATION_SETTINGS));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedUnitId, setInspectedUnitId] = useState<string | null>(null);
@@ -441,6 +505,22 @@ function CodeConq() {
   const [playerTeam, setPlayerTeam] = useState<TeamName>("Romans");
   const [draggedTroop, setDraggedTroop] = useState<any>(null);
   const [gameStarted, setGameStarted] = useState(false);
+  /** Chess-clock: committed ms per team at end of their last turn; current slice uses ref start time. */
+  const [timedPlayCommittedMs, setTimedPlayCommittedMs] = useState<Record<string, number>>({});
+  const [timedPlayLoserTeam, setTimedPlayLoserTeam] = useState<string | null>(null);
+  const timedPlayTurnStartedAtRef = useRef(Date.now());
+  /** Start of current faction's move-clock slice (timed play only; separate from bank deduction anchor). */
+  const turnSliceStartedAtRef = useRef(Date.now());
+  /** Drives live countdown re-renders while timed play is on (bank + move clock). */
+  const [matchNowMs, setMatchNowMs] = useState(() => Date.now());
+  /** Prevents duplicate battle-end lines in the log (elimination or time). */
+  const battleOutcomeLoggedRef = useRef(false);
+  const checkEndRef = useRef<() => string | null>(() => null);
+  const advanceTurnRef = useRef<() => void>(() => {});
+  const advanceAiTurnRef = useRef<(t: TeamName) => void>(() => {});
+  const gameModeForTimerRef = useRef<GameMode | null>(null);
+  const aiTeamsForTimerRef = useRef<TeamName[]>([]);
+  const turnAutoAdvancePendingRef = useRef(false);
   const [mergeMode, setMergeMode] = useState(false);
   const [mergeCount, setMergeCount] = useState(0);
   const [selectedForMerge, setSelectedForMerge] = useState<any>(null);
@@ -463,7 +543,10 @@ function CodeConq() {
   const isRestoringSavedGameRef = useRef(false);
   const hasLoadedSavedGameRef = useRef(false);
   const [startScreen, setStartScreen] = useState<"menu" | "options" | "about">("menu");
+  const [aboutSlideIndex, setAboutSlideIndex] = useState(0);
+  const aboutSwipeStartXRef = useRef<number | null>(null);
   const [isGameMenuOpen, setIsGameMenuOpen] = useState(false);
+  const [gameMenuControlsOpen, setGameMenuControlsOpen] = useState(false);
   const [isInGameOptionsOpen, setIsInGameOptionsOpen] = useState(false);
   const [isInGameMechanicsOpen, setIsInGameMechanicsOpen] = useState(false);
   const [activeMechanicsSlide, setActiveMechanicsSlide] = useState(0);
@@ -473,11 +556,33 @@ function CodeConq() {
   const [unitsReferenceQuery, setUnitsReferenceQuery] = useState("");
   const [isBattleLogPanelOpen, setIsBattleLogPanelOpen] = useState(false);
   const [isUnitPanelOpen, setIsUnitPanelOpen] = useState(false);
-  const [gameOptions, setGameOptions] = useState<GameOptions>(DEFAULT_GAME_OPTIONS);
+  const [gameOptions, setGameOptions] = useState<GameOptions>(() => {
+    const audio = typeof window !== "undefined" ? readGameAudioPrefs() : null;
+    return audio ? { ...DEFAULT_GAME_OPTIONS, ...audio } : DEFAULT_GAME_OPTIONS;
+  });
   const [isPanningGrid, setIsPanningGrid] = useState(false);
   const [hoverScrollDirection, setHoverScrollDirection] = useState<HoverScrollDirection>(null);
   const [cellFeedback, setCellFeedback] = useState<Record<string, BattleFeedbackKind[]>>({});
   const [projectileFeedback, setProjectileFeedback] = useState<ProjectileFeedback[]>([]);
+  const turnRef = useRef(turn);
+  const timedPlayCommittedMsRef = useRef(timedPlayCommittedMs);
+  turnRef.current = turn;
+  timedPlayCommittedMsRef.current = timedPlayCommittedMs;
+
+  const commitTurnTimeForTeam = useCallback(
+    (outgoingTeam: string) => {
+      if (!gameOptions.timedPlayEnabled || timedPlayLoserTeam) return;
+      const elapsed = Date.now() - timedPlayTurnStartedAtRef.current;
+      setTimedPlayCommittedMs((prev) => {
+        if (Object.keys(prev).length === 0) return prev;
+        if (prev[outgoingTeam] === undefined) return prev;
+        return { ...prev, [outgoingTeam]: Math.max(0, (prev[outgoingTeam] ?? 0) - elapsed) };
+      });
+      timedPlayTurnStartedAtRef.current = Date.now();
+    },
+    [gameOptions.timedPlayEnabled, timedPlayLoserTeam]
+  );
+
   /** Previous commit’s grid positions — used to scale layout move duration by tiles moved (Manhattan). */
   const unitPreviousGridRef = useRef<Record<string, { x: number; y: number }>>({});
   /** Blocks player actions while an attack animation is playing and results are not yet applied. */
@@ -507,6 +612,80 @@ function CodeConq() {
     document.body.classList.add("cc-cursor-setup-deploy");
     return () => document.body.classList.remove("cc-cursor-setup-deploy");
   }, [isSetupMode, draggedTroop]);
+
+  useEffect(() => {
+    if (!isGameMenuOpen) setGameMenuControlsOpen(false);
+  }, [isGameMenuOpen]);
+
+  useEffect(() => {
+    if (startScreen === "about") setAboutSlideIndex(0);
+  }, [startScreen]);
+
+  useEffect(() => {
+    if (startScreen !== "about") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setAboutSlideIndex((i) => Math.min(ABOUT_SCREEN_SLIDE_LAST, i + 1));
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setAboutSlideIndex((i) => Math.max(0, i - 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [startScreen]);
+
+  useEffect(() => {
+    if (gameStarted) return;
+    setTimedPlayCommittedMs({});
+    setTimedPlayLoserTeam(null);
+    battleOutcomeLoggedRef.current = false;
+  }, [gameStarted]);
+
+  useEffect(() => {
+    if (!gameOptions.timedPlayEnabled || !gameStarted || isSetupMode || timedPlayLoserTeam) return;
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      setMatchNowMs(now);
+      const t = turnRef.current;
+      const bank = timedPlayCommittedMsRef.current[t];
+      if (bank !== undefined && bank - (now - timedPlayTurnStartedAtRef.current) <= 0) {
+        setTimedPlayLoserTeam(t);
+        return;
+      }
+      if (turnAutoAdvancePendingRef.current) return;
+      if (battleResolutionPendingRef.current || aiAttackAnimatingRef.current) return;
+      if (checkEndRef.current()) return;
+      const elapsed = now - turnSliceStartedAtRef.current;
+      if (elapsed < TURN_ACTION_BUDGET_MS) return;
+      const mode = gameModeForTimerRef.current;
+      const team = turnRef.current as TeamName;
+      const sideName = String(team);
+      turnAutoAdvancePendingRef.current = true;
+      setLogRef.current((prev) => [
+        `⏱ Move clock (${TURN_ACTION_BUDGET_MS / 1000}s) expired for ${sideName} — advancing.`,
+        ...prev
+      ]);
+      if (mode === "multiplayer") {
+        advanceTurnRef.current();
+      } else if (aiTeamsForTimerRef.current.includes(team)) {
+        advanceAiTurnRef.current(team);
+      } else {
+        advanceTurnRef.current();
+      }
+      window.setTimeout(() => {
+        turnAutoAdvancePendingRef.current = false;
+      }, 500);
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [gameOptions.timedPlayEnabled, gameStarted, isSetupMode, timedPlayLoserTeam]);
+
+  useEffect(() => {
+    if (!gameStarted || isSetupMode || !gameOptions.timedPlayEnabled) return;
+    turnAutoAdvancePendingRef.current = false;
+    turnSliceStartedAtRef.current = Date.now();
+  }, [turn, gameStarted, isSetupMode, gameOptions.timedPlayEnabled]);
 
   // Update units when level changes
   useEffect(() => {
@@ -566,7 +745,19 @@ function CodeConq() {
     }
 
     try {
-      const savedStateRaw = window.localStorage.getItem(GAME_STATE_STORAGE_KEY);
+      let savedStateRaw = window.localStorage.getItem(GAME_STATE_STORAGE_KEY);
+      if (!savedStateRaw) {
+        const legacyRaw = window.localStorage.getItem(LEGACY_GAME_STATE_STORAGE_KEY);
+        if (legacyRaw) {
+          savedStateRaw = legacyRaw;
+          try {
+            window.localStorage.setItem(GAME_STATE_STORAGE_KEY, legacyRaw);
+            window.localStorage.removeItem(LEGACY_GAME_STATE_STORAGE_KEY);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
       if (!savedStateRaw) {
         hasLoadedSavedGameRef.current = true;
         return;
@@ -578,6 +769,8 @@ function CodeConq() {
       const restoredBattlefieldSize = BATTLEFIELD_SIZE_OPTIONS.includes(mergedOptions.battlefieldSize)
         ? mergedOptions.battlefieldSize
         : DEFAULT_GAME_OPTIONS.battlefieldSize;
+      const audioPrefs = readGameAudioPrefs();
+      const optionsBase = { ...mergedOptions, battlefieldSize: restoredBattlefieldSize };
 
       if (savedLevel && savedLevel in levels) {
         isRestoringSavedGameRef.current = true;
@@ -622,15 +815,42 @@ function CodeConq() {
         }, {} as TerrainGenerationSettings);
       setTerrainPreset(restoredTerrainPreset);
       setTerrainGenerationSettings(restoredTerrainGenerationSettings);
-      setGameOptions({
-        ...mergedOptions,
-        battlefieldSize: restoredBattlefieldSize
-      });
+      setGameOptions(
+        audioPrefs
+          ? { ...optionsBase, musicEnabled: audioPrefs.musicEnabled, sfxEnabled: audioPrefs.sfxEnabled }
+          : optionsBase
+      );
+      if (!audioPrefs) {
+        writeGameAudioPrefs({
+          musicEnabled: optionsBase.musicEnabled,
+          sfxEnabled: optionsBase.sfxEnabled
+        });
+      }
       setBattlefieldTerrain(
         isValidTerrainMap(savedState.battlefieldTerrain, restoredBattlefieldSize)
           ? savedState.battlefieldTerrain
           : generateTerrainMap(restoredBattlefieldSize, restoredTerrainPreset, restoredTerrainGenerationSettings)
       );
+
+      const effectiveGameOptions = audioPrefs
+        ? { ...optionsBase, musicEnabled: audioPrefs.musicEnabled, sfxEnabled: audioPrefs.sfxEnabled }
+        : optionsBase;
+      if (!effectiveGameOptions.timedPlayEnabled) {
+        setTimedPlayCommittedMs({});
+        setTimedPlayLoserTeam(null);
+      } else if (
+        savedState.timedPlayCommittedMs &&
+        typeof savedState.timedPlayCommittedMs === "object" &&
+        !Array.isArray(savedState.timedPlayCommittedMs)
+      ) {
+        setTimedPlayCommittedMs(savedState.timedPlayCommittedMs as Record<string, number>);
+        setTimedPlayLoserTeam(typeof savedState.timedPlayLoserTeam === "string" ? savedState.timedPlayLoserTeam : null);
+      } else {
+        setTimedPlayCommittedMs({});
+        setTimedPlayLoserTeam(null);
+      }
+      timedPlayTurnStartedAtRef.current = Date.now();
+      battleOutcomeLoggedRef.current = false;
     } catch {
       // Ignore invalid saved state and fall back to a fresh session.
     } finally {
@@ -662,10 +882,16 @@ function CodeConq() {
       terrainPreset,
       terrainGenerationSettings,
       battlefieldTerrain,
-      gameOptions
+      gameOptions,
+      timedPlayCommittedMs,
+      timedPlayLoserTeam
     };
 
     window.localStorage.setItem(GAME_STATE_STORAGE_KEY, JSON.stringify(savedState));
+    writeGameAudioPrefs({
+      musicEnabled: gameOptions.musicEnabled,
+      sfxEnabled: gameOptions.sfxEnabled
+    });
   }, [
     currentLevel,
     units,
@@ -685,10 +911,12 @@ function CodeConq() {
     multiplayerTeams,
     gridOrientation,
     terrainPreset,
-    terrainGenerationSettings,
-    battlefieldTerrain,
-    gameOptions
-  ]);
+      terrainGenerationSettings,
+      battlefieldTerrain,
+      gameOptions,
+      timedPlayCommittedMs,
+      timedPlayLoserTeam
+    ]);
 
   useEffect(() => {
     const audio = new Audio(BACKGROUND_MUSIC_SRC);
@@ -728,16 +956,37 @@ function CodeConq() {
     const audio = backgroundMusicRef.current;
     if (!audio) return;
 
-    if (!gameMode || !gameOptions.musicEnabled) {
+    if (!gameOptions.musicEnabled) {
       audio.pause();
       audio.currentTime = 0;
       return;
     }
 
     void audio.play().catch(() => {
-      // Ignore autoplay rejections; the user can start music with the toggle.
+      // Ignore autoplay rejections; the user can start music with the Music toggle (counts as a gesture).
     });
-  }, [gameMode, gameOptions.musicEnabled]);
+  }, [gameOptions.musicEnabled]);
+
+  /** Browsers often block autoplay until a gesture; retry once after refresh when music is enabled. */
+  useEffect(() => {
+    if (!gameOptions.musicEnabled) return;
+    const tryResume = () => {
+      const a = backgroundMusicRef.current;
+      if (!a || !a.paused) return;
+      void a.play().catch(() => {});
+    };
+    const onGesture = () => {
+      tryResume();
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("keydown", onGesture);
+    };
+    window.addEventListener("pointerdown", onGesture, { passive: true });
+    window.addEventListener("keydown", onGesture);
+    return () => {
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("keydown", onGesture);
+    };
+  }, [gameOptions.musicEnabled]);
 
   useEffect(() => {
     return () => {
@@ -763,6 +1012,8 @@ function CodeConq() {
     const aliveTeams = getAliveTeams(units);
     if (aliveTeams.length <= 1 || aliveTeams.includes(turn as TeamName)) return;
 
+    commitTurnTimeForTeam(String(turn));
+
     if (aliveTeams.includes(playerTeam)) {
       setTurn(playerTeam);
       return;
@@ -770,7 +1021,37 @@ function CodeConq() {
 
     const nextAiTeam = aliveTeams.find((team) => team !== playerTeam);
     if (nextAiTeam) setTurn(nextAiTeam);
-  }, [gameMode, gameStarted, isSetupMode, playerTeam, turn, units]);
+  }, [gameMode, gameStarted, isSetupMode, playerTeam, turn, units, commitTurnTimeForTeam]);
+
+  /** When a battle begins, always open on the same side (player / custom pick / multiplayer team A), not a leftover AI turn. */
+  const prevGameStartedRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (prevGameStartedRef.current === null) {
+      prevGameStartedRef.current = gameStarted;
+      return;
+    }
+    const justOpened = gameStarted && !prevGameStartedRef.current;
+    prevGameStartedRef.current = gameStarted;
+    if (!justOpened || isSetupMode || !gameMode) return;
+
+    const alive = getAliveTeams(units);
+    let correct: TeamName | null = null;
+    if (gameMode === "multiplayer") correct = multiplayerTeams[0];
+    else if (gameMode === "single-player") correct = getValidLevelPlayerTeam(currentLevel, playerTeam);
+    else if (gameMode === "custom-scenario") correct = playerTeam;
+
+    if (!correct || !alive.includes(correct)) return;
+    setTurn((t) => (t === correct ? t : correct));
+  }, [
+    gameStarted,
+    isSetupMode,
+    gameMode,
+    units,
+    currentLevel,
+    playerTeam,
+    multiplayerTeams,
+    setTurn
+  ]);
 
   useEffect(() => {
     if (!gameStarted || isSetupMode || !gameMode) {
@@ -1317,6 +1598,15 @@ function CodeConq() {
   const inspectedUnit = getUnitById(inspectedUnitId);
   const currentBattleUnits = isSetupMode ? customUnits : units;
   const battlefieldSize = gameOptions.battlefieldSize;
+  const timedPlayTeamKeys = useMemo(
+    () => Object.keys(timedPlayCommittedMs).sort(),
+    [timedPlayCommittedMs]
+  );
+  const turnActionRemainingMs =
+    gameStarted && !isSetupMode && !timedPlayLoserTeam && gameOptions.timedPlayEnabled
+      ? Math.max(0, TURN_ACTION_BUDGET_MS - (matchNowMs - turnSliceStartedAtRef.current))
+      : 0;
+  const turnActionSecsLeft = Math.max(0, Math.ceil(turnActionRemainingMs / 1000));
   const visibleBattleLog = Array.isArray(log) ? log.slice(0, 80) : [];
   const terrainEffectMap = useMemo(
     () => (gameOptions.terrainEffectsEnabled ? battlefieldTerrain : EMPTY_TERRAIN_EFFECT_MAP),
@@ -1410,7 +1700,59 @@ function CodeConq() {
     )
   ), [troopReferenceStats]);
   const isTeamAllowedInSetup = (team: TeamName) => setupTeams.includes(team);
+
+  const checkEnd = () => {
+    const currentUnits = isSetupMode ? customUnits : units;
+    if (!currentUnits || currentUnits.length === 0) return null;
+
+    if (timedPlayLoserTeam) {
+      return resolveTimedForfeitMessage(units, timedPlayLoserTeam, gameMode, multiplayerTeams);
+    }
+
+    if (gameMode === "multiplayer") {
+      const teamA = multiplayerTeams[0];
+      const teamB = multiplayerTeams[1];
+      const teamALeft = currentUnits.some((u: any) => u.team === teamA && u.hp > 0);
+      const teamBLeft = currentUnits.some((u: any) => u.team === teamB && u.hp > 0);
+      if (!teamALeft && !teamBLeft) return "Draw — both teams eliminated.";
+      if (!teamALeft) return `Winner: ${teamB}`;
+      if (!teamBLeft) return `Winner: ${teamA}`;
+      return null;
+    }
+
+    const teamsStillAlive = ALL_TEAMS.filter((team) => currentUnits.some((u: any) => u.team === team && u.hp > 0));
+
+    if (teamsStillAlive.length === 0) return "Draw — all teams eliminated.";
+    if (teamsStillAlive.length === 1) return `Winner: ${teamsStillAlive[0]}`;
+
+    return null;
+  };
+
+  useEffect(() => {
+    if (!gameStarted || isSetupMode) return;
+    const outcome = checkEnd();
+    if (!outcome) return;
+    if (battleOutcomeLoggedRef.current) return;
+    battleOutcomeLoggedRef.current = true;
+    setLog((prev) => [outcome, ...prev]);
+  }, [gameStarted, isSetupMode, units, customUnits, timedPlayLoserTeam, gameMode, multiplayerTeams]);
+
+  const initTimedPlayFromUnitList = (battleUnits: { team: string; hp: number }[]) => {
+    if (!gameOptions.timedPlayEnabled) {
+      setTimedPlayCommittedMs({});
+      setTimedPlayLoserTeam(null);
+      return;
+    }
+    const budget = getPerTeamTimeBudgetMs(gameOptions.battlefieldSize);
+    const teams = getTeamsWithLivingUnits(battleUnits);
+    setTimedPlayCommittedMs(Object.fromEntries(teams.map((team) => [team, budget])));
+    setTimedPlayLoserTeam(null);
+    timedPlayTurnStartedAtRef.current = Date.now();
+  };
+
   const advanceAiTurn = (currentTeam: TeamName) => {
+    if (timedPlayLoserTeam) return;
+    commitTurnTimeForTeam(String(currentTeam));
     const nextAiIndex = aiTeams.indexOf(currentTeam);
     if (nextAiIndex >= 0 && nextAiIndex < aiTeams.length - 1) {
       setTurn(aiTeams[nextAiIndex + 1]);
@@ -1422,6 +1764,8 @@ function CodeConq() {
   };
 
   const advanceTurn = () => {
+    if (timedPlayLoserTeam) return;
+    commitTurnTimeForTeam(String(turn));
     if (gameMode === "multiplayer") {
       if (turn === multiplayerTeams[0]) {
         setTurn(multiplayerTeams[1]);
@@ -1435,11 +1779,18 @@ function CodeConq() {
     setTurn(aiTeams[0] ?? playerTeam);
   };
 
+  checkEndRef.current = checkEnd;
+  advanceTurnRef.current = advanceTurn;
+  advanceAiTurnRef.current = advanceAiTurn;
+  gameModeForTimerRef.current = gameMode;
+  aiTeamsForTimerRef.current = aiTeams;
+
   // Automatic movement for AI teams - one unit at a time
   useEffect(() => {
     if (
       !gameStarted ||
       isSetupMode ||
+      timedPlayLoserTeam ||
       gameMode === "multiplayer" ||
       !aiTeams.includes(turn as TeamName) ||
       !units
@@ -1572,7 +1923,7 @@ function CodeConq() {
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [turn, units, isSetupMode, gameMode, gameStarted, aiTeams, terrainEffectMap]);
+  }, [turn, units, isSetupMode, gameMode, gameStarted, timedPlayLoserTeam, aiTeams, terrainEffectMap]);
 
   useBattlefieldViewport({
     battlefieldViewportRef,
@@ -1632,6 +1983,7 @@ function CodeConq() {
     }
     
     if (!gameStarted || turn !== activeTeam || !units) return;
+    if (timedPlayLoserTeam) return;
     if (battleResolutionPendingRef.current) return;
 
     const clicked = getUnit(x, y);
@@ -1969,7 +2321,8 @@ function CodeConq() {
     }
     
     setIsSetupMode(false);
-    setUnits(prepareUnitsForBattle(customUnits));
+    const prepared = prepareUnitsForBattle(customUnits);
+    setUnits(prepared);
     setTurn(playerTeam);
     setRound(1);
     setSelectedId(null);
@@ -1977,6 +2330,8 @@ function CodeConq() {
     setMergeCount(0); // Reset merge count for new game
     setMergeMode(false);
     setSelectedForMerge(null);
+    battleOutcomeLoggedRef.current = false;
+    initTimedPlayFromUnitList(prepared);
   };
 
   const startSinglePlayerBattle = () => {
@@ -1990,6 +2345,8 @@ function CodeConq() {
     setMergeCount(0);
     setMergeMode(false);
     setSelectedForMerge(null);
+    battleOutcomeLoggedRef.current = false;
+    initTimedPlayFromUnitList(units);
   };
 
   const resetCustomSetup = () => {
@@ -2055,11 +2412,14 @@ function CodeConq() {
     }
 
     setIsSetupMode(false);
-    setUnits(prepareUnitsForBattle(customUnits));
+    const prepared = prepareUnitsForBattle(customUnits);
+    setUnits(prepared);
     setTurn(multiplayerTeams[0]);
     setRound(1);
     setGameStarted(true);
     setMergeCount(0);
+    battleOutcomeLoggedRef.current = false;
+    initTimedPlayFromUnitList(prepared);
   };
 
   const startCustomScenarioMode = () => {
@@ -2086,6 +2446,7 @@ function CodeConq() {
   const backToMainMenu = () => {
     setStartScreen("menu");
     setIsGameMenuOpen(false);
+    setGameMenuControlsOpen(false);
     setIsInGameOptionsOpen(false);
     setIsInGameMechanicsOpen(false);
     setIsInGameGraphicsOpen(false);
@@ -2463,29 +2824,6 @@ function CodeConq() {
     return (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
   };
 
-  const checkEnd = () => {
-    const currentUnits = isSetupMode ? customUnits : units;
-    if (!currentUnits || currentUnits.length === 0) return null;
-
-    if (gameMode === "multiplayer") {
-      const teamA = multiplayerTeams[0];
-      const teamB = multiplayerTeams[1];
-      const teamALeft = currentUnits.some((u: any) => u.team === teamA);
-      const teamBLeft = currentUnits.some((u: any) => u.team === teamB);
-      if (!teamALeft && !teamBLeft) return "Game Over - Both teams eliminated!";
-      if (!teamALeft) return `Victory - ${teamB} Win!`;
-      if (!teamBLeft) return `Victory - ${teamA} Win!`;
-      return null;
-    }
-    
-    const teamsStillAlive = ALL_TEAMS.filter((team) => currentUnits.some((u: any) => u.team === team));
-
-    if (teamsStillAlive.length === 0) return "Game Over - All teams eliminated!";
-    if (teamsStillAlive.length === 1) return `Victory - ${teamsStillAlive[0]} Win!`;
-
-    return null;
-  };
-
   const toggleOption = (option: keyof GameOptions) => {
     setGameOptions((prev) => ({
       ...prev,
@@ -2494,6 +2832,7 @@ function CodeConq() {
   };
 
   const isTerrainLocked = gameStarted && !isSetupMode;
+  const isTimedPlayOptionLocked = gameStarted && !isSetupMode;
 
   const setBattlefieldSize = (size: BattlefieldSize) => {
     setGameOptions((prev) => ({
@@ -2675,6 +3014,24 @@ function CodeConq() {
           >
             {gameOptions.showTurnBanner ? "Turn Banner: On" : "Turn Banner: Off"}
           </button>
+          <button
+            type="button"
+            disabled={isTimedPlayOptionLocked}
+            onClick={() => {
+              if (isTimedPlayOptionLocked) return;
+              toggleOption("timedPlayEnabled");
+            }}
+            className={`battle-button w-full px-4 py-3 text-sm font-semibold ${
+              isTimedPlayOptionLocked ? "cursor-not-allowed opacity-50 bg-gray-800" : ""
+            } ${gameOptions.timedPlayEnabled ? "bg-amber-600 hover:bg-amber-700" : "bg-gray-700 hover:bg-gray-800"}`}
+          >
+            {gameOptions.timedPlayEnabled
+              ? `Timed play: On (${TURN_ACTION_BUDGET_MS / 1000}s/move + bank)`
+              : "Timed play: Off"}
+          </button>
+          {isTimedPlayOptionLocked && (
+            <p className="text-xs text-yellow-100/70 -mt-2">Timed play can only be changed before a battle starts or during setup.</p>
+          )}
           <div className="bg-black bg-opacity-20 border border-yellow-700 rounded-lg px-4 py-3">
             <label htmlFor="battlefield-size" className="block text-yellow-200 text-sm font-semibold mb-2">
               Battlefield Size
@@ -2689,6 +3046,13 @@ function CodeConq() {
                 <option key={size} value={size}>{size} x {size}</option>
               ))}
             </select>
+            <p className="mt-2 text-xs text-yellow-100/80">
+              With <strong className="text-yellow-200">timed play</strong> on: each faction has a{" "}
+              <strong className="text-yellow-200">{getPerTeamTimeBudgetMinutes(gameOptions.battlefieldSize)} min</strong> bank (
+              {gameOptions.battlefieldSize}×{gameOptions.battlefieldSize}: 5 min at 8×8, +1 min per +2 steps) counting only on their turn, and a{" "}
+              <strong className="text-yellow-200">{TURN_ACTION_BUDGET_MS / 1000}s</strong> move clock each turn. Running out of bank forfeits the battle;
+              running out of move time passes the turn. Survivors / HP decide ties when someone times out.
+            </p>
           </div>
         </div>
       </div>
@@ -2771,7 +3135,7 @@ function CodeConq() {
               Choose which biomes mixed generation can use. Through 14×14, mixed maps use only plain, forest, and hill (up to 3 types). From 16×16 through 20×20, rivers can appear in the mix (up to 4 types). Desert stays isolated and only appears when it is the only enabled mixed biome—use Pure Desert or desert-only mix for sandy battle bonuses.
             </p>
             <p className="text-xs text-yellow-100/75 opacity-90">
-              Large maps: edge rails and drag-pan on the grid appear from 14×14 in a normal window, or from 9×9 in fullscreen. You can still wheel-scroll smaller maps if the grid overflows.
+              Large maps: edge rails and drag-pan on the grid appear from 14×14 in a normal window, or from 9×9 in fullscreen. With that chrome, arrow keys and WASD pan the map (same step as the rails). You can still wheel-scroll smaller maps if the grid overflows.
             </p>
           </div>
           <button
@@ -2870,7 +3234,7 @@ function CodeConq() {
     {
       key: "special",
       title: "Special Systems",
-      subtitle: "Modern additions that reshape ammo, setup, faction identity, role passives, and battle feedback.",
+      subtitle: "Modern additions: ammo, setup, faction identity, role passives, battle feedback, optional timed play (bank + move clock), and the scrollable battle log.",
       badge: "Expanded",
       badgeClass: "border-cyan-700/50 bg-cyan-500/10 text-cyan-100",
       tabClass: "border-cyan-700/40 bg-cyan-950/20 text-cyan-100",
@@ -3025,7 +3389,8 @@ function CodeConq() {
               <h3 className="text-2xl font-bold text-yellow-100 sm:text-3xl">Mechanics at a Glance</h3>
               <p className="mt-2 text-sm leading-relaxed text-yellow-100/80 sm:text-[15px]">
                 Use this handbook to read the battle flow quickly: what wins matchups, how AI formations behave,
-                which passives trigger automatically, and which terrain changes the fight before you commit.
+                which passives trigger automatically, optional timed play (total bank and per-turn move clock),
+                the centered battle log (toolbar scroll), and which terrain changes the fight before you commit.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -3404,128 +3769,270 @@ function CodeConq() {
             </div>
             {renderGameOptionsContent()}
           </div>
+          <AppVersionCorner />
         </div>
       );
     }
 
     if (startScreen === "about") {
+      const aboutSlideLabels = ["Overview", "Modes & scale", "Developer", "Controls"] as const;
       return (
-        <div className="cc-game-cursors flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
-          <div className="game-ui p-8 max-w-4xl w-full">
-            <div className="flex items-center justify-between gap-4 mb-6">
+        <div className="cc-game-cursors flex min-h-screen flex-col items-center justify-center p-4 sm:p-6" style={appBackgroundStyle}>
+          <div className="game-ui w-full max-w-3xl overflow-hidden p-5 sm:p-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <button
+                type="button"
                 onClick={() => setStartScreen("menu")}
-                className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                className="battle-button w-fit px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
               >
                 Back
               </button>
-              <h1 className="text-4xl font-bold text-yellow-200 drop-shadow-lg">About Battlecry</h1>
-              <div className="rounded-full border border-yellow-500/35 bg-black/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow-100">
-                v{GAME_VERSION}
+              <div className="text-center sm:flex-1 sm:text-center">
+                <h1 className="text-3xl font-bold text-yellow-200 drop-shadow-lg sm:text-4xl">About Strategos</h1>
+                <p className="mt-1 text-xs uppercase tracking-[0.28em] text-amber-200/75">Swipe panels · ← → keys · Prev / Next</p>
+              </div>
+              <div className="flex justify-center sm:justify-end">
+                <div className="rounded-full border border-yellow-500/35 bg-black/25 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow-100">
+                  v{GAME_VERSION}
+                </div>
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-yellow-700/40 bg-black/20 px-5 py-5 shadow-[0_20px_55px_rgba(0,0,0,0.35)]">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-yellow-300/75">Game Overview</div>
-              <h2 className="mt-2 text-2xl font-bold text-yellow-100">Tactical battles across living battlefields</h2>
-              <p className="mt-3 text-sm leading-7 text-yellow-50/80">
-                Battlecry is a tactical grid war game where historical-inspired factions clash across changing terrain.
-                Each battle is shaped by troop roles, formation buffs, civilization passives, signature unit abilities,
-                and battlefield feedback that helps you read momentum in real time.
-              </p>
+            <div className="mt-6 overflow-hidden rounded-[24px] border border-amber-900/50 bg-gradient-to-b from-black/45 via-amber-950/20 to-black/50 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+              <div className="flex items-center justify-between gap-2 border-b border-amber-800/30 bg-black/30 px-3 py-3 sm:px-4">
+                <button
+                  type="button"
+                  aria-label="Previous section"
+                  disabled={aboutSlideIndex === 0}
+                  onClick={() => setAboutSlideIndex((i) => Math.max(0, i - 1))}
+                  className="battle-button shrink-0 px-3 py-2 text-xs font-semibold disabled:pointer-events-none disabled:opacity-35 sm:px-4 sm:text-sm"
+                >
+                  ← Prev
+                </button>
+                <div className="min-w-0 flex-1 text-center">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-amber-300/85">
+                    {aboutSlideIndex + 1} / {aboutSlideLabels.length}
+                  </div>
+                  <div className="truncate text-sm font-bold text-yellow-100 sm:text-base">{aboutSlideLabels[aboutSlideIndex]}</div>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Next section"
+                  disabled={aboutSlideIndex >= aboutSlideLabels.length - 1}
+                  onClick={() => setAboutSlideIndex((i) => Math.min(aboutSlideLabels.length - 1, i + 1))}
+                  className="battle-button shrink-0 px-3 py-2 text-xs font-semibold disabled:pointer-events-none disabled:opacity-35 sm:px-4 sm:text-sm"
+                >
+                  Next →
+                </button>
+              </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Single Player</div>
-                  <div className="mt-1 text-sm leading-6 text-yellow-50/82">
-                    Fight campaign battles against the AI and adapt to terrain, faction buffs, and battlefield momentum.
+              <div
+                className="relative overflow-hidden touch-pan-y"
+                onTouchStart={(e) => {
+                  aboutSwipeStartXRef.current = e.touches[0]?.clientX ?? null;
+                }}
+                onTouchEnd={(e) => {
+                  const start = aboutSwipeStartXRef.current;
+                  aboutSwipeStartXRef.current = null;
+                  if (start == null) return;
+                  const end = e.changedTouches[0]?.clientX;
+                  if (end === undefined) return;
+                  const delta = end - start;
+                  if (Math.abs(delta) < 56) return;
+                  if (delta < 0) {
+                    setAboutSlideIndex((i) => Math.min(ABOUT_SCREEN_SLIDE_LAST, i + 1));
+                  } else {
+                    setAboutSlideIndex((i) => Math.max(0, i - 1));
+                  }
+                }}
+              >
+                <div
+                  className="flex transition-transform duration-300 ease-out motion-reduce:transition-none"
+                  style={{ transform: `translateX(-${aboutSlideIndex * 100}%)` }}
+                >
+                  <div className="w-full shrink-0 px-4 py-5 sm:px-6 sm:py-6">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-yellow-300/75">Game overview</div>
+                    <h2 className="mt-2 text-xl font-bold text-yellow-100 sm:text-2xl">Tactical battles across living battlefields</h2>
+                    <p className="mt-3 text-sm leading-7 text-yellow-50/85">
+                      Strategos is a tactical grid war game where historical-inspired factions clash across changing terrain. Each
+                      battle is shaped by troop roles, formation buffs, civilization passives, signature unit abilities, and
+                      battlefield feedback that helps you read momentum in real time.
+                    </p>
                   </div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Multiplayer</div>
-                  <div className="mt-1 text-sm leading-6 text-yellow-50/82">
-                    Build two armies and play local pass-and-play battles on the same machine.
+
+                  <div className="w-full shrink-0 px-4 py-5 sm:px-6 sm:py-6">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-yellow-300/75">How you can play</div>
+                    <h2 className="mt-2 text-xl font-bold text-yellow-100 sm:text-2xl">Modes, build, and scope</h2>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Single player</div>
+                        <p className="mt-1 text-sm leading-6 text-yellow-50/82">
+                          Campaign battles against the AI—terrain, faction buffs, and momentum all matter.
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Multiplayer</div>
+                        <p className="mt-1 text-sm leading-6 text-yellow-50/82">
+                          Two armies, one machine—local pass-and-play when it&apos;s your turn.
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Custom scenario</div>
+                        <p className="mt-1 text-sm leading-6 text-yellow-50/82">
+                          Place troops by hand and test matchups however you like.
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">This build</div>
+                        <p className="mt-1 text-sm leading-6 text-yellow-50/82">
+                          {GAME_BUILD_LABEL}—smarter AI, deeper passives and terrain, richer battle feedback.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      <div className="rounded-xl border border-amber-700/25 bg-black/30 px-2 py-2.5 text-center">
+                        <div className="text-[9px] font-semibold uppercase tracking-[0.2em] text-amber-200/75">Factions</div>
+                        <div className="mt-0.5 text-lg font-bold tabular-nums text-yellow-50">{ALL_TEAMS.length}</div>
+                      </div>
+                      <div className="rounded-xl border border-amber-700/25 bg-black/30 px-2 py-2.5 text-center">
+                        <div className="text-[9px] font-semibold uppercase tracking-[0.2em] text-amber-200/75">Maps</div>
+                        <div className="mt-0.5 text-lg font-bold tabular-nums text-yellow-50">{Object.keys(levels).length}</div>
+                      </div>
+                      <div className="rounded-xl border border-amber-700/25 bg-black/30 px-2 py-2.5 text-center">
+                        <div className="text-[9px] font-semibold uppercase tracking-[0.2em] text-amber-200/75">Grid</div>
+                        <div className="mt-0.5 text-lg font-bold tabular-nums text-yellow-50">
+                          {BATTLEFIELD_SIZE_OPTIONS[0]}–{BATTLEFIELD_SIZE_OPTIONS[BATTLEFIELD_SIZE_OPTIONS.length - 1]}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Custom Scenario</div>
-                  <div className="mt-1 text-sm leading-6 text-yellow-50/82">
-                    Place troops manually, set up your own encounters, and test faction matchups however you want.
+
+                  <div className="w-full shrink-0 px-4 py-5 sm:px-6 sm:py-6">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-amber-300/80">From the developer</div>
+                    <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+                      <div
+                        className="mx-auto flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border-2 border-amber-600/50 bg-gradient-to-br from-amber-900/60 to-black/60 font-serif text-2xl font-bold text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] sm:mx-0"
+                        aria-hidden
+                      >
+                        DH
+                      </div>
+                      <div className="min-w-0 flex-1 text-center sm:text-left">
+                        <h2 className="text-xl font-bold text-yellow-100 sm:text-2xl">Dimitar Hristovski</h2>
+                        <p className="mt-1 text-sm font-semibold text-amber-200/90">Creator &amp; developer — Strategos</p>
+                        <p className="mt-3 text-sm leading-7 text-yellow-50/85">
+                          I built Strategos as a solo project: a love letter to tight, readable tactics on a grid—where faction
+                          identity, terrain, and moment-to-moment feedback matter as much as raw damage. Every system here is
+                          something I wanted to feel on the battlefield: clearer stakes, smarter AI pressure, and battles that
+                          tell a story without drowning you in numbers.
+                        </p>
+                        <p className="mt-3 text-sm leading-7 text-yellow-50/85">
+                          If you&apos;re playing, thank you for spending time with something I poured a lot of care into. I hope
+                          the fights stay tense, the flanks feel earned, and you find a favorite faction to main.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Current Build</div>
-                  <div className="mt-1 text-sm leading-6 text-yellow-50/82">
-                    {GAME_BUILD_LABEL} with smarter AI, new passive abilities, terrain depth, and battle feedback effects.
+
+                  <div className="w-full shrink-0 px-4 py-5 sm:px-6 sm:py-6">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-yellow-300/75">Controls &amp; input</div>
+                    <h2 className="mt-2 text-xl font-bold text-yellow-100 sm:text-2xl">Keyboard &amp; mouse</h2>
+                    <div className="mt-4 max-h-[min(52vh,22rem)] overflow-y-auto pr-1">
+                      <GameControlsReferenceBody />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-center">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Factions</div>
-                  <div className="mt-1 text-base font-semibold text-yellow-50">{ALL_TEAMS.length}</div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-center">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Campaign Maps</div>
-                  <div className="mt-1 text-base font-semibold text-yellow-50">{Object.keys(levels).length}</div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-center">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Battle Sizes</div>
-                  <div className="mt-1 text-base font-semibold text-yellow-50">{BATTLEFIELD_SIZE_OPTIONS[0]}-{BATTLEFIELD_SIZE_OPTIONS[BATTLEFIELD_SIZE_OPTIONS.length - 1]}</div>
-                </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 border-t border-amber-800/30 bg-black/25 px-3 py-3">
+                {aboutSlideLabels.map((label, i) => (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-label={`Go to ${label}`}
+                    aria-current={i === aboutSlideIndex ? "true" : undefined}
+                    onClick={() => setAboutSlideIndex(i)}
+                    className={`rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                      i === aboutSlideIndex
+                        ? "bg-amber-600/90 text-black shadow-[0_0_16px_rgba(245,158,11,0.35)]"
+                        : "border border-amber-800/40 bg-black/30 text-amber-100/80 hover:border-amber-600/50 hover:bg-amber-950/40"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
+          <AppVersionCorner />
         </div>
       );
     }
 
     return (
-      <div className="cc-game-cursors flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
-        <div className="game-ui p-8 text-center max-w-2xl w-full">
-          <h1 className="text-5xl font-bold text-yellow-200 mb-4 drop-shadow-lg">Battlecry</h1>
-          <p className="text-yellow-100 text-lg mb-8">Choose your mode to enter the battlefield</p>
+      <div
+        className="cc-game-cursors flex min-w-0 flex-col items-center justify-center overflow-visible p-3 pb-8 pt-24 min-h-screen sm:p-5 sm:pb-10 sm:pt-28"
+        style={appBackgroundStyle}
+      >
+        <div className="relative z-0 w-full min-w-0 max-w-3xl">
+          <div className="game-ui relative z-10 mx-auto w-full max-w-[min(100%,28rem)] overflow-hidden rounded-2xl px-4 pb-6 pt-[6rem] text-center shadow-[0_16px_40px_rgba(0,0,0,0.42)] ring-1 ring-black/25 sm:max-w-md sm:px-8 sm:pb-8 sm:pt-28">
+            <div className="mx-auto flex w-full max-w-md flex-col gap-4">
+              <button
+                type="button"
+                onClick={startSinglePlayerMode}
+                className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+              >
+                Single Player
+              </button>
+              <button
+                type="button"
+                onClick={startMultiplayerMode}
+                className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+              >
+                Multiplayer
+              </button>
+              <button
+                type="button"
+                onClick={startCustomScenarioMode}
+                className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+              >
+                Custom scenario
+              </button>
+              <button
+                type="button"
+                onClick={() => setStartScreen("about")}
+                className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+              >
+                About
+              </button>
+            </div>
 
-          <div className="flex flex-col gap-4 max-w-md mx-auto">
-            <button
-              onClick={startSinglePlayerMode}
-              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-            >
-              Single Player
-            </button>
-            <button
-              onClick={startMultiplayerMode}
-              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-            >
-              Multiplayer
-            </button>
-            <button
-              onClick={startCustomScenarioMode}
-              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-            >
-              Custom Scenario
-            </button>
-            <button
-              onClick={() => setStartScreen("about")}
-              className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-            >
-              About
-            </button>
+            <div className="mx-auto mt-6 w-full max-w-md border-t border-black/20 pt-4">
+              <button
+                type="button"
+                onClick={() => setStartScreen("options")}
+                className="battle-button w-full px-6 py-3 text-lg font-semibold bg-gray-800/90 hover:bg-gray-900"
+              >
+                Options
+              </button>
+            </div>
           </div>
-
-          <div className="mt-6 max-w-md mx-auto">
-            <button
-              onClick={() => setStartScreen("options")}
-              className="battle-button w-full px-6 py-3 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-            >
-              Options
-            </button>
-          </div>
+          <h1 className="pointer-events-none absolute left-1/2 top-0 z-30 w-[min(100%,25rem)] max-w-[calc(100vw-1rem)] -translate-x-1/2 -translate-y-[40%] px-1 sm:max-w-[42rem] sm:-translate-y-[44%]">
+            <img
+              src="/strategos.png"
+              alt="Strategos"
+              width={640}
+              height={200}
+              className="mx-auto h-auto max-h-[min(48vh,18rem)] w-full object-contain object-center drop-shadow-[0_20px_50px_rgba(0,0,0,0.55)] sm:max-h-[min(52vh,22rem)]"
+              decoding="async"
+            />
+          </h1>
         </div>
+        <AppVersionCorner />
       </div>
     );
   }
+
+  const battleOutcomeBanner = gameStarted && !isSetupMode ? checkEnd() : null;
 
   return (
     <div
@@ -3543,7 +4050,7 @@ function CodeConq() {
         <div className="game-ui w-full rounded-none border-x-0 px-2 sm:px-3 py-2 flex flex-wrap items-center gap-2 justify-between relative">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-yellow-200 drop-shadow-lg">Battlecry</h1>
+              <h1 className="text-base sm:text-lg font-bold text-yellow-200 drop-shadow-lg">Strategos</h1>
               <span
                 className="inline-flex items-center gap-1.5 rounded-full border border-amber-600/60 bg-black/30 px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold tabular-nums text-amber-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
                 title={
@@ -3562,28 +4069,64 @@ function CodeConq() {
                 {gameMode === "multiplayer" ? "Local Multiplayer" : "Player vs AI"}
               </span>
             </div>
-            <p className="text-green-200 text-[10px] sm:text-[11px] mt-0.5 max-w-lg truncate">
-              {isSetupMode
-                ? gameMode === "custom-scenario"
-                  ? `Build the battlefield and choose who you control as ${playerTeam}.`
-                  : "Drag troops to place them on the field."
-                : gameMode === "multiplayer"
-                  ? "Pass-and-play mode on one device."
-                  : gameStarted
-                    ? `You control ${playerTeam}.`
-                    : `You control ${playerTeam}. Press Start Battle when ready.`}
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-yellow-200 text-xs sm:text-sm font-semibold">
-            <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-3 py-1">
-              {gameMode === "custom-scenario"
-                ? (isSetupMode ? `Custom Setup (${playerTeam})` : `Mode: Custom Scenario (${playerTeam} vs AI)`)
-                : gameMode === "multiplayer"
-                  ? `Mode: Multiplayer (${multiplayerTeams[0]} vs ${multiplayerTeams[1]})`
-                  : `Level: ${LEVEL_MATCHUP_LABELS[currentLevel]} (${playerTeam})`}
-            </span>
             {!isSetupMode && <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-3 py-1">Round {round}</span>}
+
+            {!isSetupMode && gameStarted && gameOptions.timedPlayEnabled && timedPlayTeamKeys.length > 0 && !timedPlayLoserTeam && (
+              <span
+                className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-amber-700/50 bg-black/20 px-1.5 py-1"
+                title={`Timed play: ${TURN_ACTION_BUDGET_MS / 1000}s move clock + ${getPerTeamTimeBudgetMinutes(battlefieldSize)} min per faction`}
+              >
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-bold tabular-nums sm:text-[11px] ${
+                    turnActionSecsLeft <= 5
+                      ? "border-rose-500/85 bg-rose-950/40 text-rose-100 shadow-[0_0_12px_rgba(244,63,94,0.25)]"
+                      : "border-sky-600/70 bg-sky-950/30 text-sky-100"
+                  }`}
+                  title={`${TURN_ACTION_BUDGET_MS / 1000}s move clock (${turn})`}
+                >
+                  <span aria-hidden>⏲</span>
+                  <span className="max-w-[6rem] truncate">{turn}</span>
+                  <span className="text-yellow-100/90">·</span>
+                  <span>{turnActionSecsLeft}s</span>
+                </span>
+                {timedPlayTeamKeys.map((teamKey) => {
+                  const bank = timedPlayCommittedMs[teamKey] ?? 0;
+                  const onTurn = teamKey === turn && !timedPlayLoserTeam;
+                  const remainingMs =
+                    timedPlayLoserTeam === teamKey
+                      ? 0
+                      : onTurn
+                        ? Math.max(0, bank - (matchNowMs - timedPlayTurnStartedAtRef.current))
+                        : bank;
+                  const low = remainingMs <= 60_000 && timedPlayLoserTeam !== teamKey;
+                  return (
+                    <span
+                      key={teamKey}
+                      className={`inline-flex max-w-[8.5rem] items-center gap-1 rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums sm:text-[11px] ${
+                        timedPlayLoserTeam === teamKey
+                          ? "border-rose-500/80 bg-rose-950/40 text-rose-100"
+                          : low
+                            ? "border-orange-500/80 bg-orange-950/35 text-orange-100"
+                            : teamKey === turn
+                              ? "border-amber-400/90 bg-black/35 text-amber-50"
+                              : "border-amber-600/70 bg-black/30 text-amber-50/90"
+                      }`}
+                    >
+                      <span className="min-w-0 truncate" title={teamKey}>
+                        {teamKey}
+                      </span>
+                      <span className="shrink-0" aria-hidden>
+                        ·
+                      </span>
+                      <span className="shrink-0">{formatMatchCountdown(remainingMs)}</span>
+                    </span>
+                  );
+                })}
+              </span>
+            )}
 
             {!isSetupMode && gameMode !== "custom-scenario" && (
               <div className="flex flex-wrap items-center gap-2">
@@ -3646,6 +4189,17 @@ function CodeConq() {
           </div>
         </div>
 
+        {battleOutcomeBanner && (
+          <div
+            className="game-ui w-full rounded-none border-x-0 border-t border-emerald-600/55 bg-emerald-950/88 px-3 py-2 text-center shadow-[0_6px_24px_rgba(0,0,0,0.35)]"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-200/85">Battle over</div>
+            <div className="mt-0.5 text-sm font-bold leading-snug text-emerald-50 sm:text-base">{battleOutcomeBanner}</div>
+          </div>
+        )}
+
         {passiveTeams.length > 0 && (
           <div className="fixed left-3 top-28 z-[60] max-h-[min(calc(100dvh-7rem),calc(100vh-7rem))] overflow-y-auto overflow-x-hidden pb-4 pt-0.5 [-webkit-overflow-scrolling:touch] sm:left-4">
             <div className="game-ui flex flex-col items-center gap-3 rounded-r-2xl border border-yellow-600/70 bg-gray-950/90 px-2 py-3 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-sm">
@@ -3657,8 +4211,56 @@ function CodeConq() {
         )}
 
         <div className="pointer-events-none fixed right-3 top-28 z-20 flex max-h-[calc(100vh-8rem)] flex-col items-end gap-2 sm:right-4">
+          {isBattlefieldFullscreen && !isSetupMode && gameStarted && gameOptions.timedPlayEnabled && timedPlayTeamKeys.length > 0 && !timedPlayLoserTeam && (
+            <div
+              className="pointer-events-auto flex max-w-[min(92vw,16rem)] flex-col gap-1.5 rounded-lg border border-amber-600/70 bg-gray-900/85 px-2.5 py-1.5 text-[10px] font-semibold backdrop-blur-sm sm:text-[11px]"
+              title={`Timed play: ${TURN_ACTION_BUDGET_MS / 1000}s / turn + total bank`}
+            >
+              <div className="text-[9px] uppercase tracking-wide text-amber-200/90">Timed play</div>
+              <div
+                className={`flex items-center justify-between gap-2 rounded border px-2 py-0.5 font-mono font-bold tabular-nums ${
+                  turnActionSecsLeft <= 5
+                    ? "border-rose-500/70 bg-rose-950/40 text-rose-100"
+                    : "border-sky-600/60 bg-sky-950/30 text-sky-100"
+                }`}
+              >
+                <span className="truncate">⏲ {turn}</span>
+                <span>{turnActionSecsLeft}s</span>
+              </div>
+              {timedPlayTeamKeys.map((teamKey) => {
+                const bank = timedPlayCommittedMs[teamKey] ?? 0;
+                const onTurn = teamKey === turn && !timedPlayLoserTeam;
+                const remainingMs =
+                  timedPlayLoserTeam === teamKey
+                    ? 0
+                    : onTurn
+                      ? Math.max(0, bank - (matchNowMs - timedPlayTurnStartedAtRef.current))
+                      : bank;
+                const low = remainingMs <= 60_000 && timedPlayLoserTeam !== teamKey;
+                return (
+                  <div
+                    key={teamKey}
+                    className={`flex items-center justify-between gap-2 font-mono tabular-nums ${
+                      timedPlayLoserTeam === teamKey
+                        ? "text-rose-200"
+                        : low
+                          ? "text-orange-200"
+                          : teamKey === turn
+                            ? "text-amber-100"
+                            : "text-amber-100/80"
+                    }`}
+                  >
+                    <span className="min-w-0 truncate" title={teamKey}>
+                      {teamKey}
+                    </span>
+                    <span className="shrink-0">{formatMatchCountdown(remainingMs)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {isBattlefieldFullscreen && !isSetupMode && (
-            <div className="pointer-events-auto text-yellow-100 border border-yellow-700 rounded bg-gray-900/80 px-2.5 py-1.5 text-xs sm:text-sm font-semibold backdrop-blur-sm">
+            <div className="pointer-events-auto max-w-[min(92vw,22rem)] whitespace-normal border border-yellow-700 bg-gray-900/80 px-2.5 py-1.5 text-center text-xs font-semibold leading-snug text-yellow-100 backdrop-blur-sm sm:text-sm">
               {checkEnd() || `${turn.toUpperCase()} TURN`}
             </div>
           )}
@@ -3834,10 +4436,13 @@ function CodeConq() {
           {!isSetupMode && (gameOptions.showTurnBanner || gameOptions.showBattleLog) && (
             <button
               type="button"
-              onClick={() => setIsBattleLogPanelOpen(true)}
-              className={`pointer-events-auto ${iconActionButtonClass} bg-amber-700 hover:bg-amber-800`}
-              aria-label="Open battle log"
-              title="Open battle log"
+              onClick={() => setIsBattleLogPanelOpen((open) => !open)}
+              className={`pointer-events-auto ${iconActionButtonClass} bg-amber-700 hover:bg-amber-800 ${
+                isBattleLogPanelOpen ? "ring-2 ring-amber-300 ring-offset-2 ring-offset-gray-900" : ""
+              }`}
+              aria-label={isBattleLogPanelOpen ? "Close battle log" : "Open battle log"}
+              aria-expanded={isBattleLogPanelOpen}
+              title={isBattleLogPanelOpen ? "Close battle log" : "Open battle log"}
             >
               📜
             </button>
@@ -3944,7 +4549,7 @@ function CodeConq() {
                   setLog((prevLog) => [`No more merges allowed this game!`, ...prevLog]);
                 }
               }}
-              disabled={mergeCount >= 2}
+              disabled={mergeCount >= 2 || Boolean(timedPlayLoserTeam)}
               className={`pointer-events-auto ${iconActionButtonClass} ${mergeMode ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"} disabled:opacity-50 disabled:cursor-not-allowed`}
               aria-label={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
               title={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
@@ -4022,13 +4627,28 @@ function CodeConq() {
       {isGameMenuOpen && (
         <div className="fixed inset-0 z-40 bg-black/65 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
           <div className="flex min-h-full items-center justify-center">
-            <div className="game-ui w-full max-w-md overflow-hidden rounded-[28px] border border-yellow-700/80 shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+            <div className="game-ui w-full max-w-md overflow-visible rounded-[28px] border border-yellow-700/80 shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
               <div className="border-b border-yellow-700/40 px-5 py-5 sm:px-6">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-yellow-300/75">Pause Menu</div>
                 <div className="mt-2 flex items-center justify-between gap-4">
-                  <div>
+                  <div
+                    className="group relative z-0 min-w-0 rounded-lg outline-none hover:z-20 focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-amber-500/40"
+                    tabIndex={0}
+                    title={
+                      gameMenuControlsOpen
+                        ? "Keyboard, mouse, and map navigation — same details as About on the main menu."
+                        : "Open battle references, settings, controls, and quick navigation."
+                    }
+                  >
                     <h2 className="text-2xl font-bold text-yellow-200 sm:text-3xl">Game Menu</h2>
-                    <p className="mt-1 text-sm text-yellow-100/75">Open battle references, settings, and quick navigation.</p>
+                    <div
+                      className="pointer-events-none absolute left-0 top-full z-[60] mt-2 max-w-[min(100%,18rem)] rounded-xl border border-yellow-600/50 bg-gray-950/98 px-3 py-2 text-sm leading-relaxed text-yellow-100/90 shadow-[0_12px_40px_rgba(0,0,0,0.5)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                      role="tooltip"
+                    >
+                      {gameMenuControlsOpen
+                        ? "Keyboard, mouse, and map navigation — same details as About on the main menu."
+                        : "Open battle references, settings, controls, and quick navigation."}
+                    </div>
                   </div>
                   <button
                     onClick={() => setIsGameMenuOpen(false)}
@@ -4038,43 +4658,108 @@ function CodeConq() {
                   </button>
                 </div>
               </div>
+              {gameMenuControlsOpen ? (
+                <div className="border-t border-yellow-700/35 px-5 py-5 sm:px-6">
+                  <button
+                    type="button"
+                    onClick={() => setGameMenuControlsOpen(false)}
+                    className="battle-button mb-4 w-full px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800 sm:w-auto"
+                  >
+                    Back to menu
+                  </button>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-yellow-300/75">Controls</div>
+                  <div className="mt-3 max-h-[min(52vh,28rem)] overflow-y-auto pr-1">
+                    <GameControlsReferenceBody dense />
+                  </div>
+                </div>
+              ) : (
               <div className="grid gap-3 p-5 sm:p-6">
                 <button
+                  type="button"
+                  title="Battle, setup, large-map pan (arrows / WASD), pause menu, and audio."
+                  onClick={() => setGameMenuControlsOpen(true)}
+                  className="group relative z-0 rounded-2xl border border-sky-700/45 bg-sky-950/20 px-4 py-4 text-left transition-colors hover:z-20 hover:bg-sky-900/25 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50"
+                >
+                  <div className="text-base font-semibold text-sky-100">Controls &amp; shortcuts</div>
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 top-full z-[60] mt-2 rounded-xl border border-sky-600/45 bg-gray-950/98 px-3 py-2 text-sm leading-relaxed text-sky-50/90 shadow-[0_12px_40px_rgba(0,0,0,0.5)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+                    role="tooltip"
+                  >
+                    Battle, setup, large-map pan (arrows / WASD), pause menu, and audio.
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  title="Gameplay toggles, sound, and battlefield size."
                   onClick={openInGameOptions}
-                  className="rounded-2xl border border-yellow-700/50 bg-black/20 px-4 py-4 text-left transition-colors hover:bg-yellow-700/15"
+                  className="group relative z-0 rounded-2xl border border-yellow-700/50 bg-black/20 px-4 py-4 text-left transition-colors hover:z-20 hover:bg-yellow-700/15 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400/50"
                 >
                   <div className="text-base font-semibold text-yellow-100">Options</div>
-                  <div className="mt-1 text-sm text-yellow-100/70">Gameplay toggles, sound, and battlefield size.</div>
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 top-full z-[60] mt-2 rounded-xl border border-yellow-600/45 bg-gray-950/98 px-3 py-2 text-sm leading-relaxed text-yellow-100/90 shadow-[0_12px_40px_rgba(0,0,0,0.5)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+                    role="tooltip"
+                  >
+                    Gameplay toggles, sound, and battlefield size.
+                  </div>
                 </button>
                 <button
+                  type="button"
+                  title="Battle rules, troop types, hybrids, and terrain effects."
                   onClick={openInGameMechanics}
-                  className="rounded-2xl border border-cyan-700/40 bg-cyan-950/15 px-4 py-4 text-left transition-colors hover:bg-cyan-800/20"
+                  className="group relative z-0 rounded-2xl border border-cyan-700/40 bg-cyan-950/15 px-4 py-4 text-left transition-colors hover:z-20 hover:bg-cyan-800/20 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50"
                 >
                   <div className="text-base font-semibold text-cyan-100">Mechanics</div>
-                  <div className="mt-1 text-sm text-cyan-50/75">Battle rules, troop types, hybrids, and terrain effects.</div>
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 top-full z-[60] mt-2 rounded-xl border border-cyan-600/45 bg-gray-950/98 px-3 py-2 text-sm leading-relaxed text-cyan-50/90 shadow-[0_12px_40px_rgba(0,0,0,0.5)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+                    role="tooltip"
+                  >
+                    Battle rules, troop types, hybrids, and terrain effects.
+                  </div>
                 </button>
                 <button
+                  type="button"
+                  title="Browse faction rosters and troop reference stats."
                   onClick={openInGameUnits}
-                  className="rounded-2xl border border-yellow-700/50 bg-black/20 px-4 py-4 text-left transition-colors hover:bg-yellow-700/15"
+                  className="group relative z-0 rounded-2xl border border-yellow-700/50 bg-black/20 px-4 py-4 text-left transition-colors hover:z-20 hover:bg-yellow-700/15 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400/50"
                 >
                   <div className="text-base font-semibold text-yellow-100">Units</div>
-                  <div className="mt-1 text-sm text-yellow-100/70">Browse faction rosters and troop reference stats.</div>
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 top-full z-[60] mt-2 rounded-xl border border-yellow-600/45 bg-gray-950/98 px-3 py-2 text-sm leading-relaxed text-yellow-100/90 shadow-[0_12px_40px_rgba(0,0,0,0.5)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+                    role="tooltip"
+                  >
+                    Browse faction rosters and troop reference stats.
+                  </div>
                 </button>
                 <button
+                  type="button"
+                  title="Terrain visuals, overlays, and battlefield presentation."
                   onClick={openInGameGraphics}
-                  className="rounded-2xl border border-emerald-700/40 bg-emerald-950/15 px-4 py-4 text-left transition-colors hover:bg-emerald-800/20"
+                  className="group relative z-0 rounded-2xl border border-emerald-700/40 bg-emerald-950/15 px-4 py-4 text-left transition-colors hover:z-20 hover:bg-emerald-800/20 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50"
                 >
                   <div className="text-base font-semibold text-emerald-100">Graphics</div>
-                  <div className="mt-1 text-sm text-emerald-50/75">Terrain visuals, overlays, and battlefield presentation.</div>
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 top-full z-[60] mt-2 rounded-xl border border-emerald-600/45 bg-gray-950/98 px-3 py-2 text-sm leading-relaxed text-emerald-50/90 shadow-[0_12px_40px_rgba(0,0,0,0.5)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+                    role="tooltip"
+                  >
+                    Terrain visuals, overlays, and battlefield presentation.
+                  </div>
                 </button>
                 <button
+                  type="button"
+                  title="Leave the current battle and return to the main screen."
                   onClick={backToMainMenu}
-                  className="rounded-2xl border border-rose-700/40 bg-rose-950/15 px-4 py-4 text-left transition-colors hover:bg-rose-800/20"
+                  className="group relative z-0 rounded-2xl border border-rose-700/40 bg-rose-950/15 px-4 py-4 text-left transition-colors hover:z-20 hover:bg-rose-800/20 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/50"
                 >
                   <div className="text-base font-semibold text-rose-100">Back to Menu</div>
-                  <div className="mt-1 text-sm text-rose-50/75">Leave the current battle and return to the main screen.</div>
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 top-full z-[60] mt-2 rounded-xl border border-rose-600/45 bg-gray-950/98 px-3 py-2 text-sm leading-relaxed text-rose-50/90 shadow-[0_12px_40px_rgba(0,0,0,0.5)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+                    role="tooltip"
+                  >
+                    Leave the current battle and return to the main screen.
+                  </div>
                 </button>
               </div>
+              )}
             </div>
           </div>
         </div>
@@ -4139,7 +4824,7 @@ function CodeConq() {
 
       <div
         className={`flex w-full min-w-0 max-w-full justify-center ${
-          isBattlefieldFullscreen ? "bf-main-stage min-h-0 flex-1 flex-col overflow-hidden justify-center" : ""
+          isBattlefieldFullscreen ? "bf-main-stage min-h-0 flex-1 flex-col overflow-hidden justify-center pt-2" : ""
         }`}
       >
         {false && !isSetupMode && (gameOptions.showTurnBanner || gameOptions.showBattleLog) && (
@@ -4213,7 +4898,7 @@ function CodeConq() {
           className={`battlefield-container relative mx-auto flex w-full min-w-0 max-w-full justify-center ${
             isBattlefieldFullscreen
               ? "bf-fs-battlefield min-h-0 flex-1 flex-col overflow-hidden items-center justify-center"
-              : "mt-3 sm:mt-4 items-center"
+              : "mt-7 sm:mt-9 items-center"
           }`}
           style={battlefieldMotionCssVars as CSSProperties}
           data-battle-motion={reduceUiMotion ? "reduced" : "normal"}
@@ -4929,71 +5614,113 @@ function CodeConq() {
         )}
 
         {isBattleLogPanelOpen && !isSetupMode && (gameOptions.showTurnBanner || gameOptions.showBattleLog) && (
-          <div className="fixed left-3 right-3 top-24 z-40 sm:left-4 sm:right-auto sm:w-[30rem]">
-            <div className="game-ui p-4 sm:p-6 relative max-h-[calc(100vh-7rem)] overflow-y-auto">
-                <div className="flex items-center justify-between gap-4 mb-4">
-                  <h2 className="text-2xl sm:text-3xl font-bold text-yellow-200">Battle Log</h2>
-                  <button
-                    onClick={() => setIsBattleLogPanelOpen(false)}
-                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
-                  >
-                    Close
-                  </button>
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 px-3 py-8 backdrop-blur-md sm:px-6"
+            role="presentation"
+          >
+            <div
+              className="game-ui flex max-h-[min(88vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border-2 border-amber-600/55 shadow-[0_0_0_1px_rgba(251,191,36,0.08),0_28px_80px_rgba(0,0,0,0.65)]"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="battle-log-dialog-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-700/45 bg-gradient-to-r from-gray-950 via-gray-900 to-amber-950/30 px-4 py-3 sm:px-5">
+                <div className="min-w-0">
+                  <h2 id="battle-log-dialog-title" className="truncate text-lg font-bold tracking-tight text-amber-100 sm:text-2xl">
+                    Battle log
+                  </h2>
+                  <p className="mt-0.5 text-[10px] text-amber-200/65 sm:text-xs">
+                    Tap 📜 again to close
+                    {gameOptions.timedPlayEnabled && gameStarted
+                      ? ` · Timed play: ${TURN_ACTION_BUDGET_MS / 1000}s move clock + total bank`
+                      : ""}
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setIsBattleLogPanelOpen(false)}
+                  className="battle-button shrink-0 rounded-full px-3 py-2 text-xs font-semibold bg-gray-800 hover:bg-gray-700 sm:text-sm"
+                >
+                  Close
+                </button>
+              </div>
 
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
                 {gameOptions.showTurnBanner && (
-                  <div className="text-center relative mb-4">
-                    <svg className="absolute -top-2 left-4 w-8 h-8 text-yellow-400 opacity-60" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 8l3 4h2l-3 4-3-4H9l3-4z"/>
-                    </svg>
-                    <div className="text-2xl font-bold text-yellow-200">
-                      {checkEnd() || `${turn.toUpperCase()} TURN`}
-                    </div>
-                    <div className="text-sm text-yellow-100 mt-1">
+                  <div className="relative mb-5 rounded-xl border border-amber-700/35 bg-black/25 px-4 py-4 text-center">
+                    <div className="text-xl font-bold text-yellow-100 sm:text-2xl">{checkEnd() || `${turn.toUpperCase()} TURN`}</div>
+                    <div className="mt-2 text-xs text-yellow-100/85 sm:text-sm">
                       {gameMode === "multiplayer"
                         ? `${turn} player's turn`
-                        : turn === playerTeam ? "Your turn - Click to select and move/attack"
-                          : turn === "Barbarians" ? "Barbarians are thinking..."
-                          : turn === "Greeks" ? "Greeks are thinking..."
-                          : turn === "Gauls" ? "Gauls are thinking..."
-                          : turn === "Germanic" ? "Germanic tribes are thinking..."
-                          : turn === "Carthage" ? "Carthage is thinking..."
-                          : turn === "Egypt" ? "Egypt is thinking..."
-                          : turn === "Thracians" ? "Thracians are thinking..."
-                          : turn === "Dacians" ? "Dacians are thinking..."
-                          : turn === "Parthians" ? "Parthians are thinking..."
-                          : turn === "Seleucids" ? "Seleucids are thinking..."
-                          : turn === "Vikings" ? "Vikings are thinking..." : ""}
+                        : turn === playerTeam
+                          ? "Your turn — select a unit, then move or attack"
+                          : turn === "Barbarians"
+                            ? "Barbarians are thinking..."
+                            : turn === "Greeks"
+                              ? "Greeks are thinking..."
+                              : turn === "Gauls"
+                                ? "Gauls are thinking..."
+                                : turn === "Germanic"
+                                  ? "Germanic tribes are thinking..."
+                                  : turn === "Carthage"
+                                    ? "Carthage is thinking..."
+                                    : turn === "Egypt"
+                                      ? "Egypt is thinking..."
+                                      : turn === "Thracians"
+                                        ? "Thracians are thinking..."
+                                        : turn === "Dacians"
+                                          ? "Dacians are thinking..."
+                                          : turn === "Parthians"
+                                            ? "Parthians are thinking..."
+                                            : turn === "Seleucids"
+                                              ? "Seleucids are thinking..."
+                                              : turn === "Vikings"
+                                                ? "Vikings are thinking..."
+                                                : ""}
                     </div>
+                    {gameStarted && gameOptions.timedPlayEnabled && !timedPlayLoserTeam && (
+                      <div
+                        className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-xs font-bold tabular-nums ${
+                          turnActionSecsLeft <= 5
+                            ? "border-rose-500/80 bg-rose-950/40 text-rose-100"
+                            : "border-sky-600/60 bg-sky-950/35 text-sky-100"
+                        }`}
+                      >
+                        Move clock · {turnActionSecsLeft}s left
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {gameOptions.showTurnBanner && gameOptions.showBattleLog && (
-                  <div className="my-3 border-t border-yellow-600/50" />
-                )}
-
                 {gameOptions.showBattleLog && (
-                  <div className="relative">
-                    <h3 className="text-yellow-200 font-bold mb-1 text-lg border-b border-yellow-600 pb-2">Battle Timeline</h3>
-                    <p className="mb-3 text-xs text-yellow-100/70">Attacks, kills, movement, AI intent, merges, and state changes appear here in order.</p>
-                    <div className="max-h-[60vh] overflow-y-auto space-y-2">
+                  <div>
+                    <h3 className="mb-1 text-sm font-bold uppercase tracking-[0.2em] text-amber-300/90">Timeline</h3>
+                    <p className="mb-3 text-xs leading-relaxed text-yellow-100/65">
+                      Attacks, movement, AI orders, merges, and outcomes (newest first).
+                    </p>
+                    <div className="space-y-2">
                       {visibleBattleLog.map((line, i) => {
                         const appearance = getBattleLogAppearance(line);
                         return (
-                        <div
-                          key={i}
-                          className={`rounded-xl border-l-2 p-2.5 text-sm ${appearance.accent} ${appearance.text} ${appearance.bg}`}
-                        >
-                          {line}
-                        </div>
-                      )})}
+                          <div
+                            key={i}
+                            className={`rounded-xl border-l-[3px] p-3 text-sm leading-snug ${appearance.accent} ${appearance.text} ${appearance.bg}`}
+                          >
+                            {line}
+                          </div>
+                        );
+                      })}
                       {visibleBattleLog.length === 0 && (
-                        <p className="text-sm text-yellow-100/75">No battle actions yet.</p>
+                        <p className="rounded-lg border border-dashed border-yellow-700/40 bg-black/20 px-3 py-6 text-center text-sm text-yellow-100/70">
+                          No entries yet.
+                        </p>
                       )}
                     </div>
                   </div>
                 )}
               </div>
+            </div>
           </div>
         )}
 
@@ -5160,6 +5887,7 @@ function CodeConq() {
         )}
       </div>
       </div>
+      <AppVersionCorner />
     </div>
   );
 }

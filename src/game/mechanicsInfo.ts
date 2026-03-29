@@ -1,3 +1,4 @@
+import { TURN_ACTION_BUDGET_MS } from "./constants";
 import type { TerrainType, TroopMechanicType } from "./types";
 
 export const getBattleLogAppearance = (entry: string) => {
@@ -42,6 +43,13 @@ export const getBattleLogAppearance = (entry: string) => {
       accent: "border-fuchsia-400/70",
       text: "text-fuchsia-100",
       bg: "bg-fuchsia-950/35"
+    };
+  }
+  if (normalizedEntry.includes("move clock")) {
+    return {
+      accent: "border-amber-400/70",
+      text: "text-amber-100",
+      bg: "bg-amber-950/35"
     };
   }
   return {
@@ -120,6 +128,17 @@ export const ADDITIONAL_MECHANICS_INFO = [
     icon: "🔒",
     title: "Terrain Lock",
     description: "Terrain settings and regeneration are only available before combat starts. Once the battle begins, the battlefield is locked for the rest of the match."
+  },
+  {
+    icon: "⏱",
+    title: "Timed Play (Optional)",
+    description: `Enable under Options before the battle starts (locked mid-match). Each living faction gets a chess-style total bank—5 minutes on an 8×8 map, +1 minute per +2 grid steps—that only ticks on that side’s turn; hitting zero forfeits the match on time (survivors tie-break by army HP). A ${TURN_ACTION_BUDGET_MS / 1000}s move clock resets every turn; when it runs out, that turn auto-passes. The header and fullscreen overlay group both timers under “Timed play” while a battle is running.`
+  },
+  {
+    icon: "📜",
+    title: "Battle Log",
+    description:
+      "Use the scroll button on the floating toolbar to open a centered battle log modal; tap the same button again to close. Entries are color-coded (attacks, kills, moves, charges, morale, merges, time events). With Turn Banner on, the panel also shows whose turn it is and—when timed play is on—the active move clock."
   }
 ] as const;
 

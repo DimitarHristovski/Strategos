@@ -101,10 +101,16 @@ export const ALL_DIRECTIONS: TerrainPoint[] = [
   { x: -1, y: 1 }
 ];
 
-export const GAME_STATE_STORAGE_KEY = "battlecry-game-state";
-export const GAME_VERSION = "0.0.0";
+export const GAME_STATE_STORAGE_KEY = "strategos-game-state";
+/** Previous key; loaded once and migrated so existing players keep saves. */
+export const LEGACY_GAME_STATE_STORAGE_KEY = "battlecry-game-state";
+/** Injected at build from package.json (see vite.config `define`). */
+export const GAME_VERSION = __APP_VERSION__;
 export const GAME_BUILD_LABEL = "Battle Feedback Pass";
 export const BATTLEFIELD_SIZE_OPTIONS: BattlefieldSize[] = [8, 10, 12, 14, 16, 18, 20];
+
+/** Per-turn move clock when timed play is on (with chess clocks); turn auto-passes when this elapses. */
+export const TURN_ACTION_BUDGET_MS = 15_000;
 
 export const DEFAULT_GAME_OPTIONS: GameOptions = {
   musicEnabled: true,
@@ -115,5 +121,48 @@ export const DEFAULT_GAME_OPTIONS: GameOptions = {
   showTurnBanner: true,
   terrainEffectsEnabled: true,
   terrainTileVideosEnabled: true,
+  timedPlayEnabled: false,
   battlefieldSize: 8
 };
+
+/** Persists music/SFX toggles so they survive refresh even if main game save is missing or stale. */
+export const GAME_AUDIO_PREFS_STORAGE_KEY = "strategos-audio-prefs";
+export const LEGACY_GAME_AUDIO_PREFS_STORAGE_KEY = "battlecry-audio-prefs";
+
+export type StoredAudioPrefs = Pick<GameOptions, "musicEnabled" | "sfxEnabled">;
+
+export function readGameAudioPrefs(): StoredAudioPrefs | null {
+  if (typeof window === "undefined") return null;
+  try {
+    let raw = window.localStorage.getItem(GAME_AUDIO_PREFS_STORAGE_KEY);
+    if (!raw) {
+      raw = window.localStorage.getItem(LEGACY_GAME_AUDIO_PREFS_STORAGE_KEY);
+      if (raw) {
+        try {
+          window.localStorage.setItem(GAME_AUDIO_PREFS_STORAGE_KEY, raw);
+          window.localStorage.removeItem(LEGACY_GAME_AUDIO_PREFS_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<StoredAudioPrefs>;
+    return {
+      musicEnabled: typeof p.musicEnabled === "boolean" ? p.musicEnabled : DEFAULT_GAME_OPTIONS.musicEnabled,
+      sfxEnabled: typeof p.sfxEnabled === "boolean" ? p.sfxEnabled : DEFAULT_GAME_OPTIONS.sfxEnabled
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeGameAudioPrefs(prefs: StoredAudioPrefs): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(GAME_AUDIO_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+    window.localStorage.removeItem(LEGACY_GAME_AUDIO_PREFS_STORAGE_KEY);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}

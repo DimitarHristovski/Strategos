@@ -39,6 +39,8 @@ export type GameOptions = {
   terrainEffectsEnabled: boolean;
   /** When true (and motion is not reduced), terrain uses animated tiles ("Shader: On" in Graphics). */
   terrainTileVideosEnabled: boolean;
+  /** Per-faction chess clocks in battle (budget scales with map size). Off = no time pressure. */
+  timedPlayEnabled: boolean;
   battlefieldSize: BattlefieldSize;
 };
 
@@ -110,4 +112,8 @@ export type SavedGameState = {
   terrainGenerationSettings?: Partial<TerrainGenerationSettings>;
   battlefieldTerrain?: TerrainType[][];
   gameOptions?: Partial<GameOptions>;
+  /** Remaining ms per team (committed at end of each turn); only when timed play is on. */
+  timedPlayCommittedMs?: Record<string, number>;
+  /** Faction that ran out of time — ends the battle. */
+  timedPlayLoserTeam?: string | null;
 };
