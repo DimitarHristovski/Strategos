@@ -1,5 +1,13 @@
 import { levels } from "../Units/InitialUnits";
-import type { BattlefieldSize, GameOptions, TeamName, TerrainGenerationSettings, TerrainPoint, TerrainType } from "./types";
+import type {
+  BattlefieldSize,
+  GameMode,
+  GameOptions,
+  TeamName,
+  TerrainGenerationSettings,
+  TerrainPoint,
+  TerrainType
+} from "./types";
 
 export const BACKGROUND_MUSIC_SRC = "/Crown%20of%20Ashes.mp3";
 
@@ -164,5 +172,43 @@ export function writeGameAudioPrefs(prefs: StoredAudioPrefs): void {
     window.localStorage.removeItem(LEGACY_GAME_AUDIO_PREFS_STORAGE_KEY);
   } catch {
     /* ignore quota / private mode */
+  }
+}
+
+export type StartScreenState = "menu" | "options" | "about";
+
+const ABOUT_SCREEN_SLIDE_COUNT = 4;
+
+/** Sync read of mode + pre-game UI from the same save blob (avoids a main-menu flash on refresh). */
+export function readPersistedSessionNavigation(): {
+  gameMode: GameMode | null;
+  startScreen: StartScreenState;
+  aboutSlideIndex: number;
+} {
+  const defaults = {
+    gameMode: null as GameMode | null,
+    startScreen: "menu" as StartScreenState,
+    aboutSlideIndex: 0
+  };
+  if (typeof window === "undefined") return defaults;
+  try {
+    let raw = window.localStorage.getItem(GAME_STATE_STORAGE_KEY);
+    if (!raw) raw = window.localStorage.getItem(LEGACY_GAME_STATE_STORAGE_KEY);
+    if (!raw) return defaults;
+    const s = JSON.parse(raw) as Record<string, unknown>;
+    const gm = s.gameMode;
+    const gameMode =
+      gm === "single-player" || gm === "multiplayer" || gm === "custom-scenario" ? gm : null;
+    const ss = s.startScreen;
+    const startScreen: StartScreenState =
+      ss === "options" || ss === "about" || ss === "menu" ? ss : "menu";
+    const idx = s.aboutSlideIndex;
+    const aboutSlideIndex =
+      typeof idx === "number" && Number.isFinite(idx) && idx >= 0 && idx < ABOUT_SCREEN_SLIDE_COUNT
+        ? Math.floor(idx)
+        : 0;
+    return { gameMode, startScreen, aboutSlideIndex };
+  } catch {
+    return defaults;
   }
 }
