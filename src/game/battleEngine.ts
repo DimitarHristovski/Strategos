@@ -1,7 +1,31 @@
 import { getTroopAbilities } from "../Units/troopStats";
 import { GRID_ORIENTATIONS, TERRAIN_LABELS } from "./constants";
 import { getTerrainAt } from "./terrainEngine";
-import type { BattlefieldSize, GridOrientation, TerrainType, TroopMechanicType } from "./types";
+import type { BattlefieldSize, GridOrientation, TeamName, TerrainType, TroopMechanicType } from "./types";
+
+/** Factions adapted to arid climates—full desert package for all of these. */
+const DESERT_HARDY_TEAMS = new Set<TeamName>(["Carthage", "Barbarians", "Egypt", "Parthians", "Seleucids"]);
+
+/** One extra terrain affinity each (no stacking all non-desert buffs on every hardy faction). */
+const HARDY_PLAIN_FACTIONS = new Set<TeamName>(["Parthians"]);
+const HARDY_FOREST_FACTIONS = new Set<TeamName>(["Barbarians"]);
+const HARDY_HILL_FACTIONS = new Set<TeamName>(["Egypt", "Seleucids"]);
+const HARDY_RIVER_FACTIONS = new Set<TeamName>(["Carthage"]);
+
+const isDesertHardyTeam = (team: unknown): boolean =>
+  typeof team === "string" && DESERT_HARDY_TEAMS.has(team as TeamName);
+
+const isHardyPlainTeam = (team: unknown): boolean =>
+  typeof team === "string" && HARDY_PLAIN_FACTIONS.has(team as TeamName);
+
+const isHardyForestTeam = (team: unknown): boolean =>
+  typeof team === "string" && HARDY_FOREST_FACTIONS.has(team as TeamName);
+
+const isHardyHillTeam = (team: unknown): boolean =>
+  typeof team === "string" && HARDY_HILL_FACTIONS.has(team as TeamName);
+
+const isHardyRiverTeam = (team: unknown): boolean =>
+  typeof team === "string" && HARDY_RIVER_FACTIONS.has(team as TeamName);
 
 const halveAmmo = (ammo: number) => {
   if (ammo <= 0) return 0;
@@ -219,6 +243,11 @@ export const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
         moveDelta += 1;
         notes.push("+10% attack and +1 move for woodland factions");
       }
+      if (isHardyForestTeam(unit.team)) {
+        attackMultiplier *= 1.05;
+        moveDelta += 1;
+        notes.push("+5% attack and +1 move for Barbarians in rough woods and scrub");
+      }
       break;
     case "hill":
       if (troopType === "ranged") {
@@ -238,9 +267,9 @@ export const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
         rangeBonus += 1;
         notes.push("+10% attack and +1 range from elevated siege positions");
       }
-      if (unit.team === "Greeks" || unit.team === "Egypt") {
+      if (unit.team === "Greeks" || isHardyHillTeam(unit.team)) {
         attackMultiplier *= 1.1;
-        notes.push("+10% attack for disciplined hill fighters");
+        notes.push("+10% attack for Greeks, Egypt, and Seleucids on high ground");
       }
       break;
     case "river":
@@ -258,13 +287,20 @@ export const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
         attackMultiplier *= 0.85;
         notes.push("-2 move and -15% attack for siege engines in rivers");
       }
-      if (unit.team === "Romans" || unit.team === "Carthage") {
+      if (unit.team === "Romans" || isHardyRiverTeam(unit.team)) {
         attackMultiplier *= 1.05;
         moveDelta += 1;
-        notes.push("+5% attack and +1 move from organized river crossing");
+        notes.push("+5% attack and +1 move from organized river crossing (Romans, Carthage)");
       }
       break;
-    case "desert":
+    case "desert": {
+      const hardy = isDesertHardyTeam(unit.team);
+      if (hardy) {
+        attackMultiplier *= 1.12;
+        moveDelta += 1;
+        notes.push("+12% attack and +1 move for desert-hardy factions (no heat or dust penalties)");
+        break;
+      }
       if (troopType !== "mounted") {
         moveDelta -= 1;
         notes.push("-1 move in harsh desert terrain");
@@ -277,12 +313,8 @@ export const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
         attackMultiplier *= 0.85;
         notes.push("-15% attack for siege engines in shifting sand");
       }
-      if (unit.team === "Carthage" || unit.team === "Barbarians" || unit.team === "Egypt" || unit.team === "Parthians") {
-        attackMultiplier *= 1.1;
-        moveDelta += 1;
-        notes.push("+10% attack and +1 move for desert-adapted factions");
-      }
       break;
+    }
     case "plain":
     default:
       if (troopType === "mounted") {
@@ -293,9 +325,9 @@ export const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
         attackMultiplier *= 1.05;
         notes.push("+5% attack from stable firing lanes");
       }
-      if (unit.team === "Romans" || unit.team === "Vikings") {
+      if (unit.team === "Romans" || unit.team === "Vikings" || isHardyPlainTeam(unit.team)) {
         attackMultiplier *= 1.05;
-        notes.push("+5% attack on open terrain");
+        notes.push("+5% attack on open terrain (Romans, Vikings, Parthians)");
       }
       break;
   }

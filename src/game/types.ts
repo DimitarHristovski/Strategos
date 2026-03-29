@@ -37,6 +37,8 @@ export type GameOptions = {
   showBattleLog: boolean;
   showTurnBanner: boolean;
   terrainEffectsEnabled: boolean;
+  /** When true (and motion is not reduced), terrain uses animated tiles ("Shader: On" in Graphics). */
+  terrainTileVideosEnabled: boolean;
   battlefieldSize: BattlefieldSize;
 };
 

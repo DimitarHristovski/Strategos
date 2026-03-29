@@ -10,6 +10,41 @@
     --battle-hit-flash-ms: 720ms;
     --siege-impact-delay: 2000ms;
     --siege-fog-duration: 3200ms;
+    /* Emoji cursors: SVG data URIs (32×32 + hotspot); trailing keyword is fallback if emoji fails */
+    --cc-cursor-target: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2224%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%8E%AF%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 16, crosshair;
+    --cc-cursor-hand: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%A4%9A%3C%2Ftext%3E%3C%2Fsvg%3E")
+        14 10, pointer;
+    --cc-cursor-boot: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2224%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%A5%BE%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 20, cell;
+    --cc-cursor-sword: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2224%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9A%94%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 16, pointer;
+    --cc-cursor-scroll: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2224%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%93%9C%3C%2Ftext%3E%3C%2Fsvg%3E")
+        14 12, pointer;
+    --cc-cursor-help: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2224%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9D%93%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 16, help;
+    --cc-cursor-text: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9C%8F%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        4 20, text;
+    --cc-cursor-grab-unit: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9C%8A%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 18, grab;
+    --cc-cursor-grabbing-unit: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9C%8A%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 18, grabbing;
+    --cc-cursor-map-grab: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%96%90%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 12, grab;
+    --cc-cursor-map-grabbing: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2222%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9C%8A%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 18, grabbing;
+    --cc-cursor-rail-n: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2218%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%AC%86%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 6, n-resize;
+    --cc-cursor-rail-s: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%AC%87%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 26, s-resize;
+    --cc-cursor-rail-w: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2220%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%AC%85%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        8 16, w-resize;
+    --cc-cursor-rail-e: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2220%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%E2%9E%A1%EF%B8%8F%3C%2Ftext%3E%3C%2Fsvg%3E")
+        24 16, e-resize;
+    --cc-cursor-deploy: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%93%8D%3C%2Ftext%3E%3C%2Fsvg%3E")
+        12 8, copy;
+    --cc-cursor-blocked: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ctext%20x%3D%2216%22%20y%3D%2222%22%20text-anchor%3D%22middle%22%20font-size%3D%2220%22%20font-family%3D%22system-ui%2C%22Apple%20Color%20Emoji%22%2C%22Segoe%20UI%20Emoji%22%2Csans-serif%22%3E%F0%9F%9A%AB%3C%2Ftext%3E%3C%2Fsvg%3E")
+        16 16, not-allowed;
 }
 
 .text-xxs {
@@ -88,6 +123,18 @@
     pointer-events: none;
     overflow: hidden;
     border-radius: inherit;
+}
+
+/* Ranged/charge visuals use left/top in px from the full grid origin — must not sit in implicit extra rows. */
+.battlefield-grid > .battle-projectile-wrap {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    align-self: start;
+    justify-self: start;
 }
 
 .battlefield-sky-layer__clouds,
@@ -556,6 +603,11 @@
     pointer-events: none;
 }
 
+/* Rotated straight/corner terrain art (river / hill / forest) — inside .terrain-cell */
+.terrain-cell__autotile-art {
+    pointer-events: none;
+}
+
 .terrain-cell {
     border: 1px solid rgba(61, 77, 31, 0.75);
     position: relative;
@@ -594,7 +646,8 @@
     animation-duration: 26s;
 }
 
-.terrain-cell--living[data-terrain="river"] {
+.terrain-cell--living[data-terrain="river"],
+.terrain-cell__autotile-art.terrain-cell--living[data-terrain="river"] {
     animation-name: terrainLivingRiver;
     animation-duration: 16s;
 }
@@ -1776,12 +1829,21 @@
     padding: 0;
     box-shadow: none;
     overflow: visible;
+    /* Allow shrinking inside flex parents so the scroll viewport can clip a wide grid */
+    min-width: 0;
+    max-width: 100%;
 }
 
 .battlefield-scroll-viewport {
     overflow: auto;
     scroll-behavior: smooth;
     scrollbar-width: none;
+    min-width: 0;
+    max-width: 100%;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    /* Allow finger/trackpad scrolling on large maps; mouse pan uses pointer handlers below. */
+    touch-action: pan-x pan-y;
 }
 
 .battlefield-scroll-viewport::-webkit-scrollbar {
@@ -1789,40 +1851,39 @@
 }
 
 .battlefield-shell-8x8 {
-    width: min(calc(100vw - 1rem), calc((10 * 84px) + (10 * 0.25rem) + 3rem));
+    width: min(calc(100dvw - 1rem), calc((10 * 84px) + (10 * 0.25rem) + 3rem));
     max-width: 100%;
 }
 
 .battlefield-scroll-viewport-8x8 {
     width: 100%;
     height: calc((8 * 100px) + (8 * 0.25rem) + 3rem);
-    max-height: calc(120vh - 14rem);
-    touch-action: none;
+    max-height: min(72dvh, calc(100dvh - 12rem));
     user-select: none;
 }
 
 @media (min-width: 640px) {
     .battlefield-shell-8x8 {
-        width: min(calc(100vw - 2rem), calc((11 * 100px) + (11 * 0.25rem) + 3rem));
+        width: min(calc(100dvw - 2rem), calc((11 * 100px) + (11 * 0.25rem) + 3rem));
     }
 
     .battlefield-scroll-viewport-8x8 {
         width: 100%;
         height: calc((8 * 116px) + (8 * 0.25rem) + 3rem);
-        max-height: calc(120vh - 16rem);
+        max-height: min(76dvh, calc(100dvh - 13rem));
     }
 }
 
 .battlefield-shell-fullscreen-large {
-    width: min(calc(100vw - 4rem), 1440px);
+    width: min(calc(100dvw - 2rem), 1440px);
     max-width: 100%;
 }
 
 .battlefield-scroll-viewport-fullscreen-large {
     width: 100%;
-    height: calc(100vh - 14rem);
-    max-height: 100%;
-    touch-action: none;
+    min-height: 12rem;
+    height: calc(100dvh - 13rem);
+    max-height: min(88dvh, calc(100dvh - 10rem));
     user-select: none;
 }
 
@@ -1856,21 +1917,82 @@
     opacity: 0.95;
 }
 
-.fullscreen-battlefield-shell:fullscreen,
-.fullscreen-battlefield-shell:-webkit-full-screen {
-    width: 100vw;
-    height: 100vh;
-    max-width: none;
+@media (hover: none) and (pointer: coarse) {
+    .battlefield-nav-rail-horizontal {
+        height: 18px;
+    }
+
+    .battlefield-nav-rail-vertical {
+        width: 18px;
+    }
+}
+
+/* Fullscreen battlefield: single scroll surface inside the grid viewport (no double overflow). */
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen {
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
     margin: 0;
-    padding: 12px;
-    overflow: auto;
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
     justify-content: flex-start;
     background:
         linear-gradient(rgba(2, 6, 23, 0.82), rgba(15, 23, 42, 0.88)),
         url("/gamebkg.png") center / cover no-repeat;
+}
+
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen .bf-main-stage,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .bf-main-stage {
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+}
+
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen .bf-fs-battlefield,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .bf-fs-battlefield {
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen .battlefield-shell-fullscreen-large.bf-fs-shell,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .battlefield-shell-fullscreen-large.bf-fs-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    max-height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen .bf-battlefield-inner,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .bf-battlefield-inner {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.fullscreen-battlefield-shell.bf-fs-root:fullscreen .battlefield-scroll-viewport-fullscreen-large.bf-fs-viewport,
+.fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .battlefield-scroll-viewport-fullscreen-large.bf-fs-viewport {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    max-height: none;
+    height: auto;
 }
 
 /* Roman unit styling */
@@ -2143,4 +2265,91 @@
     transform: scale(1.05);
     box-shadow: 0 0 30px #3b82f6, inset 0 0 30px rgba(59, 130, 246, 0.5);
   }
+}
+
+/* ---- Game cursors (mouse / fine pointer only; touch unchanged) ---- */
+@media (hover: hover) and (pointer: fine) {
+  .cc-game-cursors .battle-button:not(:disabled) {
+    cursor: var(--cc-cursor-sword);
+  }
+
+  .cc-game-cursors .battle-button:disabled {
+    cursor: var(--cc-cursor-blocked);
+  }
+
+  .cc-game-cursors .game-ui select,
+  .cc-game-cursors .game-ui label[for] {
+    cursor: var(--cc-cursor-scroll);
+  }
+
+  .cc-game-cursors .game-ui input[type="text"],
+  .cc-game-cursors .game-ui input[type="search"],
+  .cc-game-cursors .game-ui textarea {
+    cursor: var(--cc-cursor-text);
+  }
+
+  .battlefield-scroll-viewport.cc-map-pan-enabled {
+    cursor: var(--cc-cursor-map-grab);
+  }
+
+  .battlefield-scroll-viewport.cc-map-pan-active {
+    cursor: var(--cc-cursor-map-grabbing) !important;
+  }
+
+  /* Empty tile / attack aim; merge drag uses .cursor-grab below */
+  .battlefield-grid .terrain-cell:not(.terrain-cell--has-unit) {
+    cursor: var(--cc-cursor-target);
+  }
+
+  .battlefield-grid .terrain-cell.terrain-cell--has-unit {
+    cursor: var(--cc-cursor-hand);
+  }
+
+  .battlefield-grid .terrain-cell.cursor-grab {
+    cursor: var(--cc-cursor-grab-unit);
+  }
+
+  .battlefield-grid .terrain-cell.cursor-grab:active {
+    cursor: var(--cc-cursor-grabbing-unit);
+  }
+
+  .battlefield-grid .terrain-cell.movement-highlight {
+    cursor: var(--cc-cursor-boot);
+  }
+
+  .battlefield-grid .terrain-cell.attack-highlight {
+    cursor: var(--cc-cursor-target);
+  }
+
+  .battlefield-nav-rail.battlefield-nav-rail--edge-n {
+    pointer-events: auto;
+    cursor: var(--cc-cursor-rail-n);
+  }
+
+  .battlefield-nav-rail.battlefield-nav-rail--edge-s {
+    pointer-events: auto;
+    cursor: var(--cc-cursor-rail-s);
+  }
+
+  .battlefield-nav-rail.battlefield-nav-rail--edge-w {
+    pointer-events: auto;
+    cursor: var(--cc-cursor-rail-w);
+  }
+
+  .battlefield-nav-rail.battlefield-nav-rail--edge-e {
+    pointer-events: auto;
+    cursor: var(--cc-cursor-rail-e);
+  }
+
+  .cc-cursor-faction-info {
+    cursor: var(--cc-cursor-help);
+  }
+}
+
+body.cc-cursor-setup-deploy {
+  cursor: var(--cc-cursor-deploy) !important;
+}
+
+body.cc-cursor-setup-deploy * {
+  cursor: inherit !important;
 }

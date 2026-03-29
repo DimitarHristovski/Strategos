@@ -80,7 +80,8 @@ export const GAME_MECHANICS_INFO = [
   {
     icon: "🗺️",
     title: "Dynamic Terrain",
-    description: "Every new battle generates fresh terrain. Forests add cover, hills extend firing lanes, rivers punish heavy crossings, plains favor charges, and deserts wear down non-native armies."
+    description:
+      "Every new battle generates fresh terrain. Desert-hardy factions all fight well in sand; each also has one other home-ground bonus (Parthians plains, Barbarians forest, Egypt and Seleucids hills, Carthage rivers). Turn on Terrain Effects in Graphics for combat modifiers."
   }
 ] as const;
 
@@ -233,7 +234,7 @@ export const TERRAIN_MECHANICS_INFO: Array<{ terrain: TerrainType; summary: stri
     effects: [
       "Mounted troops gain +1 move on open ground.",
       "Sieged troops gain +5% attack from stable firing lanes.",
-      "Romans and Vikings gain +5% attack on plains."
+      "Romans and Vikings gain +5% attack on plains; Parthians (desert-hardy) gain +5% on open ground."
     ]
   },
   {
@@ -244,7 +245,8 @@ export const TERRAIN_MECHANICS_INFO: Array<{ terrain: TerrainType; summary: stri
       "Mounted troops suffer -1 move and -15% attack in dense woods.",
       "Sieged troops suffer -1 move and -10% attack in forests.",
       "Non-mounted defenders take 8% less incoming damage in forest cover.",
-      "Gauls and Germanic troops gain +10% attack and +1 move in forests."
+      "Gauls and Germanic troops gain +10% attack and +1 move in forests.",
+      "Barbarians (desert-hardy) gain +5% attack and +1 move in forests and rough scrub."
     ]
   },
   {
@@ -255,7 +257,7 @@ export const TERRAIN_MECHANICS_INFO: Array<{ terrain: TerrainType; summary: stri
       "Closecombat troops gain +5% attack on hills.",
       "Mounted troops lose 1 move climbing hills.",
       "Sieged troops gain +10% attack and +1 range from elevated positions.",
-      "Greeks and Egypt gain +10% attack on hills."
+      "Greeks, Egypt, and Seleucids gain +10% attack on hills (Egypt and Seleucids as desert-hardy hill fighters)."
     ]
   },
   {
@@ -265,17 +267,18 @@ export const TERRAIN_MECHANICS_INFO: Array<{ terrain: TerrainType; summary: stri
       "Closecombat troops suffer -10% attack while fighting through water.",
       "Mounted troops suffer -2 move and -10% attack in rivers.",
       "Sieged troops suffer -2 move and -15% attack in rivers.",
-      "Romans and Carthage gain +5% attack and +1 move in rivers."
+      "Romans and Carthage gain +5% attack and +1 move in rivers (Carthage as desert-hardy river crossing)."
     ]
   },
   {
     terrain: "desert",
-    summary: "Dry, punishing terrain that drains movement and weakens ranged fire.",
+    summary: "Dry, punishing terrain—unless your faction is built for it.",
     effects: [
-      "All non-mounted troops lose 1 move in desert terrain.",
-      "Ranged troops suffer -15% attack from dust and heat.",
-      "Sieged troops suffer -15% attack in desert sand.",
-      "Carthage, Barbarians, Egypt, and Parthians gain +10% attack and +1 move in deserts."
+      "All desert-hardy factions (Carthage, Barbarians, Egypt, Parthians, Seleucids): +12% attack and +1 move on sand; no desert penalties. Their other terrain bonuses are split: see plains, forest, hill, and river above.",
+      "All other non-mounted troops lose 1 move in desert terrain.",
+      "Other ranged troops suffer -15% attack from dust and heat.",
+      "Other sieged troops suffer -15% attack in shifting sand.",
+      "Other mounted troops skip the foot move penalty; only hardy mounted also get the +12% / +1 move bonus."
     ]
   }
 ];

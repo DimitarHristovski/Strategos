@@ -1,7 +1,8 @@
 // CodeConq - Grid Strategy Game with Highlights and Expanded Features
 // Now includes: Health Bars, Kill Counters, Special Ability Tooltips, and Custom Drag & Drop Setup
 
-import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { BattlefieldSkyLayer } from "./components/codeconq/BattlefieldSkyLayer";
 import { FormationLoadingScreen } from "./components/codeconq/FormationLoadingScreen";
@@ -10,7 +11,9 @@ import { useBattlefieldViewport } from "./hooks/useBattlefieldViewport";
 import { useBattleSession } from "./hooks/useCodeConqController";
 import { levels } from "./Units/InitialUnits";
 import { generateTroopStats, getTroopAbilities, getTroopReferenceStats, type TroopReferenceStats } from "./Units/troopStats";
+import { createAttackSfxController, type AttackSfxKind } from "./audio/attackSfx";
 import { createBattleSfxController, getTurnCueForTeam, type BattleSfxKey } from "./audio/battleSfx";
+import { createTroopSelectionSfxController } from "./audio/troopSelectionSfx";
 import {
   applyRoleHealthBuffs,
   didRoleHealthBuffStateChange,
@@ -40,6 +43,11 @@ import {
   GRID_ORIENTATIONS,
   LEVEL_MATCHUP_LABELS,
   TEAM_SELECT_GROUPS,
+  DESERT_TILE_VIDEO_SRC,
+  FOREST_TILE_VIDEO_SRC,
+  HILL_TILE_VIDEO_SRC,
+  PLAIN_TILE_VIDEO_SRC,
+  RIVER_TILE_VIDEO_SRC,
   TERRAIN_ASSETS,
   TERRAIN_LABELS,
   TERRAIN_TYPES
@@ -54,6 +62,7 @@ import {
   TROOP_MECHANICS_INFO,
   UNIT_ABILITY_MECHANICS_INFO
 } from "./game/mechanicsInfo";
+import { getTerrainAutotileVisual, RIVER_CORNER_ASSET } from "./game/terrainAutotile";
 import { generateTerrainMap, getEnabledTerrainTypes, getTerrainAt, isValidTerrainMap } from "./game/terrainEngine";
 import {
   AVAILABLE_TROOPS,
@@ -98,9 +107,13 @@ import type {
   TerrainPoint,
   TerrainPreset,
   TerrainType,
+  TroopCatalogEntry,
   TroopMechanicType,
   UnitsReferenceScope
 } from "./game/types";
+
+/** Stable when terrain combat modifiers are off — a fresh `[]` each render was resetting the AI `useEffect` timer every frame. */
+const EMPTY_TERRAIN_EFFECT_MAP: TerrainType[][] = [];
 
 const renderTeamSelectOptions = (
   allowedTeams: readonly TeamName[],
@@ -121,6 +134,290 @@ const renderTeamSelectOptions = (
     );
   });
 
+const SETUP_ROSTER_TIP_CLOSE_MS = 140;
+
+/** Portal tooltip so setup roster previews are not clipped by the unit panel overflow. */
+function SetupTroopPaletteCell({
+  troop,
+  onDragStart,
+  onDragEnd
+}: {
+  troop: TroopCatalogEntry;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}) {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [tipOpen, setTipOpen] = useState(false);
+  const [tipPos, setTipPos] = useState({ x: 0, y: 0 });
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelClose = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const syncTipPos = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setTipPos({ x: r.left + r.width / 2, y: r.bottom - 6 });
+  }, []);
+
+  const openTip = useCallback(() => {
+    cancelClose();
+    syncTipPos();
+    setTipOpen(true);
+  }, [cancelClose, syncTipPos]);
+
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => setTipOpen(false), SETUP_ROSTER_TIP_CLOSE_MS);
+  }, [cancelClose]);
+
+  useEffect(() => () => cancelClose(), [cancelClose]);
+
+  useEffect(() => {
+    if (!tipOpen) return;
+    syncTipPos();
+    const handle = () => syncTipPos();
+    window.addEventListener("scroll", handle, true);
+    window.addEventListener("resize", handle);
+    return () => {
+      window.removeEventListener("scroll", handle, true);
+      window.removeEventListener("resize", handle);
+    };
+  }, [tipOpen, syncTipPos]);
+
+  const referenceStats = getTroopReferenceStats(troop.role);
+  const troopAbilities = getTroopAbilities(troop.role);
+  const troopTypeDisplay = getTroopTypeDisplay({
+    role: troop.role,
+    name: troop.name,
+    ammo: referenceStats.ammo,
+    range: referenceStats.range,
+    move: referenceStats.move
+  });
+  const paletteIcon =
+    typeof troop.Icon === "string" && troop.Icon.length <= 2
+      ? troop.Icon
+      : ICON_MAP[troop.Icon as keyof typeof ICON_MAP] || troop.Icon || "⚔️";
+  const leaderUnit = isLeaderRole(troop.role);
+
+  const tooltip =
+    tipOpen &&
+    createPortal(
+      <div
+        role="tooltip"
+        className="pointer-events-auto fixed z-[300] w-[min(18.5rem,calc(100vw-2rem))] rounded-2xl border border-yellow-600/65 bg-slate-950/98 p-3 pt-3.5 text-left shadow-[0_16px_48px_rgba(0,0,0,0.5)] ring-1 ring-amber-900/25 backdrop-blur-md sm:w-[19rem]"
+        style={{
+          left: tipPos.x,
+          top: tipPos.y,
+          transform: "translate(-50%, 0)"
+        }}
+        onMouseEnter={openTip}
+        onMouseLeave={scheduleClose}
+      >
+        <div className="max-h-[min(22rem,55vh)] overflow-y-auto overscroll-contain pr-0.5">
+          <div className="flex items-start gap-2 border-b border-yellow-700/35 pb-2">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-yellow-600/40 bg-black/30 text-2xl">
+              {paletteIcon}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[15px] font-bold leading-tight text-yellow-50">{troop.name}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full border border-yellow-700/50 bg-black/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-yellow-200/90">
+                  {troop.role}
+                </span>
+                <span className="rounded-full border border-cyan-700/45 bg-cyan-950/35 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">
+                  {troopTypeDisplay.icon} {troopTypeDisplay.label}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2.5 flex flex-wrap gap-1.5 text-[10px] text-yellow-100/90">
+            <span className="rounded-md border border-yellow-800/40 bg-black/20 px-2 py-1">
+              HP {referenceStats.hp[0]}–{referenceStats.hp[1]}
+            </span>
+            <span className="rounded-md border border-yellow-800/40 bg-black/20 px-2 py-1">
+              ATK {referenceStats.attack[0]}–{referenceStats.attack[1]}
+            </span>
+            <span className="rounded-md border border-yellow-800/40 bg-black/20 px-2 py-1">RNG {referenceStats.range}</span>
+            <span className="rounded-md border border-yellow-800/40 bg-black/20 px-2 py-1">MOV {referenceStats.move}</span>
+            <span className="rounded-md border border-yellow-800/40 bg-black/20 px-2 py-1">AMMO {referenceStats.ammo}</span>
+          </div>
+
+          <div className="mt-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/85">Signature skills</div>
+            {troopAbilities.length > 0 ? (
+              <ul className="mt-2 space-y-2">
+                {troopAbilities.map((ability) => (
+                  <li
+                    key={ability.key}
+                    className="rounded-xl border border-cyan-700/30 bg-cyan-950/20 px-2.5 py-2 text-[11px] leading-relaxed text-cyan-50/95"
+                  >
+                    <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-[11px] text-yellow-100/65">No signature skills on this role.</p>
+            )}
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+
+  return (
+    <>
+      <div
+        ref={anchorRef}
+        className="relative z-10 flex flex-col items-center"
+        onMouseEnter={openTip}
+        onMouseLeave={scheduleClose}
+      >
+        <div
+          draggable
+          onDragStart={() => {
+            setTipOpen(false);
+            cancelClose();
+            onDragStart();
+          }}
+          onDragEnd={onDragEnd}
+          title={`${troop.name} (${troop.role})`}
+          className={`flex h-11 w-11 shrink-0 cursor-grab touch-manipulation items-center justify-center rounded-xl border border-yellow-700/50 bg-gradient-to-br from-slate-800/95 to-slate-950/95 text-lg shadow-md transition-[transform,box-shadow,border-color] active:cursor-grabbing sm:h-[52px] sm:w-[52px] sm:text-2xl ${
+            leaderUnit ? "ring-2 ring-amber-500/40 ring-offset-2 ring-offset-slate-900/80" : ""
+          } hover:z-[25] hover:scale-105 hover:border-amber-400/55 hover:shadow-lg`}
+        >
+          <span className="select-none leading-none" aria-hidden>
+            {paletteIcon}
+          </span>
+        </div>
+      </div>
+      {tooltip}
+    </>
+  );
+}
+
+const FACTION_PASSIVE_RAIL_TIP_MS = 140;
+
+/** Left-rail faction passive: portal tooltip avoids overflow clip; rail stays scrollable and clickable. */
+function FactionPassiveRailCell({ team }: { team: TeamName }) {
+  const passive = CIV_PASSIVES[team];
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const [tipOpen, setTipOpen] = useState(false);
+  const [tipPos, setTipPos] = useState({ left: 0, top: 0 });
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelClose = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const syncTipPos = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const cardW = Math.min(21 * 16, vw - 24);
+    const gap = 10;
+    let left = r.right + gap;
+    if (left + cardW > vw - 12) {
+      left = r.left - gap - cardW;
+    }
+    left = Math.max(10, Math.min(left, vw - cardW - 10));
+    setTipPos({ left, top: r.top + r.height / 2 });
+  }, []);
+
+  const openTip = useCallback(() => {
+    cancelClose();
+    syncTipPos();
+    setTipOpen(true);
+  }, [cancelClose, syncTipPos]);
+
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => setTipOpen(false), FACTION_PASSIVE_RAIL_TIP_MS);
+  }, [cancelClose]);
+
+  useEffect(() => () => cancelClose(), [cancelClose]);
+
+  useEffect(() => {
+    if (!tipOpen) return;
+    syncTipPos();
+    const handle = () => syncTipPos();
+    window.addEventListener("scroll", handle, true);
+    window.addEventListener("resize", handle);
+    return () => {
+      window.removeEventListener("scroll", handle, true);
+      window.removeEventListener("resize", handle);
+    };
+  }, [tipOpen, syncTipPos]);
+
+  if (!passive) return null;
+
+  const tooltip =
+    tipOpen &&
+    createPortal(
+      <div
+        role="tooltip"
+        className="pointer-events-auto fixed z-[280] w-[min(21rem,calc(100vw-1.5rem))] -translate-y-1/2 overflow-hidden rounded-[22px] border border-yellow-500/80 bg-slate-950/95 text-left shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-amber-200/10 backdrop-blur-md"
+        style={{ left: tipPos.left, top: tipPos.top }}
+        onMouseEnter={openTip}
+        onMouseLeave={scheduleClose}
+      >
+        <div className="absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.3),_transparent_70%)]" />
+        <div className="absolute right-[-18px] top-[-22px] h-24 w-24 rounded-full bg-amber-300/8 blur-2xl" />
+        <div className="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-yellow-300/85 to-transparent" />
+        <div className="relative max-h-[min(70vh,28rem)] overflow-y-auto overscroll-contain p-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-yellow-400/65 bg-gradient-to-br from-amber-300/20 via-amber-200/10 to-transparent text-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_10px_24px_rgba(0,0,0,0.3)]">
+              {PASSIVE_ICONS[team]}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <div className="text-[15px] font-bold tracking-[0.08em] text-yellow-50">{team}</div>
+                <div className="h-px flex-1 bg-gradient-to-r from-yellow-400/35 to-transparent" />
+              </div>
+              <div className="mt-2 inline-flex rounded-full border border-yellow-500/35 bg-yellow-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-yellow-300/95">
+                Passive
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-300/80">Faction Bonus</div>
+            <div className="mt-2 text-base font-semibold leading-tight text-yellow-100">{passive.name}</div>
+            <div className="mt-3 rounded-xl border border-yellow-500/15 bg-slate-950/45 px-3 py-2.5 text-[13px] leading-6 text-yellow-50/95">
+              {passive.effect}
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={anchorRef}
+        className="cc-cursor-faction-info game-ui flex h-11 w-11 shrink-0 items-center justify-center border border-yellow-600 bg-gray-950 text-lg shadow-lg transition-colors hover:border-yellow-400 focus:border-yellow-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+        aria-label={`${team} passive: ${passive.name}. ${passive.effect}`}
+        title={`${team} — ${passive.name}`}
+        onMouseEnter={openTip}
+        onMouseLeave={scheduleClose}
+      >
+        {PASSIVE_ICONS[team]}
+      </button>
+      {tooltip}
+    </>
+  );
+}
 
 function CodeConq() {
   const [currentLevel, setCurrentLevel] = useState<keyof typeof levels>("Level1");
@@ -155,11 +452,12 @@ function CodeConq() {
   const battlefieldViewportRef = useRef<HTMLDivElement | null>(null);
   const battlefieldGridRef = useRef<HTMLDivElement | null>(null);
   const battlefieldCellRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const battlefieldPanStateRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number; moved: boolean } | null>(null);
   const battlefieldPanCleanupRef = useRef<(() => void) | null>(null);
   const skipNextGridClickRef = useRef(false);
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
   const battleSfxRef = useRef<ReturnType<typeof createBattleSfxController> | null>(null);
+  const attackSfxRef = useRef<ReturnType<typeof createAttackSfxController> | null>(null);
+  const troopSelectSfxRef = useRef<ReturnType<typeof createTroopSelectionSfxController> | null>(null);
   const lastTurnCueRef = useRef<string | null>(null);
   const feedbackTimeoutsRef = useRef<number[]>([]);
   const isRestoringSavedGameRef = useRef(false);
@@ -187,6 +485,7 @@ function CodeConq() {
   /** Prevents the AI effect from scheduling a second decision when units update mid–attack animation. */
   const aiAttackAnimatingRef = useRef(false);
   const reduceUiMotion = useReducedMotion();
+  const terrainVideoAllowed = gameOptions.terrainTileVideosEnabled && !reduceUiMotion;
   const { overlayRef: dayNightOverlayRef, dayNightClock } = useBattlefieldDayNightOverlay(reduceUiMotion);
 
   useLayoutEffect(() => {
@@ -199,6 +498,15 @@ function CodeConq() {
     }
     unitPreviousGridRef.current = next;
   }, [units, customUnits, isSetupMode]);
+
+  useEffect(() => {
+    if (!isSetupMode || !draggedTroop) {
+      document.body.classList.remove("cc-cursor-setup-deploy");
+      return;
+    }
+    document.body.classList.add("cc-cursor-setup-deploy");
+    return () => document.body.classList.remove("cc-cursor-setup-deploy");
+  }, [isSetupMode, draggedTroop]);
 
   // Update units when level changes
   useEffect(() => {
@@ -396,13 +704,23 @@ function CodeConq() {
   }, []);
 
   useEffect(() => {
-    const controller = createBattleSfxController(0.55);
-    controller.preload();
-    battleSfxRef.current = controller;
+    const battle = createBattleSfxController(0.55);
+    const attack = createAttackSfxController(0.52);
+    const select = createTroopSelectionSfxController(0.52);
+    battle.preload();
+    attack.preload();
+    select.preload();
+    battleSfxRef.current = battle;
+    attackSfxRef.current = attack;
+    troopSelectSfxRef.current = select;
 
     return () => {
-      controller.dispose();
+      battle.dispose();
+      attack.dispose();
+      select.dispose();
       battleSfxRef.current = null;
+      attackSfxRef.current = null;
+      troopSelectSfxRef.current = null;
     };
   }, []);
 
@@ -576,6 +894,19 @@ function CodeConq() {
     if (!gameOptions.sfxEnabled) return;
     battleSfxRef.current?.play(key, options);
   };
+
+  const playTroopSelectSfx = (unit: any) => {
+    if (!gameOptions.sfxEnabled) return;
+    troopSelectSfxRef.current?.playForUnit(unit, { cooldownMs: 120, volumeMultiplier: 0.92 });
+  };
+
+  const playAttackSfx = (
+    kind: AttackSfxKind,
+    options?: { cooldownMs?: number; playbackRate?: number; volumeMultiplier?: number }
+  ) => {
+    if (!gameOptions.sfxEnabled) return;
+    attackSfxRef.current?.play(kind, options);
+  };
   const applyAttackOutcomeFeedback = (defender: any, updatedTargetHp: number, moraleThreshold: number) => {
     const defenderKey = `${defender.x},${defender.y}`;
     if (updatedTargetHp <= 0) {
@@ -625,11 +956,19 @@ function CodeConq() {
     }
     if (attackOutcome.abilityTags.includes("Charge")) {
       triggerCellFeedback(attackerKey, "charge", options.isProjectile ? 780 : meleeFightMs);
-      playBattleSfx("charge-impact", { cooldownMs: 100, volumeMultiplier: 1.15 });
+      playAttackSfx("closecombat", { cooldownMs: 100, volumeMultiplier: 1.12 });
     } else if (options.isProjectile) {
-      playBattleSfx("arrow-shot", { cooldownMs: 60, playbackRate: getTroopMechanicType(attacker) === "sieged" ? 0.84 : 1 });
+      const siegeStrike = getTroopMechanicType(attacker) === "sieged";
+      playAttackSfx(siegeStrike ? "siege" : "ranged", {
+        cooldownMs: 60,
+        playbackRate: siegeStrike ? 0.9 : 1,
+        volumeMultiplier: siegeStrike ? 1.05 : 1
+      });
     } else {
-      playBattleSfx("melee-hit", { cooldownMs: 70, playbackRate: attackOutcome.hasAdvantage ? 0.96 : 1 });
+      playAttackSfx("closecombat", {
+        cooldownMs: 70,
+        playbackRate: attackOutcome.hasAdvantage ? 0.96 : 1
+      });
     }
 
     if (options.isProjectile) {
@@ -979,7 +1318,10 @@ function CodeConq() {
   const currentBattleUnits = isSetupMode ? customUnits : units;
   const battlefieldSize = gameOptions.battlefieldSize;
   const visibleBattleLog = Array.isArray(log) ? log.slice(0, 80) : [];
-  const terrainEffectMap = gameOptions.terrainEffectsEnabled ? battlefieldTerrain : [];
+  const terrainEffectMap = useMemo(
+    () => (gameOptions.terrainEffectsEnabled ? battlefieldTerrain : EMPTY_TERRAIN_EFFECT_MAP),
+    [gameOptions.terrainEffectsEnabled, battlefieldTerrain]
+  );
   const inspectedTerrainType = inspectedUnit ? getTerrainAt(battlefieldTerrain, inspectedUnit.x, inspectedUnit.y) : null;
   const inspectedTileTerrainType = inspectedTile ? getTerrainAt(battlefieldTerrain, inspectedTile.x, inspectedTile.y) : null;
   const inspectedTileInfo = inspectedTileTerrainType
@@ -1003,11 +1345,17 @@ function CodeConq() {
     : [];
   const focusedFeedbackKinds = focusedBattleUnit ? (cellFeedback[`${focusedBattleUnit.x},${focusedBattleUnit.y}`] ?? []) : [];
   const useEightByEightViewport = !isBattlefieldFullscreen;
-  const useFullscreenNavigationViewport = isBattlefieldFullscreen && battlefieldSize > 14;
-  const showGridNavigation = (!isBattlefieldFullscreen && battlefieldSize > 8) || useFullscreenNavigationViewport;
+  /** Normal window: pan + edge rails from 14×14 up. Fullscreen: from 9×9 (map still fits the big surface). */
+  const needsBattlefieldScrollChrome = isBattlefieldFullscreen ? battlefieldSize > 8 : battlefieldSize >= 14;
+  const showGridNavigation = needsBattlefieldScrollChrome;
+  /** Fullscreen: bounded shell + scroll viewport when chrome is active. */
+  const useFullscreenBoundedBattlefield = isBattlefieldFullscreen && needsBattlefieldScrollChrome;
   const levelTeams = getLevelTeams(currentLevel);
-  const aliveBattleTeams = getAliveTeams(units);
-  const aiTeams = aliveBattleTeams.filter((team) => team !== playerTeam) as TeamName[];
+  const aliveBattleTeams = useMemo(() => getAliveTeams(units), [units]);
+  const aiTeams = useMemo(
+    () => aliveBattleTeams.filter((team) => team !== playerTeam) as TeamName[],
+    [aliveBattleTeams, playerTeam]
+  );
   const activeTeam = gameMode === "multiplayer" ? turn : playerTeam;
   const setupTeamsInPlay = (() => {
     if (gameMode === "multiplayer") return multiplayerTeams;
@@ -1089,7 +1437,15 @@ function CodeConq() {
 
   // Automatic movement for AI teams - one unit at a time
   useEffect(() => {
-    if (isSetupMode || gameMode === "multiplayer" || !aiTeams.includes(turn as TeamName) || !units) return;
+    if (
+      !gameStarted ||
+      isSetupMode ||
+      gameMode === "multiplayer" ||
+      !aiTeams.includes(turn as TeamName) ||
+      !units
+    ) {
+      return;
+    }
     if (aiAttackAnimatingRef.current) return;
 
     const timeout = setTimeout(() => {
@@ -1216,7 +1572,7 @@ function CodeConq() {
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [turn, units, isSetupMode, gameMode, aiTeams, playerTeam, battlefieldTerrain, terrainEffectMap]);
+  }, [turn, units, isSetupMode, gameMode, gameStarted, aiTeams, terrainEffectMap]);
 
   useBattlefieldViewport({
     battlefieldViewportRef,
@@ -1291,6 +1647,7 @@ function CodeConq() {
         // In merge mode, select first troop for merging
         if (!selectedForMerge) {
           setSelectedForMerge(clicked);
+          playTroopSelectSfx(clicked);
           setLog((prevLog) => [`Selected ${clicked.name} for merging. Click on another ${clicked.role} to merge.`, ...prevLog]);
         } else if (selectedForMerge.id !== clicked.id && selectedForMerge.role === clicked.role) {
           // Check if troops are adjacent
@@ -1350,6 +1707,7 @@ function CodeConq() {
         // Normal selection mode
         setInspectedTile(null);
         setSelectedId(clicked.id);
+        playTroopSelectSfx(clicked);
       }
     } else if (selected) {
       const meleeAttackDestination = clicked && clicked.team !== selected.team && selectedEffectiveRange === 1 && !isInRange(selected, clicked, selectedEffectiveRange)
@@ -2348,6 +2706,18 @@ function CodeConq() {
           >
             {gameOptions.terrainEffectsEnabled ? "Terrain Effects: On" : "Terrain Effects: Off"}
           </button>
+          <p className="text-xs text-yellow-100 opacity-80 -mt-1">
+            When on, each tile changes move, attack, and incoming damage where the rules say so. All desert-hardy factions (Carthage, Barbarians, Egypt, Parthians, Seleucids) get the sand bonus; each has one other terrain perk (Parthians plains, Barbarians forest, Egypt and Seleucids hills, Carthage rivers). When off, combat uses open-ground stats.
+          </p>
+          <button
+            onClick={() => toggleOption("terrainTileVideosEnabled")}
+            className={`battle-button w-full px-4 py-3 text-sm font-semibold ${gameOptions.terrainTileVideosEnabled ? "bg-violet-600 hover:bg-violet-700" : "bg-gray-700 hover:bg-gray-800"}`}
+          >
+            {gameOptions.terrainTileVideosEnabled ? "Shader: On" : "Shader: Off"}
+          </button>
+          <p className="text-xs text-yellow-100 opacity-80 -mt-1">
+            Off uses still terrain images (lighter on CPU/GPU). System &quot;reduce motion&quot; also forces shader off.
+          </p>
           <div className="bg-black bg-opacity-20 border border-yellow-700 rounded-lg px-4 py-3">
             <label htmlFor="terrain-preset" className="block text-yellow-200 text-sm font-semibold mb-2">
               Terrain Mode
@@ -2398,7 +2768,10 @@ function CodeConq() {
               ))}
             </div>
             <p className="text-xs text-yellow-100 mt-2 opacity-80">
-              Choose which biomes mixed generation can use. Mixed maps use up to 2 terrains on 8x8-10x10, up to 3 on 12x12-16x16, and up to 4 on larger battlefields. Desert stays isolated and only appears when it is the only enabled mixed biome.
+              Choose which biomes mixed generation can use. Through 14×14, mixed maps use only plain, forest, and hill (up to 3 types). From 16×16 through 20×20, rivers can appear in the mix (up to 4 types). Desert stays isolated and only appears when it is the only enabled mixed biome—use Pure Desert or desert-only mix for sandy battle bonuses.
+            </p>
+            <p className="text-xs text-yellow-100/75 opacity-90">
+              Large maps: edge rails and drag-pan on the grid appear from 14×14 in a normal window, or from 9×9 in fullscreen. You can still wheel-scroll smaller maps if the grid overflows.
             </p>
           </div>
           <button
@@ -2869,7 +3242,19 @@ function CodeConq() {
                   : ICON_MAP[troop.Icon as keyof typeof ICON_MAP] || troop.Icon || "⚔️";
 
               return (
-                <div key={`${troop.team}-${troop.role}`} className="rounded-lg border border-yellow-700/50 bg-black/25 px-3 py-2.5">
+                <div
+                  key={`${troop.team}-${troop.role}`}
+                  className="rounded-lg border border-yellow-700/50 bg-black/25 px-3 py-2.5 cursor-pointer transition-colors hover:border-yellow-500/55 hover:bg-black/35"
+                  onClick={() => playTroopSelectSfx({ role: troop.role, ...generateTroopStats(troop.role) })}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      playTroopSelectSfx({ role: troop.role, ...generateTroopStats(troop.role) });
+                    }
+                  }}
+                >
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-yellow-700/50 bg-black/30 text-2xl leading-none">
                       {troopIcon}
@@ -2934,58 +3319,44 @@ function CodeConq() {
     );
   };
 
-  const beginGridPan = (clientX: number, clientY: number) => {
-    const viewport = battlefieldViewportRef.current;
-    if (!viewport || !showGridNavigation) return;
-
-    battlefieldPanStateRef.current = {
-      startX: clientX,
-      startY: clientY,
-      scrollLeft: viewport.scrollLeft,
-      scrollTop: viewport.scrollTop,
-      moved: false
-    };
-    setIsPanningGrid(true);
-  };
-
-  const updateGridPan = (clientX: number, clientY: number) => {
-    const viewport = battlefieldViewportRef.current;
-    const panState = battlefieldPanStateRef.current;
-    if (!viewport || !panState) return;
-
-    const deltaX = clientX - panState.startX;
-    const deltaY = clientY - panState.startY;
-
-    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
-      panState.moved = true;
-      skipNextGridClickRef.current = true;
-    }
-
-    viewport.scrollLeft = panState.scrollLeft - deltaX;
-    viewport.scrollTop = panState.scrollTop - deltaY;
-  };
-
-  const endGridPan = () => {
-    battlefieldPanStateRef.current = null;
-    setIsPanningGrid(false);
-  };
-
+  /**
+   * Oversized grids: native touch scroll (touch-action on viewport) + mouse drag-pan.
+   * Defer setPointerCapture until movement exceeds a few px so taps on tiles still register as clicks.
+   */
   const handleViewportPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!showGridNavigation) return;
+    if (e.pointerType === "touch") return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    if ((e.target as HTMLElement | null)?.closest(".terrain-cell")) return;
+
+    const viewport = battlefieldViewportRef.current;
+    if (!viewport) return;
 
     battlefieldPanCleanupRef.current?.();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    beginGridPan(e.clientX, e.clientY);
 
     const pointerId = e.pointerId;
     const pointerTarget = e.currentTarget;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const baseScrollLeft = viewport.scrollLeft;
+    const baseScrollTop = viewport.scrollTop;
+    let moved = false;
 
     const handleWindowPointerMove = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return;
+      const deltaX = event.clientX - startX;
+      const deltaY = event.clientY - startY;
+
+      if (!moved) {
+        if (Math.abs(deltaX) <= 4 && Math.abs(deltaY) <= 4) return;
+        moved = true;
+        skipNextGridClickRef.current = true;
+        pointerTarget.setPointerCapture(pointerId);
+        setIsPanningGrid(true);
+      }
+
       event.preventDefault();
-      updateGridPan(event.clientX, event.clientY);
+      pointerTarget.scrollLeft = baseScrollLeft - deltaX;
+      pointerTarget.scrollTop = baseScrollTop - deltaY;
     };
 
     const stopPointerPan = (event?: PointerEvent) => {
@@ -2999,7 +3370,7 @@ function CodeConq() {
       window.removeEventListener("pointerup", stopPointerPan);
       window.removeEventListener("pointercancel", stopPointerPan);
       battlefieldPanCleanupRef.current = null;
-      endGridPan();
+      setIsPanningGrid(false);
     };
 
     window.addEventListener("pointermove", handleWindowPointerMove, { passive: false });
@@ -3019,7 +3390,7 @@ function CodeConq() {
   if (!gameMode) {
     if (startScreen === "options") {
       return (
-        <div className="flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
+        <div className="cc-game-cursors flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
           <div className="game-ui p-8 text-center max-w-2xl w-full">
             <div className="flex items-center justify-between gap-4 mb-6">
               <button
@@ -3039,7 +3410,7 @@ function CodeConq() {
 
     if (startScreen === "about") {
       return (
-        <div className="flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
+        <div className="cc-game-cursors flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
           <div className="game-ui p-8 max-w-4xl w-full">
             <div className="flex items-center justify-between gap-4 mb-6">
               <button
@@ -3111,7 +3482,7 @@ function CodeConq() {
     }
 
     return (
-      <div className="flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
+      <div className="cc-game-cursors flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
         <div className="game-ui p-8 text-center max-w-2xl w-full">
           <h1 className="text-5xl font-bold text-yellow-200 mb-4 drop-shadow-lg">Battlecry</h1>
           <p className="text-yellow-100 text-lg mb-8">Choose your mode to enter the battlefield</p>
@@ -3157,13 +3528,18 @@ function CodeConq() {
   }
 
   return (
-    <div className="flex flex-col items-center min-h-screen" style={appBackgroundStyle}>
+    <div
+      className="cc-game-cursors flex w-full max-w-full min-w-0 flex-col items-center overflow-x-hidden min-h-screen min-h-[100dvh]"
+      style={appBackgroundStyle}
+    >
       <div
         ref={battlefieldRef}
-        className={`fullscreen-battlefield-shell w-full flex flex-col items-center ${isBattlefieldFullscreen ? "h-full justify-start" : ""}`}
+        className={`fullscreen-battlefield-shell flex w-full max-w-full min-w-0 flex-col ${
+          isBattlefieldFullscreen ? "bf-fs-root min-h-0 flex-1 justify-start" : "items-center"
+        }`}
       >
       {/* Top Header */}
-      <div className="sticky top-0 z-30 w-full">
+      <div className="sticky top-0 z-30 w-full shrink-0">
         <div className="game-ui w-full rounded-none border-x-0 px-2 sm:px-3 py-2 flex flex-wrap items-center gap-2 justify-between relative">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -3269,6 +3645,16 @@ function CodeConq() {
             </button>
           </div>
         </div>
+
+        {passiveTeams.length > 0 && (
+          <div className="fixed left-3 top-28 z-[60] max-h-[min(calc(100dvh-7rem),calc(100vh-7rem))] overflow-y-auto overflow-x-hidden pb-4 pt-0.5 [-webkit-overflow-scrolling:touch] sm:left-4">
+            <div className="game-ui flex flex-col items-center gap-3 rounded-r-2xl border border-yellow-600/70 bg-gray-950/90 px-2 py-3 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+              {passiveTeams.map((team) => (
+                <FactionPassiveRailCell key={team} team={team} />
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="pointer-events-none fixed right-3 top-28 z-20 flex max-h-[calc(100vh-8rem)] flex-col items-end gap-2 sm:right-4">
           {isBattlefieldFullscreen && !isSetupMode && (
@@ -3751,95 +4137,11 @@ function CodeConq() {
         </div>
       )}
 
-      {/* Setup Mode Controls */}
-      {isSetupMode && (
-        <div className="game-ui w-full max-w-none px-3 py-3">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-stretch">
-            <div className="rounded-lg border border-yellow-700/60 bg-black/20 px-3 py-3 xl:w-64 xl:flex-shrink-0">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-bold uppercase tracking-wide text-yellow-200">Setup Controls</div>
-                <div className="rounded-full border border-yellow-700 bg-black/20 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-yellow-100">
-                  {gameMode === "multiplayer" ? "Multiplayer" : "Custom Scenario"}
-                </div>
-              </div>
-            </div>
-
-            {(gameMode === "multiplayer" || gameMode === "custom-scenario") && (
-              <div className={`grid gap-2 xl:flex-1 ${gameMode === "custom-scenario" ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
-                {gameMode === "custom-scenario" ? (
-                  <div className="rounded-lg border border-yellow-700/60 bg-black/20 px-3 py-3">
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-yellow-200">Your Team</label>
-                    <select
-                      value={playerTeam}
-                      onChange={(e) => {
-                        const next = e.target.value as TeamName;
-                        setPlayerTeam(next);
-                        if (selectedTeam === playerTeam) setSelectedTeam(next);
-                      }}
-                      className="w-full rounded border border-yellow-600 bg-gray-800 px-3 py-2 text-sm text-yellow-200 focus:outline-none focus:border-yellow-400"
-                    >
-                      {renderTeamSelectOptions(ALL_TEAMS)}
-                    </select>
-                  </div>
-                ) : (
-                  <>
-                    <div className="rounded-lg border border-yellow-700/60 bg-black/20 px-3 py-3">
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-yellow-200">Player 1 Team</label>
-                      <select
-                        value={multiplayerTeams[0]}
-                        onChange={(e) => {
-                          const next = e.target.value as TeamName;
-                          if (next === multiplayerTeams[1]) return;
-                          setMultiplayerTeams([next, multiplayerTeams[1]]);
-                          setCustomUnits((prev) => prev.filter((u: any) => u.team === next || u.team === multiplayerTeams[1]));
-                          if (selectedTeam !== next && selectedTeam !== multiplayerTeams[1]) setSelectedTeam(next);
-                        }}
-                        className="w-full rounded border border-yellow-600 bg-gray-800 px-3 py-2 text-sm text-yellow-200 focus:outline-none focus:border-yellow-400"
-                      >
-                        {renderTeamSelectOptions(ALL_TEAMS)}
-                      </select>
-                    </div>
-                    <div className="rounded-lg border border-yellow-700/60 bg-black/20 px-3 py-3">
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-yellow-200">Player 2 Team</label>
-                      <select
-                        value={multiplayerTeams[1]}
-                        onChange={(e) => {
-                          const next = e.target.value as TeamName;
-                          if (next === multiplayerTeams[0]) return;
-                          setMultiplayerTeams([multiplayerTeams[0], next]);
-                          setCustomUnits((prev) => prev.filter((u: any) => u.team === multiplayerTeams[0] || u.team === next));
-                          if (selectedTeam !== next && selectedTeam !== multiplayerTeams[0]) setSelectedTeam(multiplayerTeams[0]);
-                        }}
-                        className="w-full rounded border border-yellow-600 bg-gray-800 px-3 py-2 text-sm text-yellow-200 focus:outline-none focus:border-yellow-400"
-                      >
-                        {renderTeamSelectOptions(ALL_TEAMS)}
-                      </select>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            <div className="rounded-lg border border-yellow-700/60 bg-black/20 px-3 py-3 xl:w-[30rem] xl:flex-shrink-0">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs font-semibold uppercase tracking-wide text-yellow-200">Team Selection</div>
-                <div className="text-[11px] text-yellow-100/80">
-                  Active: <span className="font-semibold text-yellow-200">{selectedTeam}</span>
-                </div>
-              </div>
-              <select
-                value={selectedTeam}
-                onChange={(e) => setSelectedTeam(e.target.value as TeamName)}
-                className="w-full rounded border border-yellow-600 bg-gray-800 px-3 py-2 text-sm text-yellow-200 focus:outline-none focus:border-yellow-400"
-              >
-                {renderTeamSelectOptions(setupTeams, (team) => `${team} (${getTeamCount(team)}/16)`)}
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="flex w-full justify-center">
+      <div
+        className={`flex w-full min-w-0 max-w-full justify-center ${
+          isBattlefieldFullscreen ? "bf-main-stage min-h-0 flex-1 flex-col overflow-hidden justify-center" : ""
+        }`}
+      >
         {false && !isSetupMode && (gameOptions.showTurnBanner || gameOptions.showBattleLog) && (
           <div className={`flex-shrink-0 ${isBattlefieldFullscreen ? "w-56" : "xl:w-80"}`}>
             <div className={`game-ui p-4 relative ${isBattlefieldFullscreen ? "max-h-[72vh] overflow-y-auto" : ""}`}>
@@ -3908,59 +4210,63 @@ function CodeConq() {
         )}
         
         <div
-          className={`battlefield-container relative mx-auto flex w-full justify-center ${isBattlefieldFullscreen ? "min-w-0 items-center" : "mt-3 sm:mt-4"}`}
+          className={`battlefield-container relative mx-auto flex w-full min-w-0 max-w-full justify-center ${
+            isBattlefieldFullscreen
+              ? "bf-fs-battlefield min-h-0 flex-1 flex-col overflow-hidden items-center justify-center"
+              : "mt-3 sm:mt-4 items-center"
+          }`}
           style={battlefieldMotionCssVars as CSSProperties}
           data-battle-motion={reduceUiMotion ? "reduced" : "normal"}
         >
           <div
             className={
-              `relative mx-auto max-w-full ${
+              `relative mx-auto min-w-0 max-w-full ${
                 useEightByEightViewport
                   ? "battlefield-shell-8x8"
-                  : useFullscreenNavigationViewport
-                    ? "battlefield-shell-fullscreen-large"
-                    : "w-fit"
+                  : useFullscreenBoundedBattlefield
+                    ? "battlefield-shell-fullscreen-large bf-fs-shell"
+                    : "w-fit max-w-full"
               }`
             }
           >
-            <div className="relative mx-auto w-fit max-w-full">
+            <div className="relative mx-auto min-w-0 w-full max-w-full">
                 {showGridNavigation && (
                   <>
                     <div
-                      className="pointer-events-none absolute left-2 right-2 top-2 z-10 flex h-10 items-start justify-center"
+                      className="pointer-events-none absolute left-1.5 right-1.5 top-1.5 z-10 flex h-10 items-start justify-center sm:left-2 sm:right-2 sm:top-2"
                     >
                       <div
-                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-horizontal"
+                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-horizontal battlefield-nav-rail--edge-n"
                         aria-hidden="true"
                         onMouseEnter={() => setHoverScrollDirection("up")}
                         onMouseLeave={() => setHoverScrollDirection(null)}
                       />
                     </div>
                     <div
-                      className="pointer-events-none absolute bottom-2 left-2 right-2 z-10 flex h-10 items-end justify-center"
+                      className="pointer-events-none absolute bottom-1.5 left-1.5 right-1.5 z-10 flex h-10 items-end justify-center sm:bottom-2 sm:left-2 sm:right-2"
                     >
                       <div
-                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-horizontal"
+                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-horizontal battlefield-nav-rail--edge-s"
                         aria-hidden="true"
                         onMouseEnter={() => setHoverScrollDirection("down")}
                         onMouseLeave={() => setHoverScrollDirection(null)}
                       />
                     </div>
                     <div
-                      className="pointer-events-none absolute bottom-2 left-2 top-2 z-10 flex w-10 items-center justify-start"
+                      className="pointer-events-none absolute bottom-1.5 left-1.5 top-1.5 z-10 flex w-10 items-center justify-start sm:bottom-2 sm:left-2 sm:top-2"
                     >
                       <div
-                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-vertical"
+                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-vertical battlefield-nav-rail--edge-w"
                         aria-hidden="true"
                         onMouseEnter={() => setHoverScrollDirection("left")}
                         onMouseLeave={() => setHoverScrollDirection(null)}
                       />
                     </div>
                     <div
-                      className="pointer-events-none absolute bottom-2 right-2 top-2 z-10 flex w-10 items-center justify-end"
+                      className="pointer-events-none absolute bottom-1.5 right-1.5 top-1.5 z-10 flex w-10 items-center justify-end sm:bottom-2 sm:right-2 sm:top-2"
                     >
                       <div
-                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-vertical"
+                        className="pointer-events-auto battlefield-nav-rail battlefield-nav-rail-vertical battlefield-nav-rail--edge-e"
                         aria-hidden="true"
                         onMouseEnter={() => setHoverScrollDirection("right")}
                         onMouseLeave={() => setHoverScrollDirection(null)}
@@ -3968,27 +4274,35 @@ function CodeConq() {
                     </div>
                   </>
                 )}
-                <div className="flex w-max mx-auto items-start">
+                <div
+                  className={`flex w-full min-w-0 max-w-full items-start justify-center ${
+                    useFullscreenBoundedBattlefield ? "bf-battlefield-inner min-h-0 flex-1 flex-col" : ""
+                  }`}
+                >
                   <div
                     ref={battlefieldViewportRef}
-                    className={
+                    className={[
+                      "min-w-0 max-w-full battlefield-scroll-viewport",
                       useEightByEightViewport
-                        ? "battlefield-scroll-viewport battlefield-scroll-viewport-8x8"
-                        : useFullscreenNavigationViewport
-                          ? "battlefield-scroll-viewport battlefield-scroll-viewport-fullscreen-large"
-                          : ""
-                    }
+                        ? "battlefield-scroll-viewport-8x8"
+                        : useFullscreenBoundedBattlefield
+                          ? "battlefield-scroll-viewport-fullscreen-large bf-fs-viewport"
+                          : "",
+                      showGridNavigation && "cc-map-pan-enabled",
+                      isPanningGrid && "cc-map-pan-active"
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     onPointerDownCapture={handleViewportPointerDown}
-                    style={showGridNavigation ? { cursor: isPanningGrid ? "grabbing" : "grab" } : undefined}
                   >
-                    <div className="w-max mx-auto">
+                    <div className="mx-auto w-max max-w-none">
                     <div
                       ref={battlefieldGridRef}
-                      className={`battlefield-grid grid mx-auto gap-0 ${passiveTeams.length > 0 ? "rounded-r-none border-r-0" : "rounded-lg"}`}
+                      className="battlefield-grid grid mx-auto gap-0 rounded-lg"
                       style={{
                         width: "max-content",
-                        gridTemplateColumns: `repeat(${battlefieldSize}, minmax(0, 1fr))`,
-                        gridTemplateRows: `repeat(${battlefieldSize}, minmax(0, 1fr))`
+                        gridTemplateColumns: `repeat(${battlefieldSize}, auto)`,
+                        gridTemplateRows: `repeat(${battlefieldSize}, auto)`
                       }}
                     >
                 <div
@@ -4029,17 +4343,68 @@ function CodeConq() {
                   : prevGrid == null || tilesMoved === 0
                     ? 0.35
                     : Math.min(24, tilesMoved * 2);
-                const terrainStyle = {
-                  backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12)), url(${TERRAIN_ASSETS[terrainType]})`,
-                  ...(reduceUiMotion
-                    ? { backgroundSize: "cover" as const, backgroundPosition: "center" as const }
+                const terrainAutotileVisual = getTerrainAutotileVisual(
+                  terrainType,
+                  x,
+                  y,
+                  battlefieldTerrain,
+                  battlefieldSize
+                );
+                const useForestVideo = terrainType === "forest" && terrainVideoAllowed;
+                const usePlainVideo = terrainType === "plain" && terrainVideoAllowed;
+                const useHillVideo = terrainType === "hill" && terrainVideoAllowed;
+                const useRiverVideo = terrainType === "river" && terrainVideoAllowed;
+                /** River corners always use `Riverbend.png`; only straights / full cells use `river.mp4` when shader is on. */
+                const isRiverCornerAutotile =
+                  terrainType === "river" && terrainAutotileVisual?.asset === RIVER_CORNER_ASSET;
+                const useRiverVideoAutotile = useRiverVideo && Boolean(terrainAutotileVisual) && !isRiverCornerAutotile;
+                const useDesertVideo = terrainType === "desert" && terrainVideoAllowed;
+                const terrainStyle: CSSProperties = {
+                  gridColumn: x + 1,
+                  gridRow: y + 1,
+                  ...(terrainAutotileVisual ||
+                  useForestVideo ||
+                  usePlainVideo ||
+                  useHillVideo ||
+                  useRiverVideo ||
+                  useDesertVideo
+                    ? { backgroundImage: "none" }
                     : {
-                        /* Extra canvas for slow pan — see .terrain-cell--living in index.css */
-                        backgroundSize: "122% 122%",
-                        backgroundPosition: "50% 50%",
-                        ["--terrain-drift-delay" as string]: `${-((x + y * 13) % 47)}s`
+                        backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12)), url(${TERRAIN_ASSETS[terrainType]})`,
+                        ...(reduceUiMotion
+                          ? { backgroundSize: "cover" as const, backgroundPosition: "center" as const }
+                          : {
+                              /* Extra canvas for slow pan — see .terrain-cell--living in index.css */
+                              backgroundSize: "122% 122%",
+                              backgroundPosition: "50% 50%",
+                              ["--terrain-drift-delay" as string]: `${-((x + y * 13) % 47)}s`
+                            })
                       })
                 };
+                const terrainAutotileTransformStyle: CSSProperties | null = terrainAutotileVisual
+                  ? {
+                      left: "50%",
+                      top: "50%",
+                      width: "141%",
+                      height: "141%",
+                      transform: `translate(calc(-50% + ${terrainAutotileVisual.nudgeXPx ?? 0}px), -50%) rotate(${terrainAutotileVisual.rotationDeg}deg)`,
+                      transformOrigin: "center center"
+                    }
+                  : null;
+                const terrainAutotileArtStyle: CSSProperties | null =
+                  terrainAutotileVisual && !useForestVideo && !useHillVideo && (!useRiverVideo || isRiverCornerAutotile)
+                    ? {
+                        ...terrainAutotileTransformStyle,
+                        backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12)), url(${terrainAutotileVisual.asset})`,
+                        ...(reduceUiMotion
+                          ? { backgroundSize: "cover" as const, backgroundPosition: "center" as const }
+                          : {
+                              backgroundSize: "122% 122%",
+                              backgroundPosition: "50% 50%",
+                              ["--terrain-drift-delay" as string]: `${-((x + y * 13) % 47)}s`
+                            })
+                      }
+                    : null;
                 
                 return (
                   <div
@@ -4054,10 +4419,11 @@ function CodeConq() {
                     onDragStart={(e: React.DragEvent) => {
                       if (!isSetupMode && mergeMode && u && ALL_TEAMS.includes(u.team)) {
                         setSelectedId(u.id);
+                        playTroopSelectSfx(u);
                         e.dataTransfer.setData('text/plain', u.id);
                       }
                     }}
-                    className={`${isBattlefieldFullscreen ? "w-[76px] h-[84px] sm:w-[84px] sm:h-[100px]" : "w-[84px] h-[100px] sm:w-[100px] sm:h-[116px]"} terrain-cell ${u ? "terrain-cell--has-unit" : ""}${reduceUiMotion ? "" : " terrain-cell--living"} flex flex-col items-center justify-center text-xs sm:text-sm cursor-pointer transition-all duration-300 relative
+                    className={`${isBattlefieldFullscreen ? "w-[76px] h-[84px] sm:w-[84px] sm:h-[100px]" : "w-[84px] h-[100px] sm:w-[100px] sm:h-[116px]"} terrain-cell ${u ? "terrain-cell--has-unit" : ""}${reduceUiMotion || terrainAutotileVisual || useForestVideo || usePlainVideo || useHillVideo || useRiverVideo || useDesertVideo ? "" : " terrain-cell--living"} flex flex-col items-center justify-center text-xs sm:text-sm transition-all duration-300 relative
                     ${isSelected ? "unit-selected" : ""}
                     ${isMove ? "movement-highlight" : ""}
                     ${isAttack ? "attack-highlight" : ""}
@@ -4079,6 +4445,201 @@ function CodeConq() {
                     data-terrain={terrainType}
                     title={TERRAIN_LABELS[terrainType]}
                   >
+                    {terrainAutotileVisual && terrainAutotileTransformStyle && useForestVideo && (
+                      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+                        <div
+                          className="terrain-cell__autotile-art terrain-cell__forest-video-wrap absolute z-0"
+                          data-terrain="forest"
+                          style={terrainAutotileTransformStyle}
+                        >
+                          <video
+                            className="terrain-cell__forest-video absolute inset-0 z-0 h-full w-full object-cover"
+                            src={FOREST_TILE_VIDEO_SRC}
+                            poster={TERRAIN_ASSETS.forest}
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                            preload="auto"
+                          />
+                          <div
+                            className="pointer-events-none absolute inset-0 z-[1]"
+                            style={{
+                              backgroundImage:
+                                "linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12))"
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {terrainAutotileVisual && terrainAutotileTransformStyle && useHillVideo && (
+                      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+                        <div
+                          className="terrain-cell__autotile-art terrain-cell__hill-video-wrap absolute z-0"
+                          data-terrain="hill"
+                          style={terrainAutotileTransformStyle}
+                        >
+                          <video
+                            className="terrain-cell__hill-video absolute inset-0 z-0 h-full w-full object-cover"
+                            src={HILL_TILE_VIDEO_SRC}
+                            poster={TERRAIN_ASSETS.hill}
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                            preload="auto"
+                          />
+                          <div
+                            className="pointer-events-none absolute inset-0 z-[1]"
+                            style={{
+                              backgroundImage:
+                                "linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12))"
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {terrainAutotileVisual && terrainAutotileTransformStyle && useRiverVideoAutotile && (
+                      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+                        <div
+                          className="terrain-cell__autotile-art terrain-cell__river-video-wrap absolute z-0"
+                          data-terrain="river"
+                          style={terrainAutotileTransformStyle}
+                        >
+                          <video
+                            className="terrain-cell__river-video absolute inset-0 z-0 h-full w-full object-cover"
+                            src={RIVER_TILE_VIDEO_SRC}
+                            poster={TERRAIN_ASSETS.river}
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                            preload="auto"
+                          />
+                          <div
+                            className="pointer-events-none absolute inset-0 z-[1]"
+                            style={{
+                              backgroundImage:
+                                "linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12))"
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {terrainAutotileVisual && terrainAutotileArtStyle && (
+                      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+                        <div
+                          className={`terrain-cell__autotile-art absolute z-0 ${!reduceUiMotion ? "terrain-cell--living" : ""}`}
+                          data-terrain={terrainType}
+                          style={terrainAutotileArtStyle}
+                        />
+                      </div>
+                    )}
+                    {!terrainAutotileVisual && useForestVideo && (
+                      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+                        <video
+                          className="terrain-cell__forest-video absolute left-1/2 top-1/2 z-0 min-h-full min-w-full -translate-x-1/2 -translate-y-1/2 object-cover"
+                          src={FOREST_TILE_VIDEO_SRC}
+                          poster={TERRAIN_ASSETS.forest}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          preload="auto"
+                        />
+                        <div
+                          className="pointer-events-none absolute inset-0 z-[1]"
+                          style={{
+                            backgroundImage:
+                              "linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12))"
+                          }}
+                        />
+                      </div>
+                    )}
+                    {!terrainAutotileVisual && useHillVideo && (
+                      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+                        <video
+                          className="terrain-cell__hill-video absolute left-1/2 top-1/2 z-0 min-h-full min-w-full -translate-x-1/2 -translate-y-1/2 object-cover"
+                          src={HILL_TILE_VIDEO_SRC}
+                          poster={TERRAIN_ASSETS.hill}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          preload="auto"
+                        />
+                        <div
+                          className="pointer-events-none absolute inset-0 z-[1]"
+                          style={{
+                            backgroundImage:
+                              "linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12))"
+                          }}
+                        />
+                      </div>
+                    )}
+                    {!terrainAutotileVisual && useRiverVideo && (
+                      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+                        <video
+                          className="terrain-cell__river-video absolute left-1/2 top-1/2 z-0 min-h-full min-w-full -translate-x-1/2 -translate-y-1/2 object-cover"
+                          src={RIVER_TILE_VIDEO_SRC}
+                          poster={TERRAIN_ASSETS.river}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          preload="auto"
+                        />
+                        <div
+                          className="pointer-events-none absolute inset-0 z-[1]"
+                          style={{
+                            backgroundImage:
+                              "linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12))"
+                          }}
+                        />
+                      </div>
+                    )}
+                    {!terrainAutotileVisual && usePlainVideo && (
+                      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+                        <video
+                          className="terrain-cell__plain-video absolute left-1/2 top-1/2 z-0 min-h-full min-w-full -translate-x-1/2 -translate-y-1/2 object-cover"
+                          src={PLAIN_TILE_VIDEO_SRC}
+                          poster={TERRAIN_ASSETS.plain}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          preload="auto"
+                        />
+                        <div
+                          className="pointer-events-none absolute inset-0 z-[1]"
+                          style={{
+                            backgroundImage:
+                              "linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12))"
+                          }}
+                        />
+                      </div>
+                    )}
+                    {!terrainAutotileVisual && useDesertVideo && (
+                      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+                        <video
+                          className="terrain-cell__desert-video absolute left-1/2 top-1/2 z-0 min-h-full min-w-full -translate-x-1/2 -translate-y-1/2 object-cover"
+                          src={DESERT_TILE_VIDEO_SRC}
+                          poster={TERRAIN_ASSETS.desert}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          preload="auto"
+                        />
+                        <div
+                          className="pointer-events-none absolute inset-0 z-[1]"
+                          style={{
+                            backgroundImage:
+                              "linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.12))"
+                          }}
+                        />
+                      </div>
+                    )}
                     <AnimatePresence mode="popLayout" initial={false}>
                       {u && (
                         <motion.div
@@ -4222,60 +4783,6 @@ function CodeConq() {
                     </div>
                     </div>
                   </div>
-                  {passiveTeams.length > 0 && (
-                    <div className="game-ui flex flex-col items-center gap-3 rounded-l-none border-l-0 px-2 py-3">
-                      {passiveTeams.map((team) => {
-                        const passive = CIV_PASSIVES[team];
-                        return (
-                          <div
-                            key={team}
-                            className="relative group"
-                            aria-label={`${team} passive: ${passive.name}. ${passive.effect}`}
-                            title={`${team} - ${passive.name}: ${passive.effect}`}
-                          >
-                            <div className="game-ui flex h-11 w-11 shrink-0 items-center justify-center border border-yellow-600 bg-gray-950 text-lg shadow-lg transition-colors group-hover:border-yellow-400">
-                              {PASSIVE_ICONS[team]}
-                            </div>
-                            <div className="game-ui pointer-events-none absolute left-1/2 top-full z-20 mt-4 hidden w-[21rem] -translate-x-1/2 overflow-hidden rounded-[22px] border border-yellow-500/80 bg-slate-950/95 text-left shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-amber-200/10 backdrop-blur-md group-hover:block">
-                              <div className="absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.3),_transparent_70%)]" />
-                              <div className="absolute right-[-18px] top-[-22px] h-24 w-24 rounded-full bg-amber-300/8 blur-2xl" />
-                              <div className="absolute left-1/2 top-[-8px] h-4 w-4 -translate-x-1/2 rotate-45 border-l border-t border-yellow-500/80 bg-slate-900" />
-                              <div className="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-yellow-300/85 to-transparent" />
-                              <div className="relative p-4">
-                                <div className="flex items-start gap-3">
-                                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-yellow-400/65 bg-gradient-to-br from-amber-300/20 via-amber-200/10 to-transparent text-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_10px_24px_rgba(0,0,0,0.3)]">
-                                    {PASSIVE_ICONS[team]}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2">
-                                      <div className="text-[15px] font-bold tracking-[0.08em] text-yellow-50">
-                                        {team}
-                                      </div>
-                                      <div className="h-px flex-1 bg-gradient-to-r from-yellow-400/35 to-transparent" />
-                                    </div>
-                                    <div className="mt-2 inline-flex rounded-full border border-yellow-500/35 bg-yellow-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-yellow-300/95">
-                                      Passive
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-300/80">
-                                    Faction Bonus
-                                  </div>
-                                  <div className="mt-2 text-base font-semibold leading-tight text-yellow-100">
-                                    {passive.name}
-                                  </div>
-                                  <div className="mt-3 rounded-xl border border-yellow-500/15 bg-slate-950/45 px-3 py-2.5 text-[13px] leading-6 text-yellow-50/95">
-                                    {passive.effect}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
             </div>
           </div>
@@ -4324,7 +4831,10 @@ function CodeConq() {
                     <span className="text-blue-400">🎯</span> Range: {inspectedEffectiveRange}
                     {inspectedEffectiveRange !== inspectedUnit.range ? ` (base ${inspectedUnit.range})` : ""}
                   </p>
-                  <p><span className="text-green-400">🚶‍♂️</span> Move: {getEffectiveMove(inspectedUnit, battlefieldTerrain)} {getEffectiveMove(inspectedUnit, battlefieldTerrain) !== inspectedUnit.move ? `(base ${inspectedUnit.move})` : ""}</p>
+                  <p>
+            <span className="text-green-400">🚶‍♂️</span> Move: {getMoveForBattle(inspectedUnit)}
+            {getMoveForBattle(inspectedUnit) !== inspectedUnit.move ? ` (base ${inspectedUnit.move})` : ""}
+          </p>
                   <p>
                     <span className="text-cyan-300">{getTroopTypeDisplay(inspectedUnit).icon}</span>{" "}
                     Troop Type: {getTroopTypeDisplay(inspectedUnit).label}
@@ -4488,71 +4998,164 @@ function CodeConq() {
         )}
 
         {isUnitPanelOpen && isSetupMode && (
-          <div className="fixed left-3 right-3 top-24 z-40 sm:left-auto sm:right-4 sm:w-[28rem]">
-            <div className="game-ui p-4 sm:p-6 relative max-h-[calc(100vh-7rem)] overflow-y-auto">
-                <div className="flex items-center justify-between gap-4 mb-4">
-                  <h2 className="text-2xl sm:text-3xl font-bold text-yellow-200">{selectedTeam} Troops</h2>
-                  <button
-                    onClick={() => setIsUnitPanelOpen(false)}
-                    className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
-                  >
-                    Close
-                  </button>
+          <div className="fixed left-3 right-3 top-24 z-40 sm:left-auto sm:right-4 sm:w-[22rem]">
+            <div className="game-ui relative flex max-h-[calc(100vh-7rem)] flex-col overflow-hidden p-3 sm:p-4">
+              <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-bold leading-tight text-yellow-200 sm:text-xl">{selectedTeam}</h2>
+                  <p className="mt-1 text-[11px] leading-snug text-yellow-100/72">
+                    Drag a unit onto the field. Hover an icon for stats and signature skills.
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setIsUnitPanelOpen(false)}
+                  className="battle-button shrink-0 px-3 py-1.5 text-xs font-semibold bg-gray-700 hover:bg-gray-800 sm:text-sm"
+                >
+                  Close
+                </button>
+              </div>
 
-                <div className="max-h-[60vh] overflow-y-auto space-y-2">
-                  {AVAILABLE_TROOPS[selectedTeam].map((troop, index) => {
-                    const troopAbilities = getTroopAbilities(troop.role);
+              {gameMode === "custom-scenario" && (
+                <div className="mb-3 shrink-0">
+                  <label
+                    htmlFor="unit-panel-your-team"
+                    className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-yellow-200/90"
+                  >
+                    Your side (you control)
+                  </label>
+                  <select
+                    id="unit-panel-your-team"
+                    value={playerTeam}
+                    onChange={(e) => {
+                      const next = e.target.value as TeamName;
+                      setPlayerTeam(next);
+                      if (selectedTeam === playerTeam) setSelectedTeam(next);
+                    }}
+                    className="w-full rounded-lg border border-yellow-600/70 bg-gray-900/90 px-2.5 py-2 text-xs text-yellow-200 focus:border-amber-400 focus:outline-none sm:text-sm"
+                  >
+                    {renderTeamSelectOptions(ALL_TEAMS)}
+                  </select>
+                </div>
+              )}
+
+              {gameMode === "multiplayer" && (
+                <div className="mb-3 grid shrink-0 grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="unit-panel-mp-p1"
+                      className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-yellow-200/90"
+                    >
+                      Player 1 team
+                    </label>
+                    <select
+                      id="unit-panel-mp-p1"
+                      value={multiplayerTeams[0]}
+                      onChange={(e) => {
+                        const next = e.target.value as TeamName;
+                        if (next === multiplayerTeams[1]) return;
+                        setMultiplayerTeams([next, multiplayerTeams[1]]);
+                        setCustomUnits((prev) => prev.filter((u: any) => u.team === next || u.team === multiplayerTeams[1]));
+                        if (selectedTeam !== next && selectedTeam !== multiplayerTeams[1]) setSelectedTeam(next);
+                      }}
+                      className="w-full rounded-lg border border-yellow-600/70 bg-gray-900/90 px-2.5 py-2 text-xs text-yellow-200 focus:border-amber-400 focus:outline-none sm:text-sm"
+                    >
+                      {renderTeamSelectOptions(ALL_TEAMS)}
+                    </select>
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="unit-panel-mp-p2"
+                      className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-yellow-200/90"
+                    >
+                      Player 2 team
+                    </label>
+                    <select
+                      id="unit-panel-mp-p2"
+                      value={multiplayerTeams[1]}
+                      onChange={(e) => {
+                        const next = e.target.value as TeamName;
+                        if (next === multiplayerTeams[0]) return;
+                        setMultiplayerTeams([multiplayerTeams[0], next]);
+                        setCustomUnits((prev) => prev.filter((u: any) => u.team === multiplayerTeams[0] || u.team === next));
+                        if (selectedTeam !== next && selectedTeam !== multiplayerTeams[0]) setSelectedTeam(multiplayerTeams[0]);
+                      }}
+                      className="w-full rounded-lg border border-yellow-600/70 bg-gray-900/90 px-2.5 py-2 text-xs text-yellow-200 focus:border-amber-400 focus:outline-none sm:text-sm"
+                    >
+                      {renderTeamSelectOptions(ALL_TEAMS)}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-3 shrink-0">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-yellow-200/90">
+                  Faction roster to place
+                </div>
+                <div className="grid max-h-[min(9.5rem,32vh)] grid-cols-4 gap-1.5 overflow-y-auto overflow-x-hidden pr-0.5 [-webkit-overflow-scrolling:touch] sm:grid-cols-3">
+                  {setupTeams.map((team) => {
+                    const passive = CIV_PASSIVES[team];
+                    const placed = getTeamCount(team);
+                    const isActive = selectedTeam === team;
                     return (
-                      <div
-                        key={index}
-                        draggable
-                        onDragStart={() => setDraggedTroop(troop)}
-                        onDragEnd={() => setDraggedTroop(null)}
-                        className="bg-gray-700 p-3 rounded cursor-move hover:bg-gray-600 transition-colors border border-gray-600 relative"
+                      <button
+                        key={team}
+                        type="button"
+                        onClick={() => setSelectedTeam(team)}
+                        title={
+                          passive
+                            ? `${team} — ${passive.name}: ${passive.effect}. Placed ${placed}/16.`
+                            : `${team}. Placed ${placed}/16.`
+                        }
+                        className={`flex flex-col items-center justify-center rounded-xl border px-0.5 py-1.5 text-center transition ${
+                          isActive
+                            ? "border-amber-400/80 bg-amber-950/45 ring-2 ring-amber-500/45"
+                            : "border-yellow-800/55 bg-black/35 hover:border-amber-500/50 hover:bg-black/45"
+                        }`}
                       >
-                        <div className="flex items-center gap-2">
-                          <div className="text-2xl">
-                            {typeof troop.Icon === "string" && troop.Icon.length <= 2
-                              ? troop.Icon
-                              : ICON_MAP[troop.Icon as keyof typeof ICON_MAP] || troop.Icon || "⚔️"}
-                          </div>
-                          <div className="flex-1">
-                            <div className="text-yellow-200 font-semibold">{troop.name}</div>
-                            <div className="text-xs text-gray-300">{troop.role}</div>
-                          </div>
-                        </div>
-                        <div className="mt-2">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/78">Signature Skills</div>
-                          {troopAbilities.length > 0 ? (
-                            <div className="mt-1.5 space-y-1.5">
-                              {troopAbilities.map((ability) => (
-                                <div
-                                  key={ability.key}
-                                  className="rounded-lg border border-cyan-700/35 bg-cyan-950/20 px-2.5 py-2 text-[11px] leading-relaxed text-cyan-50"
-                                >
-                                  <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="mt-1.5 text-[11px] text-yellow-100/68">No signature skills.</div>
-                          )}
-                        </div>
-                      </div>
+                        <span className="text-base leading-none sm:text-lg" aria-hidden>
+                          {PASSIVE_ICONS[team]}
+                        </span>
+                        <span className="mt-0.5 w-full truncate px-0.5 text-[7px] font-bold uppercase leading-tight tracking-tight text-yellow-100/88 sm:text-[8px]">
+                          {team}
+                        </span>
+                        <span className="text-[7px] tabular-nums text-yellow-200/65 sm:text-[8px]">{placed}/16</span>
+                      </button>
                     );
                   })}
                 </div>
+              </div>
 
-                <div className="mt-4 p-3 bg-gray-800 rounded border border-gray-600">
-                  <div className="text-yellow-200 font-semibold mb-2">Team Counts:</div>
-                  <div className="text-sm text-gray-300">
-                    {setupTeams.map((team) => (
-                      <div key={team}>{team}: {getTeamCount(team)}/16</div>
-                    ))}
-                  </div>
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pr-0.5">
+                <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
+                  {AVAILABLE_TROOPS[selectedTeam].map((troop, index) => (
+                    <SetupTroopPaletteCell
+                      key={`${troop.role}-${index}`}
+                      troop={troop}
+                      onDragStart={() => {
+                        setDraggedTroop(troop);
+                        playTroopSelectSfx({ ...troop, ...generateTroopStats(troop.role) });
+                      }}
+                      onDragEnd={() => setDraggedTroop(null)}
+                    />
+                  ))}
                 </div>
               </div>
+
+              <div className="mt-3 shrink-0 rounded-xl border border-yellow-700/45 bg-black/25 p-2.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-yellow-200/90">Placed</div>
+                <div className="mt-1.5 space-y-0.5 text-xs text-yellow-100/80">
+                  {setupTeams.map((team) => (
+                    <div key={team} className="flex justify-between gap-2 tabular-nums">
+                      <span className="truncate">{team}</span>
+                      <span className="shrink-0 text-yellow-200/90">
+                        {getTeamCount(team)}/16
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

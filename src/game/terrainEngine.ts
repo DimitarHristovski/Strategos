@@ -17,9 +17,14 @@ export const getEnabledTerrainTypes = (terrainSettings: TerrainGenerationSetting
   return enabledTypes.length > 0 ? enabledTypes : ["plain"];
 };
 
+/** Mixed maps ≤14×14: only these land biomes (no rivers). */
+const MIXED_SMALL_MAP_TYPES: TerrainType[] = ["plain", "forest", "hill"];
+
+/** Mixed maps 16×16–20×20: rivers join the pool; desert last when present. */
+const MIXED_LARGE_MAP_PRIORITY: TerrainType[] = ["plain", "forest", "hill", "river", "desert"];
+
 const getMixedTerrainTypeLimit = (battlefieldSize: BattlefieldSize) => {
-  if (battlefieldSize <= 10) return 2;
-  if (battlefieldSize <= 16) return 3;
+  if (battlefieldSize <= 14) return 3;
   return 4;
 };
 
@@ -36,12 +41,22 @@ const getMixedTerrainTypes = (
       : enabledTypes;
 
   const terrainLimit = getMixedTerrainTypeLimit(battlefieldSize);
-  if (desertFilteredTypes.length <= terrainLimit) {
-    return desertFilteredTypes;
+
+  const poolRestricted =
+    battlefieldSize <= 14
+      ? desertFilteredTypes.filter((terrainType) => MIXED_SMALL_MAP_TYPES.includes(terrainType))
+      : desertFilteredTypes;
+
+  if (poolRestricted.length === 0) {
+    return ["plain"];
   }
 
-  const priorityOrder: TerrainType[] = ["plain", "forest", "hill", "river", "desert"];
-  return priorityOrder.filter((terrainType) => desertFilteredTypes.includes(terrainType)).slice(0, terrainLimit);
+  if (poolRestricted.length <= terrainLimit) {
+    return poolRestricted;
+  }
+
+  const priorityOrder = battlefieldSize <= 14 ? MIXED_SMALL_MAP_TYPES : MIXED_LARGE_MAP_PRIORITY;
+  return priorityOrder.filter((terrainType) => poolRestricted.includes(terrainType)).slice(0, terrainLimit);
 };
 
 const createTerrainCounts = (): Record<TerrainType, number> => ({
@@ -190,8 +205,8 @@ const pickRiverSources = (elevationField: ScalarField, battlefieldSize: Battlefi
   for (let y = 1; y < size - 1; y += 1) {
     for (let x = 1; x < size - 1; x += 1) {
       const elevation = elevationField[y][x];
-      if (elevation < 0.6) continue;
-      candidates.push({ x, y, score: elevation + Math.random() * 0.15 });
+      if (elevation < 0.62) continue;
+      candidates.push({ x, y, score: elevation + Math.random() * 0.12 });
     }
   }
 
@@ -267,7 +282,9 @@ const traceRiverPath = (
       if (visited.has(neighborKey)) continue;
 
       const direction = { x: neighbor.x - current.x, y: neighbor.y - current.y };
-      const uphillPenalty = Math.max(0, elevationField[neighbor.y][neighbor.x] - elevationField[current.y][current.x]) * 3.2;
+      const drop = elevationField[current.y][current.x] - elevationField[neighbor.y][neighbor.x];
+      const uphillPenalty = Math.max(0, -drop) * 3.2;
+      const downhillBonus = drop > 0 ? drop * 1.15 : 0;
       const targetDistance = getManhattanDistance(neighbor, target) / Math.max(1, size - 1);
       const turnPenalty =
         previousDirection && (previousDirection.x !== direction.x || previousDirection.y !== direction.y) ? 0.12 : 0;
@@ -281,6 +298,7 @@ const traceRiverPath = (
         turnPenalty +
         mergeBonus +
         edgeBonus -
+        downhillBonus -
         moistureField[neighbor.y][neighbor.x] * 0.08 +
         Math.random() * 0.04;
 
@@ -606,6 +624,59 @@ const smoothTerrainEdges = (
   return currentMap;
 };
 
+/**
+ * Every inland river spring (degree-1 river tile not on the map edge) gets hill on the
+ * highest non-river cardinal neighbor so streams read as flowing out of high ground.
+ */
+const ensureHillsAtRiverSprings = (
+  terrainMap: TerrainType[][],
+  elevationField: ScalarField,
+  enabledTerrainTypes: TerrainType[]
+): void => {
+  if (!enabledTerrainTypes.includes("hill")) return;
+
+  const size = terrainMap.length;
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      if (terrainMap[y][x] !== "river") continue;
+
+      let riverNeighborCount = 0;
+      for (const offset of CARDINAL_DIRECTIONS) {
+        const nx = x + offset.x;
+        const ny = y + offset.y;
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+        if (terrainMap[ny][nx] === "river") riverNeighborCount += 1;
+      }
+
+      if (riverNeighborCount !== 1) continue;
+
+      const onMapEdge = x === 0 || y === 0 || x === size - 1 || y === size - 1;
+      if (onMapEdge) continue;
+
+      let bestX = -1;
+      let bestY = -1;
+      let bestElev = -1;
+
+      for (const offset of CARDINAL_DIRECTIONS) {
+        const nx = x + offset.x;
+        const ny = y + offset.y;
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+        if (terrainMap[ny][nx] === "river") continue;
+        const elev = elevationField[ny][nx];
+        if (elev > bestElev) {
+          bestElev = elev;
+          bestX = nx;
+          bestY = ny;
+        }
+      }
+
+      if (bestX < 0 || terrainMap[bestY][bestX] === "hill") continue;
+      terrainMap[bestY][bestX] = "hill";
+    }
+  }
+};
+
 const generateBattlefieldTerrain = (battlefieldSize: BattlefieldSize, terrainSettings: TerrainGenerationSettings): TerrainType[][] => {
   const enabledTerrainTypes = getMixedTerrainTypes(terrainSettings, battlefieldSize);
 
@@ -613,18 +684,20 @@ const generateBattlefieldTerrain = (battlefieldSize: BattlefieldSize, terrainSet
     return generatePureTerrain(battlefieldSize, enabledTerrainTypes[0]);
   }
 
+  const useRiverGeometry = terrainSettings.river && battlefieldSize > 14;
+
   const elevationField = generateElevationField(battlefieldSize);
   const baseMoistureField = generateMoistureField(battlefieldSize, elevationField);
-  const riverField: boolean[][] = terrainSettings.river
+  const riverField: boolean[][] = useRiverGeometry
     ? generateRiverField(battlefieldSize, elevationField, baseMoistureField)
     : Array.from({ length: battlefieldSize }, () => Array.from({ length: battlefieldSize }, () => false));
-  const riverDistanceField = terrainSettings.river
+  const riverDistanceField = useRiverGeometry
     ? buildRiverDistanceField(riverField)
     : createScalarField(battlefieldSize, () => Number.POSITIVE_INFINITY);
   const hydratedMoistureField = hydrateMoistureField(baseMoistureField, elevationField, riverDistanceField);
 
   let terrainMap = createTerrainField(battlefieldSize, (x, y) => {
-    const nearRiver = terrainSettings.river && riverField[y]?.[x];
+    const nearRiver = useRiverGeometry && riverField[y]?.[x];
     return chooseBaseTerrain(elevationField[y][x], hydratedMoistureField[y][x], nearRiver, enabledTerrainTypes);
   });
 
@@ -634,6 +707,7 @@ const generateBattlefieldTerrain = (battlefieldSize: BattlefieldSize, terrainSet
   terrainMap = enforceBiomeTransitions(terrainMap, enabledTerrainTypes, hydratedMoistureField, elevationField, riverDistanceField);
   terrainMap = smoothTerrainEdges(terrainMap, enabledTerrainTypes, 2);
   terrainMap = mergeTinyTerrainRegions(terrainMap, battlefieldSize, enabledTerrainTypes);
+  ensureHillsAtRiverSprings(terrainMap, elevationField, enabledTerrainTypes);
 
   return terrainMap;
 };

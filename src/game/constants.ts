@@ -47,11 +47,26 @@ export const LEVEL_MATCHUP_LABELS: Record<keyof typeof levels, string> = {
 
 export const TERRAIN_ASSETS: Record<TerrainType, string> = {
   plain: "/tiles/plain.png",
-  forest: "/tiles/forrest.png",
+  forest: "/tiles/forest.jpeg",
   hill: "/tiles/hill.png",
   river: "/tiles/river.png",
-  desert: "/tiles/dessert.png"
+  desert: "/tiles/desert.png"
 };
+
+/** Looped forest tile video (`muted` + `playsInline` for autoplay). Falls back to `TERRAIN_ASSETS.forest` when videos off or reduced motion. */
+export const FOREST_TILE_VIDEO_SRC = "/tiles/forest.mp4";
+
+/** Looped plain tile video. Falls back to `TERRAIN_ASSETS.plain` when reduced motion. */
+export const PLAIN_TILE_VIDEO_SRC = "/tiles/plain.mp4";
+
+/** Looped hill tile video. Falls back to `TERRAIN_ASSETS.hill` when reduced motion. */
+export const HILL_TILE_VIDEO_SRC = "/tiles/hill.mp4";
+
+/** Looped river tile video (straights and bends use the same clip + autotile transform). Falls back to PNG autotile / `TERRAIN_ASSETS.river` when videos off or reduced motion. */
+export const RIVER_TILE_VIDEO_SRC = "/tiles/river.mp4";
+
+/** Looped desert tile video. Falls back to `TERRAIN_ASSETS.desert` when videos off or reduced motion. */
+export const DESERT_TILE_VIDEO_SRC = "/tiles/desert.mp4";
 
 export const TERRAIN_LABELS: Record<TerrainType, string> = {
   plain: "Plain",
@@ -99,5 +114,6 @@ export const DEFAULT_GAME_OPTIONS: GameOptions = {
   showBattleLog: true,
   showTurnBanner: true,
   terrainEffectsEnabled: true,
+  terrainTileVideosEnabled: true,
   battlefieldSize: 8
 };
