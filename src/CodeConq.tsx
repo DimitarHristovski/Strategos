@@ -2688,7 +2688,7 @@ function CodeConq() {
 
     const row: typeof availableTroops = [];
     for (let i = 0; i < needNonLeader; i++) {
-      row.push(pool[i % pool.length]);
+      row.push(pool[Math.floor(Math.random() * pool.length)]);
     }
 
     const MAX_SIEGE_UNITS = 2;
@@ -2856,7 +2856,7 @@ function CodeConq() {
     setDraggedTroop(null);
     setSelectedId(null);
     setLog((prev) => [
-      `Auto deployed ${playerTeam} versus ${enemyTeam} with ${unitCount} troops per side (full faction roster rotation, max 2 siege each), two-tile battle line gap.`,
+      `Auto deployed ${playerTeam} versus ${enemyTeam} with ${unitCount} troops per side (random picks from full faction roster, max 2 siege each), two-tile battle line gap.`,
       ...prev
     ]);
   };
