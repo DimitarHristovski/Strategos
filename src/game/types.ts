@@ -18,6 +18,9 @@ export type BattlefieldSize = 8 | 10 | 12 | 14 | 16 | 18 | 20;
 export type GridOrientation = "north" | "east" | "south" | "west";
 export type HoverScrollDirection = "up" | "down" | "left" | "right" | null;
 export type TroopMechanicType = "closecombat" | "mounted" | "ranged" | "sieged";
+
+/** Line weight for balance / UI: light (fast, low HP) … elite (rare, powerful). */
+export type UnitWeight = "light" | "medium" | "heavy" | "elite";
 export type TerrainType = "plain" | "forest" | "hill" | "river" | "desert";
 export type TerrainPreset = "mixed" | Exclude<TerrainType, "river">;
 export type TerrainGenerationSettings = Record<TerrainType, boolean>;
@@ -34,6 +37,10 @@ export type GameOptions = {
   sfxEnabled: boolean;
   showMoveHighlights: boolean;
   showAttackHighlights: boolean;
+  /** Red −HP (and emerald −blocked) popups on the defender when a hit resolves. */
+  showFloatingDamageNumbers: boolean;
+  /** Preview damage / blocked when your unit is selected and you hover a valid enemy target. */
+  showAttackDamagePreview: boolean;
   showBattleLog: boolean;
   showTurnBanner: boolean;
   terrainEffectsEnabled: boolean;

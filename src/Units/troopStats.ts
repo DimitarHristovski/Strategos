@@ -1,3 +1,6 @@
+import type { UnitWeight } from "../game/types";
+import { getUnitWeight } from "../game/unitWeight";
+
 export type TroopStats = {
   hp: number;
   maxHp: number;
@@ -5,6 +8,7 @@ export type TroopStats = {
   ammo: number;
   range: number;
   move: number;
+  weight: UnitWeight;
 };
 
 type TroopStatTemplate = {
@@ -21,34 +25,23 @@ export type TroopReferenceStats = {
   ammo: number;
   range: number;
   move: number;
+  weight: UnitWeight;
 };
 
 export type TroopAbilityKey =
-  | "battleCohesion"
-  | "bloodOath"
   | "brace"
   | "charge"
   | "command"
   | "crush"
   | "deadeye"
-  | "falxDominion"
   | "ferocity"
-  | "furyCharge"
   | "guarded"
   | "harrier"
-  | "imperialCohort"
-  | "ironShield"
-  | "nomadStrike"
-  | "phalanx"
   | "resolve"
-  | "rhomphaiaFury"
   | "shieldWall"
   | "shock"
   | "siegeMastery"
-  | "skirmishStep"
-  | "sunChariot"
-  | "testudo"
-  | "wildAmbush";
+  | "skirmishStep";
 
 export type TroopAbilityDefinition = {
   key: TroopAbilityKey;
@@ -121,147 +114,75 @@ const TROOP_ABILITY_DEFINITIONS: Record<TroopAbilityKey, TroopAbilityDefinition>
     key: "resolve",
     name: "Resolve",
     description: "+10% attack while adjacent to an allied unit at or below 50% HP."
-  },
-  testudo: {
-    key: "testudo",
-    name: "Testudo",
-    description:
-      "Ranged damage taken ×0.65; skirmisher-style attacks ×0.85 (multiplicative); adjacent Testudo ally ×0.9 on top."
-  },
-  phalanx: {
-    key: "phalanx",
-    name: "Phalanx",
-    description:
-      "+20% attack (×1.2) vs mounted; +10% (×1.1) with adjacent Phalanx ally; close-combat damage taken ×0.8."
-  },
-  bloodOath: {
-    key: "bloodOath",
-    name: "Blood Oath",
-    description:
-      "Round 1: +20% attack (×1.2), +1 move. At ≤50% HP: +10% attack (×1.1)."
-  },
-  furyCharge: {
-    key: "furyCharge",
-    name: "Fury Charge",
-    description:
-      "When attacking: +15% (×1.15). Vs target with no adjacent allies: +10% (×1.1). On plains: +1 move."
-  },
-  wildAmbush: {
-    key: "wildAmbush",
-    name: "Wild Ambush",
-    description:
-      "Forest: +15% attack (×1.15), +1 move. On forest/hill vs ranged: damage taken ×0.85."
-  },
-  battleCohesion: {
-    key: "battleCohesion",
-    name: "Battle Cohesion",
-    description:
-      "Adjacent ally different role: +10% attack (×1.1), damage taken ×0.9. Elephant with adjacent ally: +10% attack (×1.1)."
-  },
-  sunChariot: {
-    key: "sunChariot",
-    name: "Sun Chariot",
-    description:
-      "Adjacent ranged ally: damage taken ×0.8 from Sun Chariot support. Chariot after move: +15% (×1.15). Desert: +1 move."
-  },
-  rhomphaiaFury: {
-    key: "rhomphaiaFury",
-    name: "Rhomphaia Fury",
-    description:
-      "Vs Guarded/Shield Wall abilities: +20% (×1.2). Close combat: +10% (×1.1). Pierce active Guard/Shield: ×1.15 damage through defenses."
-  },
-  falxDominion: {
-    key: "falxDominion",
-    name: "Falx Dominion",
-    description:
-      "Vs elite infantry (role match): +25% (×1.25). Adjacent Falx ally: +10% (×1.1). Pierce Guard/Shield/Brace (mounted): ×1.2 through defenses."
-  },
-  nomadStrike: {
-    key: "nomadStrike",
-    name: "Nomad Strike",
-    description:
-      "After move: +10% (×1.1). With ammo: +1 move (skips if Skirmish Step already +1). At 0 ammo: full attack (no ×0.5)."
-  },
-  imperialCohort: {
-    key: "imperialCohort",
-    name: "Imperial Cohort",
-    description:
-      "Adjacent cohort unit: +10% (×1.1). Cataphract/elephant with ally: +10% (×1.1). Cohort ally other class: damage taken ×0.9."
-  },
-  ironShield: {
-    key: "ironShield",
-    name: "Iron Shield",
-    description:
-      "Vs close combat: damage taken ×0.8. Vs ranged with Iron ally adjacent: ×0.85. Adjacent Iron ally: +10% attack (×1.1)."
   }
 };
 
 const TROOP_ROLE_ABILITIES: Record<string, TroopAbilityKey[]> = {
   "Roman King": ["command"],
-  Legionary: ["guarded", "testudo"],
-  Centurion: ["resolve", "testudo"],
+  Legionary: ["guarded"],
+  Centurion: ["resolve"],
   Auxiliary: ["ferocity"],
   Triarii: ["brace"],
   Archer: ["deadeye"],
-  Hoplite: ["brace", "phalanx"],
-  Phalangite: ["brace", "phalanx"],
-  "Seleucid Phalangite": ["brace", "imperialCohort"],
+  Hoplite: ["brace"],
+  Phalangite: ["brace"],
+  "Seleucid Phalangite": ["brace"],
   "Eastern Spearman": ["brace"],
   "Parthian Spearman": ["guarded"],
   "Dacian Spearman": ["brace"],
   "Thracian Spearman": ["brace"],
   "Bondi Spearman": ["brace"],
-  "African Pikeman": ["brace", "battleCohesion"],
+  "African Pikeman": ["brace"],
   "Punic Spearman": ["brace"],
-  Praetorian: ["shieldWall", "testudo"],
+  Praetorian: ["shieldWall"],
   "Royal Guard": ["shieldWall"],
   "Shield Bearer": ["shieldWall"],
   "Dacian Shield Bearer": ["shieldWall"],
-  "Sacred Band": ["shieldWall", "battleCohesion"],
-  "Silver Shield Infantry": ["shieldWall", "phalanx", "imperialCohort"],
-  Medjay: ["guarded", "sunChariot"],
-  Thorakitai: ["guarded", "imperialCohort"],
-  Hirdman: ["guarded", "ironShield"],
-  Shieldmaiden: ["guarded", "ironShield"],
-  "Thracian Guard": ["guarded", "rhomphaiaFury"],
-  "Dacian Guard": ["guarded", "falxDominion"],
-  "Libyan Infantry": ["guarded", "battleCohesion"],
+  "Sacred Band": ["shieldWall"],
+  "Silver Shield Infantry": ["shieldWall"],
+  Medjay: ["guarded"],
+  Thorakitai: ["guarded"],
+  Hirdman: ["guarded"],
+  Shieldmaiden: ["guarded"],
+  "Thracian Guard": ["guarded"],
+  "Dacian Guard": ["guarded"],
+  "Libyan Infantry": ["guarded"],
   "Liby-Phoenician Infantry": ["guarded"],
   Hypaspist: ["guarded"],
-  Agema: ["resolve", "phalanx"],
+  Agema: ["resolve"],
   "Barbarian Spearman": ["guarded"],
   "Gallic Spearman": ["guarded"],
-  "Germanic Spearman": ["guarded", "wildAmbush"],
-  Hearthguard: ["guarded", "wildAmbush"],
-  Huscarl: ["shieldWall", "ironShield"],
-  "Varangian Guard": ["shieldWall", "ironShield"],
-  "Barbarian Berserker": ["shock", "bloodOath"],
-  "Gallic Berserker": ["shock", "furyCharge"],
+  "Germanic Spearman": ["guarded"],
+  Hearthguard: ["guarded"],
+  Huscarl: ["shieldWall"],
+  "Varangian Guard": ["shieldWall"],
+  "Barbarian Berserker": ["shock"],
+  "Gallic Berserker": ["shock"],
   Berserker: ["shock"],
   Ulfhednar: ["shock"],
-  "Falx Warrior": ["shock", "rhomphaiaFury"],
-  Falxman: ["shock", "falxDominion"],
-  "Rhomphaia Fighter": ["shock", "rhomphaiaFury"],
-  "Barbarian Warrior": ["ferocity", "bloodOath"],
-  "Barbarian Axeman": ["ferocity", "bloodOath"],
+  "Falx Warrior": ["shock"],
+  Falxman: ["shock"],
+  "Rhomphaia Fighter": ["shock"],
+  "Barbarian Warrior": ["ferocity"],
+  "Barbarian Axeman": ["ferocity"],
   "Barbarian Raider": ["ferocity"],
-  Oathsworn: ["resolve", "bloodOath"],
+  Oathsworn: ["resolve"],
   "Gallic Warrior": ["ferocity"],
   "Gallic Oathsworn": ["resolve"],
-  Gaesatae: ["ferocity", "furyCharge"],
+  Gaesatae: ["ferocity"],
   Fianna: ["resolve"],
-  "Germanic Warrior": ["ferocity", "wildAmbush"],
+  "Germanic Warrior": ["ferocity"],
   "Germanic Berserker": ["ferocity"],
-  "Germanic Raider": ["ferocity", "wildAmbush"],
-  "Chosen Axeman": ["ferocity", "wildAmbush"],
+  "Germanic Raider": ["ferocity"],
+  "Chosen Axeman": ["ferocity"],
   "Iberian Swordsman": ["ferocity"],
   "Egyptian Warrior": ["ferocity"],
   "Khopesh Warrior": ["ferocity"],
   "Thracian Warrior": ["ferocity"],
-  "Dacian Warrior": ["ferocity", "falxDominion"],
+  "Dacian Warrior": ["ferocity"],
   "Parthian Warrior": ["ferocity"],
   "Viking Raider": ["ferocity"],
-  Jomsviking: ["resolve", "ironShield"],
+  Jomsviking: ["resolve"],
   Cavalry: ["charge"],
   "Companion Cavalry": ["charge"],
   "Thessalian Cavalry": ["charge"],
@@ -270,26 +191,26 @@ const TROOP_ROLE_ABILITIES: Record<string, TroopAbilityKey[]> = {
   "Barbarian Noble Rider": ["ferocity"],
   "Gallic Noble Horseman": ["ferocity"],
   "Germanic Wolf Rider": ["ferocity"],
-  "Numidian Cavalry": ["charge", "battleCohesion"],
-  "War Chariot": ["charge", "sunChariot"],
+  "Numidian Cavalry": ["charge"],
+  "War Chariot": ["charge"],
   "Thracian Rider": ["charge"],
   "Thracian Noble Rider": ["charge"],
   "Dacian Rider": ["charge"],
   "Dacian Noble Rider": ["charge"],
   "Parthian Cataphract": ["charge"],
   "Parthian Noble Rider": ["ferocity"],
-  "Seleucid Cataphract": ["charge", "imperialCohort"],
+  "Seleucid Cataphract": ["charge"],
   "Seleucid Light Cavalry": ["skirmishStep"],
   "Gothic Lancer": ["charge"],
   "Suebi Rider": ["charge"],
-  "Royal Chariot": ["skirmishStep", "sunChariot"],
+  "Royal Chariot": ["skirmishStep"],
   "Scout Rider": ["skirmishStep"],
   "Camel Rider": ["ferocity"],
   Velites: ["harrier"],
   Peltast: ["harrier"],
   Thureophoroi: ["harrier"],
   "Gallic Skirmisher": ["harrier"],
-  "Balearic Slinger": ["harrier", "battleCohesion"],
+  "Balearic Slinger": ["harrier"],
   "Tribal Slinger": ["skirmishStep"],
   "Seleucid Slinger": ["skirmishStep"],
   "Dacian Slinger": ["harrier"],
@@ -297,17 +218,17 @@ const TROOP_ROLE_ABILITIES: Record<string, TroopAbilityKey[]> = {
   "Barbarian Scout": ["harrier"],
   Scout: ["harrier"],
   "Desert Scout": ["harrier"],
-  "Horse Archer": ["harrier", "nomadStrike"],
-  "Elite Horse Archer": ["harrier", "nomadStrike"],
-  "Camel Rider Archer": ["harrier", "nomadStrike"],
+  "Horse Archer": ["harrier"],
+  "Elite Horse Archer": ["harrier"],
+  "Camel Rider Archer": ["harrier"],
   "Barbarian Archer": ["deadeye"],
   "Barbarian Shaman": ["skirmishStep"],
   "Cretan Archer": ["deadeye"],
   "Gallic Archer": ["deadeye"],
   "Germanic Archer": ["deadeye"],
   "Carthaginian Archer": ["deadeye"],
-  "Egyptian Archer": ["deadeye", "sunChariot"],
-  "Nubian Archer": ["deadeye", "sunChariot"],
+  "Egyptian Archer": ["deadeye"],
+  "Nubian Archer": ["deadeye"],
   "Thracian Archer": ["deadeye"],
   "Dacian Archer": ["deadeye"],
   "Parthian Archer": ["deadeye"],
@@ -325,10 +246,10 @@ const TROOP_ROLE_ABILITIES: Record<string, TroopAbilityKey[]> = {
   "Dacian Catapult": ["siegeMastery"],
   "Parthian Ballista": ["siegeMastery"],
   "Seleucid Catapult": ["siegeMastery"],
-  "War Elephant": ["crush", "battleCohesion"],
-  "Seleucid War Elephant": ["crush", "imperialCohort"],
+  "War Elephant": ["crush"],
+  "Seleucid War Elephant": ["crush"],
   "Barbarian Chief": ["command"],
-  "Barbarian Warlord": ["command", "bloodOath"],
+  "Barbarian Warlord": ["command"],
   "Macedonian King": ["command"],
   "Gallic King": ["command"],
   "Germanic King": ["command"],
@@ -460,199 +381,257 @@ const ensureRoleMoveRules = (role: string, stats: TroopStats): TroopStats => {
   };
 };
 
-// Unified troop templates. Every unit now lives in one faction-grouped source of truth.
-const TROOP_STAT_TEMPLATES: Record<string, TroopStatTemplate> = {
+/** HP/attack bands by line weight, keyed like troop UI categories (siege / ranged / melee / mounted). */
+export const SCALED_WEIGHT_RANGES = {
+  siege: {
+    light: { hp: [50, 100], attack: [60, 100] },
+    medium: { hp: [75, 150], attack: [90, 150] },
+    heavy: { hp: [113, 225], attack: [135, 225] },
+    elite: { hp: [169, 338], attack: [203, 338] }
+  },
+  ranged: {
+    light: { hp: [80, 130], attack: [50, 90] },
+    medium: { hp: [120, 195], attack: [75, 135] },
+    heavy: { hp: [180, 293], attack: [113, 203] },
+    elite: { hp: [270, 439], attack: [169, 304] }
+  },
+  closeCombat: {
+    light: { hp: [130, 170], attack: [90, 140] },
+    medium: { hp: [195, 255], attack: [135, 210] },
+    heavy: { hp: [293, 383], attack: [203, 315] },
+    elite: { hp: [439, 574], attack: [304, 473] }
+  },
+  mounted: {
+    light: { hp: [160, 200], attack: [110, 160] },
+    medium: { hp: [240, 300], attack: [165, 240] },
+    heavy: { hp: [360, 450], attack: [248, 360] },
+    elite: { hp: [540, 675], attack: [371, 540] }
+  }
+} as const;
+
+type TroopRoleProfile = { ammo: number; range: number; move: number };
+type StatScaleCategory = keyof typeof SCALED_WEIGHT_RANGES;
+
+/** Aligns with `getTroopMechanicType` classification using role + profile (no rolled stats). */
+const getStatScaleCategory = (role: string, profile: TroopRoleProfile): StatScaleCategory => {
+  const roleLower = role.toLowerCase();
+  const siegeKeywords = ["ballista", "catapult", "trebuchet", "polybolos", "siege tower", "onager", "bombard"];
+  if (siegeKeywords.some((keyword) => roleLower.includes(keyword))) {
+    return "siege";
+  }
+  if (profile.ammo > 0 && profile.range > 1) {
+    return "ranged";
+  }
+  const mountedKeywords = ["cavalry", "chariot", "rider", "scout", "knight", "elephant", "horse", "camel", "cataphract"];
+  if (mountedKeywords.some((keyword) => roleLower.includes(keyword)) || (profile.move >= 3 && profile.range <= 1)) {
+    return "mounted";
+  }
+  return "closeCombat";
+};
+
+/** Per-role mobility & weapon profile; HP/attack come from `SCALED_WEIGHT_RANGES` × unit weight. */
+const TROOP_ROLE_PROFILES: Record<string, TroopRoleProfile> = {
   // Romans
-  "Roman King": { hp: [420, 450], attack: [240, 270], ammo: 0, range: 1, move: 1 },
-  Praetorian: { hp: [440, 520], attack: [180, 220], ammo: 0, range: 1, move: 1 },
-  Centurion: { hp: [340, 420], attack: [150, 180], ammo: 0, range: 1, move: 1 },
-  Legionary: { hp: [280, 340], attack: [110, 140], ammo: 0, range: 1, move: 1 },
-  Auxiliary: { hp: [170, 220], attack: [90, 120], ammo: 0, range: 1, move: 1 },
-  Triarii: { hp: [320, 380], attack: [120, 150], ammo: 0, range: 1, move: 1 },
-  Archer: { hp: [150, 200], attack: [65, 90], ammo: 10, range: 3, move: 1 },
-  Velites: { hp: [90, 130], attack: [50, 75], ammo: 10, range: 3, move: 1 },
-  Cavalry: { hp: [220, 260], attack: [120, 150], ammo: 0, range: 1, move: 3 },
-  Ballista: { hp: [10, 50], attack: [50, 100], ammo: 10, range: 6, move: 1 },
-  "Heavy Cavalry": { hp: [280, 340], attack: [150, 190], ammo: 0, range: 1, move: 3 },
-  Onager: { hp: [60, 90], attack: [150, 190], ammo: 6, range: 6, move: 1 },
+  "Roman King": { ammo: 0, range: 1, move: 1 },
+  Praetorian: { ammo: 0, range: 1, move: 1 },
+  Centurion: { ammo: 0, range: 1, move: 1 },
+  Legionary: { ammo: 0, range: 1, move: 1 },
+  Auxiliary: { ammo: 0, range: 1, move: 1 },
+  Triarii: { ammo: 0, range: 1, move: 1 },
+  Archer: { ammo: 10, range: 3, move: 1 },
+  Velites: { ammo: 10, range: 3, move: 1 },
+  Cavalry: { ammo: 0, range: 1, move: 3 },
+  Ballista: { ammo: 10, range: 6, move: 1 },
+  "Heavy Cavalry": { ammo: 0, range: 1, move: 3 },
+  Onager: { ammo: 6, range: 6, move: 1 },
 
   // Barbarians
-  "Barbarian Chief": { hp: [360, 420], attack: [250, 290], ammo: 0, range: 1, move: 1 },
-  "Barbarian Warlord": { hp: [420, 520], attack: [240, 290], ammo: 0, range: 1, move: 1 },
-  "Barbarian Warrior": { hp: [220, 270], attack: [130, 170], ammo: 0, range: 1, move: 1 },
-  "Barbarian Berserker": { hp: [240, 310], attack: [220, 260], ammo: 0, range: 1, move: 1 },
-  "Barbarian Axeman": { hp: [260, 340], attack: [170, 210], ammo: 0, range: 1, move: 1 },
-  "Barbarian Spearman": { hp: [180, 230], attack: [90, 120], ammo: 0, range: 1, move: 1 },
-  "Barbarian Raider": { hp: [140, 190], attack: [130, 165], ammo: 0, range: 1, move: 1 },
-  Oathsworn: { hp: [300, 360], attack: [190, 230], ammo: 0, range: 1, move: 1 },
-  "Barbarian Scout": { hp: [170, 220], attack: [120, 150], ammo: 4, range: 3, move: 3 },
-  "Barbarian Noble Rider": { hp: [230, 280], attack: [145, 175], ammo: 0, range: 1, move: 3 },
-  "Barbarian Archer": { hp: [90, 140], attack: [60, 85], ammo: 10, range: 2, move: 1 },
-  "Barbarian Shaman": { hp: [120, 170], attack: [110, 150], ammo: 10, range: 2, move: 1 },
+  "Barbarian Chief": { ammo: 0, range: 1, move: 1 },
+  "Barbarian Warlord": { ammo: 0, range: 1, move: 1 },
+  "Barbarian Warrior": { ammo: 0, range: 1, move: 1 },
+  "Barbarian Berserker": { ammo: 0, range: 1, move: 1 },
+  "Barbarian Axeman": { ammo: 0, range: 1, move: 1 },
+  "Barbarian Spearman": { ammo: 0, range: 1, move: 1 },
+  "Barbarian Raider": { ammo: 0, range: 1, move: 1 },
+  Oathsworn: { ammo: 0, range: 1, move: 1 },
+  "Barbarian Scout": { ammo: 4, range: 3, move: 3 },
+  "Barbarian Noble Rider": { ammo: 0, range: 1, move: 3 },
+  "Barbarian Archer": { ammo: 10, range: 2, move: 1 },
+  "Barbarian Shaman": { ammo: 10, range: 2, move: 1 },
 
   // Greeks / Macedonians
-  "Macedonian King": { hp: [400, 440], attack: [250, 285], ammo: 0, range: 1, move: 1 },
-  Agema: { hp: [320, 380], attack: [160, 200], ammo: 0, range: 1, move: 1 },
-  Hoplite: { hp: [300, 360], attack: [110, 140], ammo: 0, range: 1, move: 1 },
-  Phalangite: { hp: [340, 400], attack: [125, 155], ammo: 0, range: 1, move: 1 },
-  Hypaspist: { hp: [280, 340], attack: [140, 175], ammo: 0, range: 1, move: 1 },
-  Thureophoroi: { hp: [200, 250], attack: [95, 125], ammo: 6, range: 2, move: 1 },
-  Peltast: { hp: [140, 180], attack: [75, 100], ammo: 12, range: 3, move: 1 },
-  "Cretan Archer": { hp: [130, 170], attack: [90, 120], ammo: 12, range: 4, move: 1 },
-  "Companion Cavalry": { hp: [240, 300], attack: [170, 210], ammo: 0, range: 1, move: 3 },
-  "Thessalian Cavalry": { hp: [230, 280], attack: [145, 175], ammo: 0, range: 1, move: 3 },
-  "Greek Catapult": { hp: [30, 60], attack: [110, 160], ammo: 8, range: 6, move: 1 },
-  Polybolos: { hp: [40, 70], attack: [90, 140], ammo: 16, range: 5, move: 1 },
+  "Macedonian King": { ammo: 0, range: 1, move: 1 },
+  Agema: { ammo: 0, range: 1, move: 1 },
+  Hoplite: { ammo: 0, range: 1, move: 1 },
+  Phalangite: { ammo: 0, range: 1, move: 1 },
+  Hypaspist: { ammo: 0, range: 1, move: 1 },
+  Thureophoroi: { ammo: 6, range: 2, move: 1 },
+  Peltast: { ammo: 12, range: 3, move: 1 },
+  "Cretan Archer": { ammo: 12, range: 4, move: 1 },
+  "Companion Cavalry": { ammo: 0, range: 1, move: 3 },
+  "Thessalian Cavalry": { ammo: 0, range: 1, move: 3 },
+  "Greek Catapult": { ammo: 8, range: 6, move: 1 },
+  Polybolos: { ammo: 16, range: 5, move: 1 },
 
   // Gauls
-  "Gallic King": { hp: [340, 390], attack: [220, 255], ammo: 0, range: 1, move: 1 },
-  "Gallic Warrior": { hp: [200, 250], attack: [115, 145], ammo: 0, range: 1, move: 1 },
-  "Gallic Berserker": { hp: [220, 280], attack: [180, 220], ammo: 0, range: 1, move: 1 },
-  "Gallic Spearman": { hp: [180, 230], attack: [95, 125], ammo: 0, range: 1, move: 1 },
-  "Gallic Oathsworn": { hp: [300, 360], attack: [185, 225], ammo: 0, range: 1, move: 1 },
-  Gaesatae: { hp: [270, 330], attack: [200, 240], ammo: 0, range: 1, move: 1 },
-  Fianna: { hp: [240, 290], attack: [155, 185], ammo: 0, range: 1, move: 1 },
-  "Gallic Cavalry": { hp: [180, 230], attack: [120, 150], ammo: 0, range: 1, move: 4 },
-  "Gallic Noble Horseman": { hp: [220, 280], attack: [150, 180], ammo: 0, range: 1, move: 3 },
-  "Gallic Chariot": { hp: [170, 220], attack: [130, 160], ammo: 4, range: 3, move: 4 },
-  "Gallic Archer": { hp: [120, 160], attack: [75, 100], ammo: 10, range: 3, move: 1 },
-  "Gallic Skirmisher": { hp: [110, 150], attack: [65, 90], ammo: 12, range: 3, move: 1 },
+  "Gallic King": { ammo: 0, range: 1, move: 1 },
+  "Gallic Warrior": { ammo: 0, range: 1, move: 1 },
+  "Gallic Berserker": { ammo: 0, range: 1, move: 1 },
+  "Gallic Spearman": { ammo: 0, range: 1, move: 1 },
+  "Gallic Oathsworn": { ammo: 0, range: 1, move: 1 },
+  Gaesatae: { ammo: 0, range: 1, move: 1 },
+  Fianna: { ammo: 0, range: 1, move: 1 },
+  "Gallic Cavalry": { ammo: 0, range: 1, move: 4 },
+  "Gallic Noble Horseman": { ammo: 0, range: 1, move: 3 },
+  "Gallic Chariot": { ammo: 4, range: 3, move: 4 },
+  "Gallic Archer": { ammo: 10, range: 3, move: 1 },
+  "Gallic Skirmisher": { ammo: 12, range: 3, move: 1 },
 
   // Germanic
-  "Germanic King": { hp: [400, 440], attack: [270, 305], ammo: 0, range: 1, move: 1 },
-  "Germanic Warrior": { hp: [260, 320], attack: [135, 170], ammo: 0, range: 1, move: 1 },
-  "Germanic Spearman": { hp: [240, 290], attack: [100, 130], ammo: 0, range: 1, move: 1 },
-  "Germanic Berserker": { hp: [270, 330], attack: [205, 245], ammo: 0, range: 1, move: 1 },
-  "Germanic Raider": { hp: [180, 230], attack: [135, 170], ammo: 0, range: 1, move: 1 },
-  "Chosen Axeman": { hp: [300, 350], attack: [180, 220], ammo: 0, range: 1, move: 1 },
-  Hearthguard: { hp: [320, 380], attack: [170, 210], ammo: 0, range: 1, move: 1 },
-  "Germanic Wolf Rider": { hp: [220, 260], attack: [140, 175], ammo: 0, range: 1, move: 2 },
-  "Suebi Rider": { hp: [220, 270], attack: [150, 180], ammo: 0, range: 1, move: 3 },
-  "Gothic Lancer": { hp: [250, 300], attack: [165, 195], ammo: 0, range: 1, move: 3 },
-  "Germanic Archer": { hp: [150, 190], attack: [70, 95], ammo: 10, range: 2, move: 1 },
-  "Tribal Slinger": { hp: [140, 180], attack: [70, 95], ammo: 10, range: 3, move: 1 },
+  "Germanic King": { ammo: 0, range: 1, move: 1 },
+  "Germanic Warrior": { ammo: 0, range: 1, move: 1 },
+  "Germanic Spearman": { ammo: 0, range: 1, move: 1 },
+  "Germanic Berserker": { ammo: 0, range: 1, move: 1 },
+  "Germanic Raider": { ammo: 0, range: 1, move: 1 },
+  "Chosen Axeman": { ammo: 0, range: 1, move: 1 },
+  Hearthguard: { ammo: 0, range: 1, move: 1 },
+  "Germanic Wolf Rider": { ammo: 0, range: 1, move: 2 },
+  "Suebi Rider": { ammo: 0, range: 1, move: 3 },
+  "Gothic Lancer": { ammo: 0, range: 1, move: 3 },
+  "Germanic Archer": { ammo: 10, range: 2, move: 1 },
+  "Tribal Slinger": { ammo: 10, range: 3, move: 1 },
 
   // Carthage
-  "Carthaginian General": { hp: [390, 430], attack: [230, 265], ammo: 0, range: 1, move: 1 },
-  "Libyan Infantry": { hp: [240, 290], attack: [110, 140], ammo: 0, range: 1, move: 1 },
-  "Sacred Band": { hp: [340, 400], attack: [170, 205], ammo: 0, range: 1, move: 1 },
-  "Liby-Phoenician Infantry": { hp: [260, 320], attack: [125, 155], ammo: 0, range: 1, move: 1 },
-  "Iberian Swordsman": { hp: [230, 290], attack: [145, 180], ammo: 0, range: 1, move: 1 },
-  "African Pikeman": { hp: [260, 320], attack: [120, 145], ammo: 0, range: 1, move: 1 },
-  "Punic Spearman": { hp: [250, 300], attack: [120, 145], ammo: 0, range: 1, move: 1 },
-  "Punic Marine": { hp: [230, 280], attack: [130, 160], ammo: 0, range: 1, move: 1 },
-  "Numidian Cavalry": { hp: [180, 230], attack: [110, 140], ammo: 0, range: 1, move: 3 },
-  "War Elephant": { hp: [480, 560], attack: [220, 270], ammo: 0, range: 1, move: 3 },
-  "Elephant Archer": { hp: [320, 380], attack: [120, 150], ammo: 4, range: 3, move: 2 },
-  "Balearic Slinger": { hp: [130, 170], attack: [75, 100], ammo: 12, range: 4, move: 1 },
-  "Carthaginian Archer": { hp: [130, 170], attack: [75, 100], ammo: 10, range: 3, move: 1 },
+  "Carthaginian General": { ammo: 0, range: 1, move: 1 },
+  "Libyan Infantry": { ammo: 0, range: 1, move: 1 },
+  "Sacred Band": { ammo: 0, range: 1, move: 1 },
+  "Liby-Phoenician Infantry": { ammo: 0, range: 1, move: 1 },
+  "Iberian Swordsman": { ammo: 0, range: 1, move: 1 },
+  "African Pikeman": { ammo: 0, range: 1, move: 1 },
+  "Punic Spearman": { ammo: 0, range: 1, move: 1 },
+  "Punic Marine": { ammo: 0, range: 1, move: 1 },
+  "Numidian Cavalry": { ammo: 0, range: 1, move: 3 },
+  "War Elephant": { ammo: 0, range: 1, move: 3 },
+  "Elephant Archer": { ammo: 4, range: 3, move: 2 },
+  "Balearic Slinger": { ammo: 12, range: 4, move: 1 },
+  "Carthaginian Archer": { ammo: 10, range: 3, move: 1 },
 
   // Egypt
-  Pharaoh: { hp: [410, 450], attack: [230, 260], ammo: 0, range: 1, move: 1 },
-  "Egyptian Warrior": { hp: [240, 290], attack: [110, 140], ammo: 0, range: 1, move: 1 },
-  Medjay: { hp: [280, 330], attack: [140, 175], ammo: 0, range: 1, move: 1 },
-  "Khopesh Warrior": { hp: [260, 320], attack: [160, 195], ammo: 0, range: 1, move: 1 },
-  "Shield Bearer": { hp: [300, 360], attack: [90, 120], ammo: 0, range: 1, move: 1 },
-  "Royal Guard": { hp: [340, 400], attack: [175, 210], ammo: 0, range: 1, move: 1 },
-  "Egyptian Archer": { hp: [140, 180], attack: [75, 100], ammo: 10, range: 3, move: 1 },
-  "Nubian Archer": { hp: [150, 190], attack: [90, 120], ammo: 12, range: 4, move: 1 },
-  "War Chariot": { hp: [220, 270], attack: [145, 175], ammo: 0, range: 1, move: 4 },
-  "Royal Chariot": { hp: [260, 320], attack: [170, 205], ammo: 4, range: 4, move: 4 },
-  "Desert Scout": { hp: [170, 220], attack: [110, 140], ammo: 4, range: 3, move: 4 },
-  "Egyptian Catapult": { hp: [40, 70], attack: [120, 170], ammo: 8, range: 6, move: 1 },
+  Pharaoh: { ammo: 0, range: 1, move: 1 },
+  "Egyptian Warrior": { ammo: 0, range: 1, move: 1 },
+  Medjay: { ammo: 0, range: 1, move: 1 },
+  "Khopesh Warrior": { ammo: 0, range: 1, move: 1 },
+  "Shield Bearer": { ammo: 0, range: 1, move: 1 },
+  "Royal Guard": { ammo: 0, range: 1, move: 1 },
+  "Egyptian Archer": { ammo: 10, range: 3, move: 1 },
+  "Nubian Archer": { ammo: 12, range: 4, move: 1 },
+  "War Chariot": { ammo: 0, range: 1, move: 4 },
+  "Royal Chariot": { ammo: 4, range: 4, move: 4 },
+  "Desert Scout": { ammo: 4, range: 3, move: 4 },
+  "Egyptian Catapult": { ammo: 8, range: 6, move: 1 },
 
   // Thracians
-  "Thracian King": { hp: [360, 410], attack: [220, 255], ammo: 0, range: 1, move: 1 },
-  "Thracian Warrior": { hp: [220, 270], attack: [125, 155], ammo: 0, range: 1, move: 1 },
-  "Rhomphaia Fighter": { hp: [230, 280], attack: [180, 220], ammo: 0, range: 1, move: 1 },
-  "Falx Warrior": { hp: [220, 270], attack: [185, 225], ammo: 0, range: 1, move: 1 },
-  "Thracian Spearman": { hp: [210, 260], attack: [100, 125], ammo: 0, range: 1, move: 1 },
-  "Thracian Guard": { hp: [320, 380], attack: [155, 190], ammo: 0, range: 1, move: 1 },
-  "Thracian Peltast": { hp: [140, 180], attack: [75, 100], ammo: 12, range: 3, move: 1 },
-  "Thracian Archer": { hp: [130, 170], attack: [80, 105], ammo: 10, range: 3, move: 1 },
-  "Thracian Rider": { hp: [190, 240], attack: [120, 150], ammo: 0, range: 1, move: 3 },
-  "Thracian Noble Rider": { hp: [240, 300], attack: [155, 190], ammo: 0, range: 1, move: 3 },
-  "War Drummer": { hp: [200, 250], attack: [95, 120], ammo: 0, range: 1, move: 1 },
-  "Thracian Catapult": { hp: [40, 70], attack: [120, 165], ammo: 8, range: 6, move: 1 },
+  "Thracian King": { ammo: 0, range: 1, move: 1 },
+  "Thracian Warrior": { ammo: 0, range: 1, move: 1 },
+  "Rhomphaia Fighter": { ammo: 0, range: 1, move: 1 },
+  "Falx Warrior": { ammo: 0, range: 1, move: 1 },
+  "Thracian Spearman": { ammo: 0, range: 1, move: 1 },
+  "Thracian Guard": { ammo: 0, range: 1, move: 1 },
+  "Thracian Peltast": { ammo: 12, range: 3, move: 1 },
+  "Thracian Archer": { ammo: 10, range: 3, move: 1 },
+  "Thracian Rider": { ammo: 0, range: 1, move: 3 },
+  "Thracian Noble Rider": { ammo: 0, range: 1, move: 3 },
+  "War Drummer": { ammo: 0, range: 1, move: 1 },
+  "Thracian Catapult": { ammo: 8, range: 6, move: 1 },
 
   // Dacians
-  "Dacian King": { hp: [370, 420], attack: [225, 260], ammo: 0, range: 1, move: 1 },
-  "Dacian Warrior": { hp: [230, 280], attack: [130, 160], ammo: 0, range: 1, move: 1 },
-  Falxman: { hp: [220, 270], attack: [190, 230], ammo: 0, range: 1, move: 1 },
-  "Dacian Spearman": { hp: [220, 270], attack: [95, 120], ammo: 0, range: 1, move: 1 },
-  "Dacian Shield Bearer": { hp: [300, 360], attack: [95, 120], ammo: 0, range: 1, move: 1 },
-  "Dacian Guard": { hp: [330, 390], attack: [160, 195], ammo: 0, range: 1, move: 1 },
-  "Dacian Slinger": { hp: [130, 170], attack: [70, 95], ammo: 12, range: 4, move: 1 },
-  "Dacian Archer": { hp: [130, 170], attack: [75, 100], ammo: 10, range: 3, move: 1 },
-  "Dacian Rider": { hp: [190, 240], attack: [120, 150], ammo: 0, range: 1, move: 3 },
-  "Dacian Noble Rider": { hp: [240, 300], attack: [160, 195], ammo: 0, range: 1, move: 3 },
-  "War Horn": { hp: [190, 240], attack: [90, 115], ammo: 0, range: 1, move: 1 },
-  "Dacian Catapult": { hp: [40, 70], attack: [120, 165], ammo: 8, range: 6, move: 1 },
+  "Dacian King": { ammo: 0, range: 1, move: 1 },
+  "Dacian Warrior": { ammo: 0, range: 1, move: 1 },
+  Falxman: { ammo: 0, range: 1, move: 1 },
+  "Dacian Spearman": { ammo: 0, range: 1, move: 1 },
+  "Dacian Shield Bearer": { ammo: 0, range: 1, move: 1 },
+  "Dacian Guard": { ammo: 0, range: 1, move: 1 },
+  "Dacian Slinger": { ammo: 12, range: 4, move: 1 },
+  "Dacian Archer": { ammo: 10, range: 3, move: 1 },
+  "Dacian Rider": { ammo: 0, range: 1, move: 3 },
+  "Dacian Noble Rider": { ammo: 0, range: 1, move: 3 },
+  "War Horn": { ammo: 0, range: 1, move: 1 },
+  "Dacian Catapult": { ammo: 8, range: 6, move: 1 },
 
   // Parthians
-  "Parthian King": { hp: [380, 430], attack: [215, 250], ammo: 0, range: 1, move: 1 },
-  "Parthian Warrior": { hp: [220, 270], attack: [120, 150], ammo: 0, range: 1, move: 1 },
-  "Parthian Spearman": { hp: [220, 270], attack: [95, 120], ammo: 0, range: 1, move: 1 },
-  "Parthian Cataphract": { hp: [300, 360], attack: [180, 220], ammo: 0, range: 1, move: 3 },
-  "Parthian Noble Rider": { hp: [250, 310], attack: [160, 195], ammo: 0, range: 1, move: 3 },
-  "Horse Archer": { hp: [170, 220], attack: [110, 140], ammo: 4, range: 4, move: 3 },
-  "Elite Horse Archer": { hp: [200, 250], attack: [135, 165], ammo: 4, range: 4, move: 3 },
-  "Parthian Archer": { hp: [130, 170], attack: [75, 100], ammo: 10, range: 3, move: 1 },
-  "Scout Rider": { hp: [170, 220], attack: [110, 140], ammo: 0, range: 1, move: 4 },
-  "Zoroastrian Priest": { hp: [190, 240], attack: [105, 130], ammo: 0, range: 1, move: 1 },
-  "Camel Rider": { hp: [220, 270], attack: [130, 160], ammo: 0, range: 1, move: 3 },
-  "Camel Rider Archer": { hp: [200, 250], attack: [115, 145], ammo: 4, range: 3, move: 3 },
-  "Parthian Ballista": { hp: [40, 70], attack: [115, 160], ammo: 8, range: 6, move: 1 },
+  "Parthian King": { ammo: 0, range: 1, move: 1 },
+  "Parthian Warrior": { ammo: 0, range: 1, move: 1 },
+  "Parthian Spearman": { ammo: 0, range: 1, move: 1 },
+  "Parthian Cataphract": { ammo: 0, range: 1, move: 3 },
+  "Parthian Noble Rider": { ammo: 0, range: 1, move: 3 },
+  "Horse Archer": { ammo: 4, range: 4, move: 3 },
+  "Elite Horse Archer": { ammo: 4, range: 4, move: 3 },
+  "Parthian Archer": { ammo: 10, range: 3, move: 1 },
+  "Scout Rider": { ammo: 0, range: 1, move: 4 },
+  "Zoroastrian Priest": { ammo: 0, range: 1, move: 1 },
+  "Camel Rider": { ammo: 0, range: 1, move: 3 },
+  "Camel Rider Archer": { ammo: 4, range: 3, move: 3 },
+  "Parthian Ballista": { ammo: 8, range: 6, move: 1 },
 
   // Seleucids
-  "Seleucid King": { hp: [390, 440], attack: [220, 255], ammo: 0, range: 1, move: 1 },
-  "Seleucid Phalangite": { hp: [320, 380], attack: [120, 150], ammo: 0, range: 1, move: 1 },
-  "Silver Shield Infantry": { hp: [340, 400], attack: [165, 200], ammo: 0, range: 1, move: 1 },
-  Thorakitai: { hp: [260, 320], attack: [130, 160], ammo: 0, range: 1, move: 1 },
-  "Eastern Spearman": { hp: [240, 290], attack: [95, 120], ammo: 0, range: 1, move: 1 },
-  "Seleucid War Elephant": { hp: [500, 580], attack: [225, 275], ammo: 0, range: 1, move: 3 },
-  "Seleucid Cataphract": { hp: [300, 360], attack: [180, 220], ammo: 0, range: 1, move: 3 },
-  "Seleucid Light Cavalry": { hp: [200, 250], attack: [120, 150], ammo: 0, range: 1, move: 3 },
-  "Eastern Archer": { hp: [130, 170], attack: [75, 100], ammo: 10, range: 3, move: 1 },
-  "Seleucid Slinger": { hp: [130, 170], attack: [70, 95], ammo: 12, range: 4, move: 1 },
-  "Seleucid Elephant Archer": { hp: [340, 400], attack: [125, 155], ammo: 4, range: 3, move: 2 },
-  "Standard Bearer": { hp: [210, 260], attack: [105, 130], ammo: 0, range: 1, move: 1 },
-  "Seleucid Catapult": { hp: [40, 70], attack: [120, 170], ammo: 8, range: 6, move: 1 },
+  "Seleucid King": { ammo: 0, range: 1, move: 1 },
+  "Seleucid Phalangite": { ammo: 0, range: 1, move: 1 },
+  "Silver Shield Infantry": { ammo: 0, range: 1, move: 1 },
+  Thorakitai: { ammo: 0, range: 1, move: 1 },
+  "Eastern Spearman": { ammo: 0, range: 1, move: 1 },
+  "Seleucid War Elephant": { ammo: 0, range: 1, move: 3 },
+  "Seleucid Cataphract": { ammo: 0, range: 1, move: 3 },
+  "Seleucid Light Cavalry": { ammo: 0, range: 1, move: 3 },
+  "Eastern Archer": { ammo: 10, range: 3, move: 1 },
+  "Seleucid Slinger": { ammo: 12, range: 4, move: 1 },
+  "Seleucid Elephant Archer": { ammo: 4, range: 3, move: 2 },
+  "Standard Bearer": { ammo: 0, range: 1, move: 1 },
+  "Seleucid Catapult": { ammo: 8, range: 6, move: 1 },
 
   // Vikings
-  Jarl: { hp: [360, 410], attack: [250, 290], ammo: 0, range: 1, move: 1 },
-  Huscarl: { hp: [320, 380], attack: [170, 205], ammo: 0, range: 1, move: 1 },
-  Hirdman: { hp: [280, 340], attack: [145, 175], ammo: 0, range: 1, move: 1 },
-  Ulfhednar: { hp: [260, 320], attack: [210, 250], ammo: 0, range: 1, move: 1 },
-  "Varangian Guard": { hp: [340, 400], attack: [175, 215], ammo: 0, range: 1, move: 1 },
-  Jomsviking: { hp: [300, 360], attack: [160, 195], ammo: 0, range: 1, move: 1 },
-  "Viking Raider": { hp: [190, 240], attack: [150, 185], ammo: 0, range: 1, move: 1 },
-  Berserker: { hp: [220, 280], attack: [210, 250], ammo: 0, range: 1, move: 1 },
-  Shieldmaiden: { hp: [210, 260], attack: [125, 155], ammo: 0, range: 1, move: 1 },
-  "Bondi Spearman": { hp: [220, 270], attack: [110, 135], ammo: 0, range: 1, move: 1 },
-  Scout: { hp: [150, 200], attack: [110, 140], ammo: 4, range: 3, move: 3 },
-  "Viking Archer": { hp: [120, 160], attack: [70, 95], ammo: 10, range: 3, move: 1 },
-
+  Jarl: { ammo: 0, range: 1, move: 1 },
+  Huscarl: { ammo: 0, range: 1, move: 1 },
+  Hirdman: { ammo: 0, range: 1, move: 1 },
+  Ulfhednar: { ammo: 0, range: 1, move: 1 },
+  "Varangian Guard": { ammo: 0, range: 1, move: 1 },
+  Jomsviking: { ammo: 0, range: 1, move: 1 },
+  "Viking Raider": { ammo: 0, range: 1, move: 1 },
+  Berserker: { ammo: 0, range: 1, move: 1 },
+  Shieldmaiden: { ammo: 0, range: 1, move: 1 },
+  "Bondi Spearman": { ammo: 0, range: 1, move: 1 },
+  Scout: { ammo: 4, range: 3, move: 3 },
+  "Viking Archer": { ammo: 10, range: 3, move: 1 }
 };
 
-const DEFAULT_TROOP_TEMPLATE: TroopStatTemplate = {
-  hp: [1, 1],
-  attack: [1, 1],
-  ammo: 0,
-  range: 1,
-  move: 1
+const DEFAULT_ROLE_PROFILE: TroopRoleProfile = { ammo: 0, range: 1, move: 1 };
+
+const getTroopStatTemplate = (role: string): TroopStatTemplate => {
+  const profile = TROOP_ROLE_PROFILES[role] ?? DEFAULT_ROLE_PROFILE;
+  const weight = getUnitWeight(role);
+  const category = getStatScaleCategory(role, profile);
+  const band = SCALED_WEIGHT_RANGES[category][weight];
+  return {
+    hp: [band.hp[0], band.hp[1]],
+    attack: [band.attack[0], band.attack[1]],
+    ammo: profile.ammo,
+    range: profile.range,
+    move: profile.move
+  };
 };
+
+const rollInRange = (min: number, max: number) =>
+  max > min ? Math.floor(Math.random() * (max - min) + min) : min;
 
 // Roll a concrete stat line from a reusable min/max template.
 const generateTemplateStats = (template: TroopStatTemplate) => ({
-  hp: Math.floor(Math.random() * (template.hp[1] - template.hp[0]) + template.hp[0]),
-  attack: Math.floor(Math.random() * (template.attack[1] - template.attack[0]) + template.attack[0]),
+  hp: rollInRange(template.hp[0], template.hp[1]),
+  attack: rollInRange(template.attack[0], template.attack[1]),
   ammo: template.ammo,
   range: template.range,
   move: template.move
 });
 
-const normalizeTemplateRules = (role: string, template: TroopStatTemplate): TroopReferenceStats => {
+const normalizeTemplateRules = (role: string, template: TroopStatTemplate): Omit<TroopReferenceStats, "weight"> => {
   const normalized = ensureRoleMoveRules(
     role,
     ensureRangedAmmo(role, {
@@ -661,7 +640,8 @@ const normalizeTemplateRules = (role: string, template: TroopStatTemplate): Troo
       attack: template.attack[0],
       ammo: template.ammo,
       range: template.range,
-      move: template.move
+      move: template.move,
+      weight: getUnitWeight(role)
     })
   );
 
@@ -675,13 +655,16 @@ const normalizeTemplateRules = (role: string, template: TroopStatTemplate): Troo
 };
 
 export const getTroopReferenceStats = (role: string): TroopReferenceStats => {
-  const template = TROOP_STAT_TEMPLATES[role] ?? DEFAULT_TROOP_TEMPLATE;
-  return normalizeTemplateRules(role, template);
+  const template = getTroopStatTemplate(role);
+  return {
+    ...normalizeTemplateRules(role, template),
+    weight: getUnitWeight(role)
+  };
 };
 
-// Main troop stat lookup from the unified template roster above.
+// Main troop stat lookup: scaled HP/attack from weight × category, plus per-role profile.
 export const generateTroopStats = (role: string): TroopStats => {
-  const template = TROOP_STAT_TEMPLATES[role] ?? DEFAULT_TROOP_TEMPLATE;
+  const template = getTroopStatTemplate(role);
   const templateStats = generateTemplateStats(template);
   const hp = templateStats.hp;
   const maxHp = hp;
@@ -690,5 +673,8 @@ export const generateTroopStats = (role: string): TroopStats => {
   const range = templateStats.range;
   const move = templateStats.move;
 
-  return ensureRoleMoveRules(role, ensureRangedAmmo(role, { hp, maxHp, attack, ammo, range, move }));
+  return ensureRoleMoveRules(
+    role,
+    ensureRangedAmmo(role, { hp, maxHp, attack, ammo, range, move, weight: getUnitWeight(role) })
+  );
 };

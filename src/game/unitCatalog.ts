@@ -1,6 +1,7 @@
 import { getTroopAbilities } from "../Units/troopStats";
 import { getTroopMechanicType, isLeaderRole, TROOP_MECHANIC_ICONS, TROOP_MECHANIC_LABELS } from "./battleEngine";
 import type { TeamName, TroopCatalogEntry } from "./types";
+import { getUnitWeight, UNIT_WEIGHT_BADGE_CLASS, UNIT_WEIGHT_LABELS, UNIT_WEIGHT_SUMMARY } from "./unitWeight";
 
 export const AVAILABLE_TROOPS: Record<TeamName, TroopCatalogEntry[]> = {
   Romans: [
@@ -191,6 +192,17 @@ const isHybridMountedRangedUnit = (unit: any) => {
   return hasMountedTrait && (unit?.ammo ?? 0) > 0 && (unit?.range ?? 1) > 1;
 };
 
+/** Line weight (Light / Medium / Heavy / Elite) — separate from troop type (melee, mounted, ranged, siege). */
+export const getTroopWeightDisplay = (unit: { role?: string } | null | undefined) => {
+  const weight = getUnitWeight(String(unit?.role ?? ""));
+  return {
+    weight,
+    label: UNIT_WEIGHT_LABELS[weight],
+    summary: UNIT_WEIGHT_SUMMARY[weight],
+    badgeClassName: UNIT_WEIGHT_BADGE_CLASS[weight]
+  };
+};
+
 export const getTroopTypeDisplay = (unit: any) => {
   if (isHybridMountedRangedUnit(unit)) {
     return {
@@ -218,6 +230,7 @@ export const getTroopSearchKeywords = (unit: any, team?: TeamName) => {
     String(team ?? unit?.team ?? "").toLowerCase(),
     troopTypeDisplay.label.toLowerCase(),
     troopTypeDisplay.type.toLowerCase(),
+    getUnitWeight(String(unit?.role ?? "")),
     ...abilityKeywords
   ];
 

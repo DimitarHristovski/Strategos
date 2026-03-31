@@ -67,9 +67,9 @@ export const GAME_MECHANICS_INFO = [
   },
   {
     icon: "🧱",
-    title: "Role Formation Buff",
+    title: "Formation lines",
     description:
-      "Adjacent allied troops with the same role gain scaling max HP: each extra linked unit adds +5% max HP (2 = +5%, 3 = +10%, 4 = +15%, …)."
+      "Orthogonally adjacent allies (cardinal neighbors) form a line. With at least two linked units on the same team and the same formation, bonuses apply. Generic Battle line (any role not in a named faction list) requires matching role and grants +5% max HP per extra linked unit. Named faction lines can mix listed roles; most use combat/move passives instead of HP—see the handbook Formation lines entry."
   },
   {
     icon: "👑",
@@ -80,7 +80,7 @@ export const GAME_MECHANICS_INFO = [
     icon: "🏹",
     title: "Ranged Shots",
     description:
-      "Ranged and siege troops have limited ammo. At 0 ammo they drop to range 1 and attack at −50% (×0.5), except Nomad Strike units which keep full melee attack."
+      "Ranged and siege troops have limited ammo. At 0 ammo they drop to range 1 and melee attacks deal −50% damage (×0.5)."
   },
   {
     icon: "🧬",
@@ -97,6 +97,12 @@ export const GAME_MECHANICS_INFO = [
 
 export const ADDITIONAL_MECHANICS_INFO = [
   {
+    icon: "⚖️",
+    title: "Line weight (Light–Elite)",
+    description:
+      "Every role is tagged Light, Medium, Heavy, or Elite for roster balance and the unit reference. This is separate from troop type (melee, mounted, ranged, siege): weight describes typical durability and cost tier, not how the unit attacks. Search the roster by light, medium, heavy, or elite."
+  },
+  {
     icon: "🐎🏹",
     title: "Hybrid Troops",
     description: "Mounted-ranged units are shown as Hybrid in the UI. While they still have ammo, they fight as ranged attackers and keep their two-icon identity."
@@ -105,18 +111,12 @@ export const ADDITIONAL_MECHANICS_INFO = [
     icon: "🪫",
     title: "Ammo Exhaustion",
     description:
-      "Each ranged/siege shot spends 1 ammo. At 0 ammo: range 1, attack ×0.5 (unless Nomad Strike — full melee damage)."
+      "Each ranged/siege shot spends 1 ammo. At 0 ammo: range 1, melee attack ×0.5."
   },
   {
     icon: "🏴",
     title: "Civilization Passives",
     description: "Each faction applies a passive bonus before battle starts, which can change movement, health, range, or attack depending on the civilization."
-  },
-  {
-    icon: "✨",
-    title: "Signature & Faction Skills",
-    description:
-      "Each role has core signature passives (Brace, Shield Wall, Charge, Harrier, and others). Many units also carry a second faction skill—Testudo, Phalanx, Blood Oath, Fury Charge, Wild Ambush, Battle Cohesion, Sun Chariot, Rhomphaia Fury, Falx Dominion, Nomad Strike, Imperial Cohort, or Iron Shield—that layers extra attack, defense, or movement rules in combat."
   },
   {
     icon: "🎺",
@@ -146,7 +146,8 @@ export const ADDITIONAL_MECHANICS_INFO = [
   }
 ] as const;
 
-export const UNIT_ABILITY_MECHANICS_INFO = [
+/** Per-role combat passives (shown on unit cards). */
+export const SIGNATURE_ABILITY_MECHANICS_INFO = [
   {
     icon: "🛡️",
     title: "Brace",
@@ -205,80 +206,119 @@ export const UNIT_ABILITY_MECHANICS_INFO = [
   {
     icon: "🪶",
     title: "Skirmish Step",
-    detail: "With ammo: +1 move (not stacking with Nomad Strike +1)."
+    detail: "With ammo: +1 move."
   },
   {
     icon: "⚡",
     title: "Resolve",
     detail: "Adjacent ally at ≤50% HP: +10% attack (×1.1)."
+  }
+] as const;
+
+/** One card per formation rule or faction line (handbook Formations tab). */
+export const FORMATION_BUFF_MECHANICS_INFO: ReadonlyArray<{
+  icon: string;
+  title: string;
+  subtitle?: string;
+  detail: string;
+}> = [
+  {
+    icon: "🔗",
+    title: "How linking works",
+    subtitle: "Applies to every formation below",
+    detail:
+      "You need at least two living allies on the same team, standing in an orthogonal chain (up, down, left, right—no diagonals). Every unit in the chain must share the same formation: either a named line (mixed roles allowed where listed) or the generic Battle line (same unit role only). Disconnected groups do not share bonuses; moving or casualties can break the chain."
+  },
+  {
+    icon: "⚔️",
+    title: "Battle line",
+    subtitle: "Default line · all factions",
+    detail:
+      "Who gets it: any unit whose role is not on that faction’s named formation card below (e.g. Roman Velites, Auxiliary, Triarii—not Legionary/Praetorian/Centurion who use Testudo; Greek Archers or Cavalry—not Hoplite/Phalangite/Agema who use Phalanx; same idea for every team). Only units of the same role can link. Buff: +5% max HP for each extra linked ally after the first (two of the same role = +5% max HP, three in a chain = +10%, and so on). No extra attack or damage reduction from this formation alone."
   },
   {
     icon: "🐢",
     title: "Testudo",
+    subtitle: "Romans",
     detail:
-      "Vs ranged: −35% damage taken (×0.65). Vs skirmisher-style attackers: −15% more (×0.85). Adjacent Testudo ally: −10% taken (×0.9). Multiplicative."
+      "Roles: Legionary, Praetorian, Centurion. Buff: same max HP scaling as Battle line (+5% per extra linked ally in the chain). While linked, additionally −10% damage taken from ranged troop attacks (archers, slingers, etc.—not siege engines). Log tag: Testudo (ranged)."
   },
   {
     icon: "🔱",
     title: "Phalanx",
-    detail: "+20% attack vs mounted (×1.2); +10% with adjacent Phalanx ally (×1.1). Vs close combat: −20% damage taken (×0.8)."
+    subtitle: "Greeks",
+    detail:
+      "Roles: Phalangite, Hoplite, Agema. No HP from formation. While linked: +12% attack when attacking mounted troops; −12% damage taken when defending against close-combat attackers. Log tags: Phalanx (vs mounted), Phalanx (hold)."
   },
   {
     icon: "🩸",
     title: "Blood Oath",
-    detail: "Round 1: +20% attack (×1.2) and +1 move. At ≤50% HP: +10% attack (×1.1)."
+    subtitle: "Barbarians",
+    detail:
+      "Roles: Barbarian Warrior, Barbarian Berserker, Barbarian Axeman, Oathsworn, Barbarian Warlord. While linked: +12% attack when your unit is at or below 50% HP. Log tag: Blood Oath (low HP)."
   },
   {
     icon: "🔥",
     title: "Fury Charge",
-    detail: "When attacking: +15% (×1.15); vs target with no adjacent allies: +10% extra (×1.1). On plains tile: +1 move."
+    subtitle: "Gauls",
+    detail:
+      "Roles: Gallic Warrior, Gaesatae, Gallic Berserker, Gallic Oathsworn. While linked: +8% attack when attacking. Log tag: Fury Charge."
   },
   {
     icon: "🌲",
     title: "Wild Ambush",
-    detail: "On forest: +15% attack (×1.15), +1 move. In forest or on hill vs ranged: −15% damage taken (×0.85)."
+    subtitle: "Germanic",
+    detail:
+      "Roles: Germanic Warrior, Germanic Spearman, Germanic Raider, Chosen Axeman, Hearthguard. While linked: +10% attack when your tile is forest; when defending on forest or hill, −12% damage taken from ranged attackers. Log tags: Wild Ambush, Wild Ambush Cover."
   },
   {
     icon: "🐘",
     title: "Battle Cohesion",
+    subtitle: "Carthage",
     detail:
-      "Adjacent different ally role: +10% attack (×1.1), −10% taken (×0.9). War Elephant with any adjacent ally: +10% attack (×1.1)."
+      "Roles: Libyan Infantry, Sacred Band, African Pikeman, Numidian Cavalry, Balearic Slinger, War Elephant. While linked: +6% attack when attacking; −6% damage taken when defending. Log tags: Battle Cohesion."
   },
   {
     icon: "☀️",
     title: "Sun Chariot",
+    subtitle: "Egypt",
     detail:
-      "Ranged unit adjacent to Sun Chariot ally: −20% damage taken (×0.8). Chariot role after moving before attack: +15% (×1.15). On desert: +1 move."
+      "Roles: War Chariot, Royal Chariot, Nubian Archer, Egyptian Archer, Medjay. While linked: +8% attack after moving this turn when attacking with a chariot role; −15% damage taken from ranged attackers; +1 move on desert tiles. Log tags: Sun Chariot, Sun Chariot Cover."
   },
   {
     icon: "🗡️",
-    title: "Rhomphaia Fury",
+    title: "Rhomphaia Line",
+    subtitle: "Thracians",
     detail:
-      "Vs Shield Wall or Guarded abilities: +20% (×1.2). As close combat: +10% (×1.1). Pierce: vs active Guarded/Shield Wall, incoming damage ×1.15 from defenses."
+      "Roles: Rhomphaia Fighter, Falx Warrior, Thracian Guard. While linked: +12% attack when the defender has Guarded or Shield Wall (ability active). Log tag: Rhomphaia Line."
   },
   {
     icon: "🪓",
     title: "Falx Dominion",
+    subtitle: "Dacians",
     detail:
-      "Vs elite infantry (role match): +25% (×1.25). Adjacent Falx Dominion ally: +10% (×1.1). Pierce: vs active Guarded, Shield Wall, or Brace vs mounted — ×1.2 damage through defensive mitigation."
+      "Roles: Falxman, Dacian Warrior, Dacian Guard. While linked: +12% attack when attacking close-combat troops. Log tag: Falx Dominion."
   },
   {
     icon: "🏹",
     title: "Nomad Strike",
+    subtitle: "Parthians",
     detail:
-      "After moving, same turn attack: +10% (×1.1). With ammo: +1 move (skipped if Skirmish Step already grants +1). At 0 ammo: no −50% melee attack penalty."
+      "Roles: Horse Archer, Elite Horse Archer, Camel Rider Archer. While linked: +10% attack when you moved earlier this turn before attacking. Log tag: Nomad Strike."
   },
   {
     icon: "🏛️",
     title: "Imperial Cohort",
+    subtitle: "Seleucids",
     detail:
-      "Adjacent Seleucid cohort role: +10% (×1.1). Cataphract or elephant with any adjacent ally: +10% (×1.1). Adjacent cohort ally of different troop class: −10% taken (×0.9)."
+      "Roles: Seleucid Phalangite, Silver Shield Infantry, Thorakitai, Seleucid Cataphract, Seleucid War Elephant. While linked: +6% attack when attacking; −8% damage taken when defending. Log tags: Imperial Cohort."
   },
   {
     icon: "🛡️",
     title: "Iron Shield",
+    subtitle: "Vikings",
     detail:
-      "Vs close combat: −20% damage taken (×0.8). Vs ranged with adjacent Iron Shield ally: −15% taken (×0.85). With adjacent Iron Shield ally: +10% attack (×1.1)."
+      "Roles: Huscarl, Hirdman, Shieldmaiden, Jomsviking, Varangian Guard. While linked: +6% attack when attacking; −18% damage taken when defending against close-combat attackers. Log tags: Iron Shield."
   }
 ] as const;
 

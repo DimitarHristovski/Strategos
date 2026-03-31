@@ -1,4 +1,13 @@
-import { getTroopAbilities } from "../Units/troopStats";
+import { getTroopAbilities, type TroopAbilityKey } from "../Units/troopStats";
+import {
+  canFormationLink,
+  FORMATION_PASSIVE_SUMMARY,
+  getFormationAttackDisplayMultiplier,
+  getFormationLineCombatModifiers,
+  getFormationLineMeta,
+  getFormationMoveBonus,
+  isHpFormationLine
+} from "./formationLines";
 import { GRID_ORIENTATIONS, TERRAIN_LABELS } from "./constants";
 import { getTerrainAt } from "./terrainEngine";
 import type { BattlefieldSize, GridOrientation, TeamName, TerrainType, TroopMechanicType } from "./types";
@@ -61,10 +70,7 @@ const usesAmmoRole = (unit: any) => {
   ].some((keyword) => normalizedRole.includes(keyword));
 };
 
-export const hasNoAmmoPenalty = (unit: any) =>
-  !getTroopAbilities(unit?.role ?? "").some((a) => a.key === "nomadStrike") &&
-  usesAmmoRole(unit) &&
-  (unit?.ammo ?? 0) <= 0;
+export const hasNoAmmoPenalty = (unit: any) => usesAmmoRole(unit) && (unit?.ammo ?? 0) <= 0;
 
 export const ensureRangedAmmo = (unit: any) => {
   if (!unit) return unit;
@@ -199,17 +205,17 @@ export const isLeaderRole = (role: string) => {
   return ["king", "jarl", "general", "leader", "marshal", "pharaoh"].some((keyword) => normalizedRole.includes(keyword));
 };
 
-const isNearKing = (unit: any, allUnits: any[]) => {
-  if (!unit || !Array.isArray(allUnits)) return false;
-
-  return allUnits.some((candidate) => {
+/** Orthogonally adjacent friendly units with a leader-type role (king, pharaoh, …). */
+export const getAdjacentLeaderUnits = (unit: any, allUnits: any[]) => {
+  if (!unit || !Array.isArray(allUnits)) return [];
+  return allUnits.filter((candidate) => {
     if (!candidate || candidate.id === unit.id || candidate.hp <= 0) return false;
     if (candidate.team !== unit.team || !isLeaderRole(candidate.role)) return false;
-
-    const distance = Math.abs(candidate.x - unit.x) + Math.abs(candidate.y - unit.y);
-    return distance === 1;
+    return Math.abs(candidate.x - unit.x) + Math.abs(candidate.y - unit.y) === 1;
   });
 };
+
+const isNearKing = (unit: any, allUnits: any[]) => getAdjacentLeaderUnits(unit, allUnits).length > 0;
 
 export const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
   const troopType = getTroopMechanicType(unit);
@@ -354,32 +360,6 @@ export const getAdjacentAllies = (unit: any, allUnits: any[] = []) =>
 export const unitHasAbility = (unit: any, abilityKey: string) =>
   getTroopAbilities(unit?.role ?? "").some((ability) => ability.key === abilityKey);
 
-const IMPERIAL_COHORT_ROLES = new Set([
-  "Seleucid Phalangite",
-  "Silver Shield Infantry",
-  "Thorakitai",
-  "Seleucid Cataphract",
-  "Seleucid War Elephant"
-]);
-
-const hasAdjacentAllyWithAbility = (unit: any, allUnits: any[], abilityKey: string) =>
-  getAdjacentAllies(unit, allUnits).some((ally) => unitHasAbility(ally, abilityKey));
-
-const hasAdjacentAllyWithDifferentRole = (unit: any, allUnits: any[]) =>
-  getAdjacentAllies(unit, allUnits).some((ally) => ally.role !== unit.role);
-
-const isSkirmisherAttacker = (attacker: any) => {
-  if (unitHasAbility(attacker, "harrier")) return true;
-  const r = String(attacker?.role ?? "").toLowerCase();
-  return ["skirmisher", "peltast", "velites", "slinger", "scout"].some((k) => r.includes(k));
-};
-
-const isFalxEliteInfantryTarget = (defender: any) => {
-  if (getTroopMechanicType(defender) !== "closecombat") return false;
-  const r = String(defender?.role ?? "");
-  return /legionary|praetorian|hoplite|phalangite|shield|guard|heavy|elite|infantry|spearman|pikeman|centurion|triarii/i.test(r);
-};
-
 export type AbilityEffectContext = {
   round?: number;
   attackerMovedThisTurn?: boolean;
@@ -390,6 +370,202 @@ export const getAdjacentCommanders = (unit: any, allUnits: any[] = []) =>
 
 export const hasAdjacentWoundedAlly = (unit: any, allUnits: any[] = []) =>
   getAdjacentAllies(unit, allUnits).some((candidate) => candidate.hp <= Math.ceil(candidate.maxHp * 0.5));
+
+/** Shown on the battlefield when that ability’s conditions are currently met (range uses Manhattan vs unit.range). */
+export const TROOP_ABILITY_BATTLEFIELD_ICONS: Record<TroopAbilityKey, string> = {
+  brace: "🛡",
+  charge: "⚡",
+  command: "📯",
+  crush: "💥",
+  deadeye: "🎯",
+  ferocity: "🔥",
+  guarded: "✋",
+  harrier: "↯",
+  resolve: "🤝",
+  shieldWall: "🧱",
+  shock: "☠",
+  siegeMastery: "⚙",
+  skirmishStep: "👟"
+};
+
+/**
+ * Abilities for this unit’s role that are “on” right now (adjacent enemies, terrain, HP thresholds, etc.).
+ * Used for compact icons beside the unit; omits abilities that are not currently applicable.
+ */
+export const getBattlefieldActiveAbilities = (
+  unit: any,
+  allUnits: any[] = [],
+  terrainMap: TerrainType[][] = []
+): { key: TroopAbilityKey; label: string }[] => {
+  if (!unit || (unit.hp ?? 0) <= 0) return [];
+
+  const abilities = getTroopAbilities(unit.role);
+  if (abilities.length === 0) return [];
+
+  const terrainAt = getTerrainAt(terrainMap, unit.x, unit.y);
+  const allies = getAdjacentAllies(unit, allUnits);
+  const enemies = allUnits.filter((o) => o && o.hp > 0 && o.team !== unit.team);
+  const dist = (a: any, b: any) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+  const inRange = (e: any) => dist(unit, e) <= (unit.range ?? 1);
+  const adjacentEnemies = enemies.filter((e) => dist(unit, e) === 1);
+  const unitType = getTroopMechanicType(unit);
+
+  const out: { key: TroopAbilityKey; label: string }[] = [];
+
+  for (const ability of abilities) {
+    let active = false;
+    switch (ability.key) {
+      case "brace":
+        active = adjacentEnemies.some((e) => getTroopMechanicType(e) === "mounted");
+        break;
+      case "shieldWall":
+        active = allies.length > 0;
+        break;
+      case "shock":
+        active = enemies.some((e) => inRange(e) && e.hp <= Math.ceil((e.maxHp ?? 1) * 0.5));
+        break;
+      case "charge":
+        active =
+          (terrainAt === "plain" && unitType === "mounted") ||
+          enemies.some((e) => inRange(e) && (getTroopMechanicType(e) === "ranged" || getTroopMechanicType(e) === "sieged"));
+        break;
+      case "harrier":
+        active =
+          (unit?.ammo ?? 0) > 0 &&
+          enemies.some((e) => inRange(e) && ((e.move ?? 0) <= 1 || getTroopMechanicType(e) === "sieged"));
+        break;
+      case "guarded":
+        active = (unit.hp ?? 0) > Math.ceil((unit.maxHp ?? 0) * 0.5);
+        break;
+      case "ferocity":
+        active = allies.length === 0;
+        break;
+      case "deadeye":
+        active =
+          terrainAt === "hill" ||
+          enemies.some(
+            (e) =>
+              inRange(e) &&
+              (getTroopMechanicType(e) === "ranged" || getTroopMechanicType(e) === "sieged") &&
+              getAdjacentAllies(e, allUnits).length === 0
+          );
+        break;
+      case "crush":
+        active =
+          adjacentEnemies.some((e) => getTroopMechanicType(e) === "closecombat") ||
+          enemies.some(
+            (e) =>
+              inRange(e) &&
+              getTroopAbilities(e.role).some((a) => a.key === "guarded" || a.key === "shieldWall")
+          );
+        break;
+      case "command":
+        active = true;
+        break;
+      case "siegeMastery":
+        active = unitType === "sieged" && (terrainAt === "plain" || terrainAt === "hill");
+        break;
+      case "skirmishStep":
+        active = (unit?.ammo ?? 0) > 0;
+        break;
+      case "resolve":
+        active = hasAdjacentWoundedAlly(unit, allUnits);
+        break;
+      default:
+        active = false;
+    }
+
+    if (active) {
+      out.push({ key: ability.key, label: ability.name });
+    }
+  }
+
+  return out;
+};
+
+const getFormationLinkedAdjacentAllies = (unit: any, allUnits: any[]) =>
+  getAdjacentAllies(unit, allUnits).filter((ally) => canFormationLink(unit, ally));
+
+export type BattlefieldBuffStripItem = {
+  id: string;
+  icon: string;
+  label: string;
+  tooltip: string;
+};
+
+/**
+ * Buffs for the unit strip: auras from adjacent leaders/commanders, formation link, then personal abilities.
+ * Tooltips name sources (who is adjacent / linked).
+ */
+export const getBattlefieldBuffStrip = (
+  unit: any,
+  allUnits: any[] = [],
+  terrainMap: TerrainType[][] = []
+): BattlefieldBuffStripItem[] => {
+  if (!unit || (unit.hp ?? 0) <= 0) return [];
+
+  const strip: BattlefieldBuffStripItem[] = [];
+
+  const adjacentLeaders = getAdjacentLeaderUnits(unit, allUnits);
+  if (adjacentLeaders.length > 0) {
+    const who = adjacentLeaders.map((l) => `${l.name} (${l.team})`).join(", ");
+    strip.push({
+      id: "buff-leader-aura",
+      icon: "👑",
+      label: "Leader aura",
+      tooltip: `Leader aura (+10% attack). Adjacent leader(s): ${who}.`
+    });
+  }
+
+  const adjacentCommanders = getAdjacentCommanders(unit, allUnits);
+  if (adjacentCommanders.length > 0) {
+    const who = adjacentCommanders.map((c) => `${c.name} (${c.role})`).join(", ");
+    strip.push({
+      id: "buff-command-aura",
+      icon: "🎖️",
+      label: "Command aura",
+      tooltip: `Command aura (+5% attack from adjacent commanders). From: ${who}.`
+    });
+  }
+
+  if (unit.formationGroupActive && unit.formationLineId) {
+    const meta = getFormationLineMeta(unit);
+    const linked = getFormationLinkedAdjacentAllies(unit, allUnits);
+    const linkedNames = linked.map((a) => a.name).join(", ");
+    const summary = FORMATION_PASSIVE_SUMMARY[unit.formationLineId] ?? "";
+    let tooltip = `${meta.name} (formation). ${summary}`.trim();
+    if (linkedNames) {
+      tooltip += ` Orthogonally linked with: ${linkedNames}.`;
+    }
+    if (unit.roleHealthBuffActive && (unit.roleHealthBuffMultiplier ?? 1) > 1) {
+      tooltip += ` +${Math.round(((unit.roleHealthBuffMultiplier ?? 1) - 1) * 100)}% max HP from the line.`;
+    }
+    if (unit.formationLineId === "testudo") {
+      tooltip += " Testudo: −10% damage taken from ranged while linked.";
+    }
+    strip.push({
+      id: `buff-formation-${unit.formationLineId}`,
+      icon: "🔗",
+      label: meta.name,
+      tooltip
+    });
+  }
+
+  const roleAbilities = getTroopAbilities(unit.role);
+  const personalActive = getBattlefieldActiveAbilities(unit, allUnits, terrainMap);
+  const roleByKey = new Map(roleAbilities.map((a) => [a.key, a]));
+  for (const p of personalActive) {
+    const def = roleByKey.get(p.key);
+    strip.push({
+      id: `ability-${p.key}`,
+      icon: TROOP_ABILITY_BATTLEFIELD_ICONS[p.key],
+      label: p.label,
+      tooltip: def ? `${def.name}: ${def.description}` : p.label
+    });
+  }
+
+  return strip;
+};
 
 export const getAbilityEffects = (
   attacker: any,
@@ -407,8 +583,6 @@ export const getAbilityEffects = (
   const defenderTags: string[] = [];
   let attackMultiplier = 1;
   let damageTakenMultiplier = 1;
-  const round = ctx.round ?? 1;
-  const attackerMoved = Boolean(ctx.attackerMovedThisTurn);
 
   attackerAbilities.forEach((ability) => {
     switch (ability.key) {
@@ -485,107 +659,6 @@ export const getAbilityEffects = (
           attackerTags.push("Resolve");
         }
         break;
-      case "phalanx":
-        if (defenderType === "mounted") {
-          attackMultiplier *= 1.2;
-          attackerTags.push("Phalanx");
-        }
-        if (hasAdjacentAllyWithAbility(attacker, allUnits, "phalanx")) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Phalanx Line");
-        }
-        break;
-      case "bloodOath":
-        if (round === 1) {
-          attackMultiplier *= 1.2;
-          attackerTags.push("Blood Oath (opening)");
-        }
-        if ((attacker?.hp ?? 0) <= Math.ceil((attacker?.maxHp ?? 0) * 0.5)) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Blood Oath");
-        }
-        break;
-      case "furyCharge":
-        attackMultiplier *= 1.15;
-        attackerTags.push("Fury Charge");
-        if (getAdjacentAllies(defender, allUnits).length === 0) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Fury Charge (unsupported)");
-        }
-        break;
-      case "wildAmbush":
-        if (attackerTerrain === "forest") {
-          attackMultiplier *= 1.15;
-          attackerTags.push("Wild Ambush");
-        }
-        break;
-      case "battleCohesion":
-        if (hasAdjacentAllyWithDifferentRole(attacker, allUnits)) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Battle Cohesion");
-        }
-        if (
-          String(attacker?.role ?? "").toLowerCase().includes("elephant") &&
-          getAdjacentAllies(attacker, allUnits).length > 0
-        ) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Battle Cohesion (elephant)");
-        }
-        break;
-      case "sunChariot":
-        if (attackerMoved && String(attacker?.role ?? "").toLowerCase().includes("chariot")) {
-          attackMultiplier *= 1.15;
-          attackerTags.push("Sun Chariot");
-        }
-        break;
-      case "rhomphaiaFury":
-        if (defenderAbilities.some((d) => d.key === "shieldWall" || d.key === "guarded")) {
-          attackMultiplier *= 1.2;
-          attackerTags.push("Rhomphaia Fury");
-        }
-        if (attackerType === "closecombat") {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Rhomphaia Fury (melee)");
-        }
-        break;
-      case "falxDominion":
-        if (isFalxEliteInfantryTarget(defender)) {
-          attackMultiplier *= 1.25;
-          attackerTags.push("Falx Dominion");
-        }
-        if (hasAdjacentAllyWithAbility(attacker, allUnits, "falxDominion")) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Falx Dominion (line)");
-        }
-        break;
-      case "nomadStrike":
-        if (attackerMoved) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Nomad Strike");
-        }
-        break;
-      case "imperialCohort":
-        if (getAdjacentAllies(attacker, allUnits).some((a) => IMPERIAL_COHORT_ROLES.has(String(a.role)))) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Imperial Cohort");
-        }
-        if (
-          (String(attacker?.role ?? "").toLowerCase().includes("cataphract") ||
-            String(attacker?.role ?? "").toLowerCase().includes("elephant")) &&
-          getAdjacentAllies(attacker, allUnits).length > 0
-        ) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Imperial Cohort (armored)");
-        }
-        break;
-      case "ironShield":
-        if (hasAdjacentAllyWithAbility(attacker, allUnits, "ironShield")) {
-          attackMultiplier *= 1.1;
-          attackerTags.push("Iron Shield");
-        }
-        break;
-      case "testudo":
-        break;
     }
   });
 
@@ -614,98 +687,29 @@ export const getAbilityEffects = (
           defenderTags.push("Guarded");
         }
         break;
-      case "testudo":
-        if (attackerType === "ranged") {
-          damageTakenMultiplier *= 0.65;
-          defenderTags.push("Testudo");
-        }
-        if (isSkirmisherAttacker(attacker)) {
-          damageTakenMultiplier *= 0.85;
-          defenderTags.push("Testudo (skirmishers)");
-        }
-        if (hasAdjacentAllyWithAbility(defender, allUnits, "testudo")) {
-          damageTakenMultiplier *= 0.9;
-          defenderTags.push("Testudo (linked)");
-        }
-        break;
-      case "phalanx":
-        if (attackerType === "closecombat") {
-          damageTakenMultiplier *= 0.8;
-          defenderTags.push("Phalanx");
-        }
-        break;
-      case "wildAmbush":
-        if ((defenderTerrain === "forest" || defenderTerrain === "hill") && attackerType === "ranged") {
-          damageTakenMultiplier *= 0.85;
-          defenderTags.push("Wild Ambush Cover");
-        }
-        break;
-      case "battleCohesion":
-        if (hasAdjacentAllyWithDifferentRole(defender, allUnits)) {
-          damageTakenMultiplier *= 0.9;
-          defenderTags.push("Battle Cohesion");
-        }
-        break;
-      case "imperialCohort":
-        if (
-          getAdjacentAllies(defender, allUnits).some(
-            (a) => IMPERIAL_COHORT_ROLES.has(String(a.role)) && getTroopMechanicType(a) !== getTroopMechanicType(defender)
-          )
-        ) {
-          damageTakenMultiplier *= 0.9;
-          defenderTags.push("Imperial Cohort");
-        }
-        break;
-      case "ironShield":
-        if (attackerType === "closecombat") {
-          damageTakenMultiplier *= 0.8;
-          defenderTags.push("Iron Shield");
-        }
-        if (
-          attackerType === "ranged" &&
-          getAdjacentAllies(defender, allUnits).some((a) => unitHasAbility(a, "ironShield"))
-        ) {
-          damageTakenMultiplier *= 0.85;
-          defenderTags.push("Iron Shield (ranged)");
-        }
-        break;
       default:
         break;
     }
   });
 
-  if (
-    defenderType === "ranged" &&
-    getAdjacentAllies(defender, allUnits).some((a) => unitHasAbility(a, "sunChariot"))
-  ) {
-    damageTakenMultiplier *= 0.8;
-    defenderTags.push("Sun Chariot Cover");
+  const defenderAbilityKeys = new Set(defenderAbilities.map((a) => a.key));
+  const formationCombat = getFormationLineCombatModifiers(
+    attacker,
+    defender,
+    attackerType,
+    defenderType,
+    attackerTerrain,
+    defenderTerrain,
+    defenderAbilityKeys,
+    { attackerMovedThisTurn: ctx.attackerMovedThisTurn }
+  );
+  if (formationCombat.attackMultiplier !== 1) {
+    attackMultiplier *= formationCombat.attackMultiplier;
+    attackerTags.push(...formationCombat.attackerTags);
   }
-
-  if (unitHasAbility(attacker, "rhomphaiaFury")) {
-    const guardedActive =
-      defenderAbilities.some((d) => d.key === "guarded") &&
-      (defender?.hp ?? 0) > Math.ceil((defender?.maxHp ?? 0) * 0.5);
-    const shieldWallActive =
-      defenderAbilities.some((d) => d.key === "shieldWall") && getAdjacentAllies(defender, allUnits).length > 0;
-    if (guardedActive || shieldWallActive) {
-      damageTakenMultiplier *= 1.15;
-      attackerTags.push("Rhomphaia Pierce");
-    }
-  }
-
-  if (unitHasAbility(attacker, "falxDominion")) {
-    const guardedActive =
-      defenderAbilities.some((d) => d.key === "guarded") &&
-      (defender?.hp ?? 0) > Math.ceil((defender?.maxHp ?? 0) * 0.5);
-    const shieldWallActive =
-      defenderAbilities.some((d) => d.key === "shieldWall") && getAdjacentAllies(defender, allUnits).length > 0;
-    const braceActive =
-      defenderAbilities.some((d) => d.key === "brace") && attackerType === "mounted";
-    if (guardedActive || shieldWallActive || braceActive) {
-      damageTakenMultiplier *= 1.2;
-      attackerTags.push("Falx Pierce");
-    }
+  if (formationCombat.damageTakenMultiplier !== 1) {
+    damageTakenMultiplier *= formationCombat.damageTakenMultiplier;
+    defenderTags.push(...formationCombat.defenderTags);
   }
 
   const defenderTerrainModifiers = getTerrainModifiers(defender, defenderTerrain);
@@ -760,12 +764,18 @@ export const getAttackDamage = (
     damage = Math.round(damage * TROOP_MECHANIC_ADVANTAGE_MULTIPLIER);
   }
 
+  const damageBeforeDefenderMitigation = damage;
+
   if (abilityEffects.damageTakenMultiplier !== 1) {
     damage = Math.round(damage * abilityEffects.damageTakenMultiplier);
   }
 
+  /** HP not lost due to armor, shielding, terrain cover, formations, etc. (after rounding). */
+  const mitigatedDamage = Math.max(0, damageBeforeDefenderMitigation - damage);
+
   return {
     damage,
+    mitigatedDamage,
     attackerType,
     defenderType,
     hasAdvantage,
@@ -781,15 +791,13 @@ export const getDisplayedAttack = (
   unit: any,
   allUnits: any[] = [],
   terrainMap: TerrainType[][] = [],
-  opts?: { round?: number }
+  _opts?: { round?: number }
 ) => {
   if (!unit) return 0;
 
   let displayedAttack = unit.attack;
   const terrainAt = getTerrainAt(terrainMap, unit.x, unit.y);
   const terrainModifiers = getTerrainModifiers(unit, terrainAt);
-  const round = opts?.round ?? 1;
-  const abilities = getTroopAbilities(unit.role);
 
   if (hasNoAmmoPenalty(unit)) {
     displayedAttack = Math.round(displayedAttack * 0.5);
@@ -803,16 +811,9 @@ export const getDisplayedAttack = (
     displayedAttack = Math.round(displayedAttack * terrainModifiers.attackMultiplier);
   }
 
-  let offensiveStanceMult = 1;
-  if (abilities.some((a) => a.key === "bloodOath")) {
-    if (round === 1) offensiveStanceMult *= 1.2;
-    if ((unit?.hp ?? 0) <= Math.ceil((unit?.maxHp ?? 0) * 0.5)) offensiveStanceMult *= 1.1;
-  }
-  if (abilities.some((a) => a.key === "wildAmbush") && terrainAt === "forest") {
-    offensiveStanceMult *= 1.15;
-  }
-  if (offensiveStanceMult !== 1) {
-    displayedAttack = Math.round(displayedAttack * offensiveStanceMult);
+  const formationAtk = getFormationAttackDisplayMultiplier(unit, terrainAt);
+  if (formationAtk !== 1) {
+    displayedAttack = Math.round(displayedAttack * formationAtk);
   }
 
   return displayedAttack;
@@ -823,12 +824,11 @@ export const getUnitEffectNotes = (
   allUnits: any[] = [],
   terrainMap: TerrainType[][] = [],
   terrainEffectsEnabled = true,
-  opts?: { round?: number }
+  _opts?: { round?: number }
 ) => {
   if (!unit) return [] as string[];
 
   const notes: string[] = [];
-  const round = opts?.round ?? 1;
   const terrainAt = getTerrainAt(terrainMap, unit.x, unit.y);
 
   if (unit.civPassiveName && unit.civPassiveEffect) {
@@ -846,7 +846,17 @@ export const getUnitEffectNotes = (
   }
 
   if (unit.roleHealthBuffActive) {
-    notes.push(`Formation Buff: +${Math.round(((unit.roleHealthBuffMultiplier ?? 1) - 1) * 100)}% max health`);
+    const formationMeta = getFormationLineMeta(unit);
+    notes.push(
+      `${formationMeta.name}: +${Math.round(((unit.roleHealthBuffMultiplier ?? 1) - 1) * 100)}% max health (orthogonally linked allies in this formation, min ${ROLE_HEALTH_BUFF_MIN_GROUP_SIZE})`
+    );
+    if (unit.formationLineId === "testudo") {
+      notes.push("Testudo (linked): −10% damage taken from ranged attacks (×0.9)");
+    }
+  } else if (unit.formationGroupActive && unit.formationLineId && !isHpFormationLine(unit.formationLineId)) {
+    const name = getFormationLineMeta(unit).name;
+    const summary = FORMATION_PASSIVE_SUMMARY[unit.formationLineId];
+    notes.push(summary ? `${name} (linked): ${summary}` : `${name}: formation passive (linked)`);
   }
 
   if (hasNoAmmoPenalty(unit)) {
@@ -929,79 +939,6 @@ export const getUnitEffectNotes = (
           notes.push(`${ability.name}: +10% attack (×1.1) when adjacent ally at ≤50% HP`);
         }
         break;
-      case "testudo":
-        notes.push(
-          `${ability.name}: vs ranged −35% taken (×0.65); vs skirmishers −15% more (×0.85); adjacent Testudo ally −10% (×0.9) — multiplicative`
-        );
-        break;
-      case "phalanx":
-        notes.push(
-          `${ability.name}: +20% (×1.2) vs mounted; +10% (×1.1) with adjacent Phalanx ally; vs melee −20% taken (×0.8)`
-        );
-        break;
-      case "bloodOath":
-        if (round === 1) {
-          notes.push(`${ability.name}: round 1 — +20% attack (×1.2), +1 move`);
-        } else {
-          notes.push(`${ability.name}: round 1 — +20% (×1.2) attack & +1 move (expired)`);
-        }
-        if ((unit?.hp ?? 0) <= Math.ceil((unit?.maxHp ?? 0) * 0.5)) {
-          notes.push(`${ability.name}: ≤50% HP — +10% attack (×1.1)`);
-        }
-        break;
-      case "furyCharge":
-        notes.push(
-          `${ability.name}: when attacking +15% (×1.15); vs target with no adjacent allies +10% (×1.1); on plains tile +1 move`
-        );
-        break;
-      case "wildAmbush":
-        if (terrainAt === "forest") {
-          notes.push(`${ability.name}: forest — +15% attack (×1.15), +1 move`);
-        }
-        notes.push(`${ability.name}: on forest/hill vs ranged −15% taken (×0.85)`);
-        break;
-      case "battleCohesion":
-        if (hasAdjacentAllyWithDifferentRole(unit, allUnits)) {
-          notes.push(`${ability.name}: adjacent different role — +10% attack (×1.1), −10% taken (×0.9)`);
-        } else {
-          notes.push(`${ability.name}: adjacent different role — +10% (×1.1) atk, −10% (×0.9) taken`);
-        }
-        if (String(unit?.role ?? "").toLowerCase().includes("elephant")) {
-          notes.push(`${ability.name}: elephant with adjacent ally — +10% attack (×1.1)`);
-        }
-        break;
-      case "sunChariot":
-        notes.push(
-          `${ability.name}: ranged ally touching Sun Chariot — −20% taken (×0.8); chariot after move +15% (×1.15); desert +1 move`
-        );
-        break;
-      case "rhomphaiaFury":
-        notes.push(
-          `${ability.name}: vs Guarded/Shield Wall abilities +20% (×1.2); close combat +10% (×1.1); pierce active Guard/Shield +15% damage through (×1.15)`
-        );
-        break;
-      case "falxDominion":
-        notes.push(
-          `${ability.name}: vs elite infantry +25% (×1.25); adjacent Falx ally +10% (×1.1); pierce Guard/Shield/Brace(mounted) +20% through (×1.2)`
-        );
-        break;
-      case "nomadStrike":
-        if ((unit?.ammo ?? 0) > 0) {
-          notes.push(`${ability.name}: +1 move with ammo (if Skirmish Step not already +1); after move +10% (×1.1)`);
-        }
-        notes.push(`${ability.name}: at 0 ammo — no −50% melee penalty (full attack)`);
-        break;
-      case "imperialCohort":
-        notes.push(
-          `${ability.name}: adjacent Seleucid cohort unit — +10% attack (×1.1); cataphract/elephant with any adjacent ally — +10% (×1.1); cohort ally of different troop class — −10% taken (×0.9)`
-        );
-        break;
-      case "ironShield":
-        notes.push(`${ability.name}: vs close combat −20% taken (×0.8); vs ranged with Iron ally adjacent −15% (×0.85)`);
-        if (hasAdjacentAllyWithAbility(unit, allUnits, "ironShield")) {
-          notes.push(`${ability.name}: adjacent Iron Shield ally — +10% attack (×1.1)`);
-        }
-        break;
       default:
         notes.push(`${ability.name}: ${ability.description}`);
         break;
@@ -1044,22 +981,15 @@ export const rotateUnitCoordinates = (units: any[], steps: number, battlefieldSi
 export const getEffectiveMove = (
   unit: any,
   terrainMap: TerrainType[][],
-  opts?: { round?: number }
+  _opts?: { round?: number }
 ) => {
   if (!unit) return 0;
   const terrainType = getTerrainAt(terrainMap, unit.x, unit.y);
   const modifiers = getTerrainModifiers(unit, terrainType);
   const abilities = getTroopAbilities(unit.role);
-  const round = opts?.round ?? 1;
   const skirmishStepBonus = abilities.some((a) => a.key === "skirmishStep") && (unit?.ammo ?? 0) > 0 ? 1 : 0;
-  const nomadAmmoBonus =
-    abilities.some((a) => a.key === "nomadStrike") && (unit?.ammo ?? 0) > 0 && skirmishStepBonus === 0 ? 1 : 0;
-  let extra = skirmishStepBonus + nomadAmmoBonus;
-  if (abilities.some((a) => a.key === "bloodOath") && round === 1) extra += 1;
-  if (abilities.some((a) => a.key === "furyCharge") && terrainType === "plain") extra += 1;
-  if (abilities.some((a) => a.key === "wildAmbush") && terrainType === "forest") extra += 1;
-  if (abilities.some((a) => a.key === "sunChariot") && terrainType === "desert") extra += 1;
-  return Math.max(1, unit.move + modifiers.moveDelta + extra);
+  const formationMove = getFormationMoveBonus(unit, terrainType);
+  return Math.max(1, unit.move + modifiers.moveDelta + skirmishStepBonus + formationMove);
 };
 
 export const getEffectiveRange = (unit: any, terrainMap: TerrainType[][]) => {
@@ -1081,7 +1011,8 @@ export const applyRoleHealthBuffs = (units: any[]) => {
   if (!Array.isArray(units) || units.length === 0) return units;
 
   const aliveUnits = units.filter((unit) => unit && unit.hp > 0);
-  const qualifyingBuffs = new Map<string, number>();
+  const qualifyingHpBuffs = new Map<string, number>();
+  const formationLinkState = new Map<string, { lineId: string }>();
   const visited = new Set<string>();
 
   aliveUnits.forEach((unit) => {
@@ -1099,7 +1030,7 @@ export const applyRoleHealthBuffs = (units: any[]) => {
 
       aliveUnits.forEach((candidate) => {
         if (visited.has(candidate.id)) return;
-        if (candidate.team !== current.team || candidate.role !== current.role) return;
+        if (!canFormationLink(current, candidate)) return;
 
         const distance = Math.abs(candidate.x - current.x) + Math.abs(candidate.y - current.y);
         if (distance === 1) stack.push(candidate);
@@ -1107,8 +1038,12 @@ export const applyRoleHealthBuffs = (units: any[]) => {
     }
 
     if (component.length >= ROLE_HEALTH_BUFF_MIN_GROUP_SIZE) {
-      const multiplier = 1 + ROLE_HEALTH_BUFF_PER_EXTRA_UNIT * (component.length - 1);
-      component.forEach((member) => qualifyingBuffs.set(member.id, multiplier));
+      const lineId = getFormationLineMeta(component[0]).id;
+      component.forEach((member) => formationLinkState.set(member.id, { lineId }));
+      if (isHpFormationLine(lineId)) {
+        const multiplier = 1 + ROLE_HEALTH_BUFF_PER_EXTRA_UNIT * (component.length - 1);
+        component.forEach((member) => qualifyingHpBuffs.set(member.id, multiplier));
+      }
     }
   });
 
@@ -1116,14 +1051,19 @@ export const applyRoleHealthBuffs = (units: any[]) => {
     if (!unit) return unit;
 
     const baseMaxHp = unit.baseMaxHp ?? unit.maxHp;
-    const roleHealthBuffMultiplier = qualifyingBuffs.get(unit.id) ?? 1;
+    const link = formationLinkState.get(unit.id);
+    const formationGroupActive = Boolean(link);
+    const formationLineId = link?.lineId;
+    const roleHealthBuffMultiplier = qualifyingHpBuffs.get(unit.id) ?? 1;
     const desiredBuff = unit.hp > 0 && roleHealthBuffMultiplier > 1;
     const desiredMaxHp = desiredBuff ? Math.round(baseMaxHp * roleHealthBuffMultiplier) : baseMaxHp;
     const currentMaxHp = unit.maxHp ?? baseMaxHp;
     const stateChanged =
       currentMaxHp !== desiredMaxHp ||
       Boolean(unit.roleHealthBuffActive) !== desiredBuff ||
-      unit.baseMaxHp !== baseMaxHp;
+      unit.baseMaxHp !== baseMaxHp ||
+      Boolean(unit.formationGroupActive) !== formationGroupActive ||
+      unit.formationLineId !== formationLineId;
 
     let nextHp = unit.hp;
     if (unit.hp > 0 && stateChanged) {
@@ -1137,7 +1077,9 @@ export const applyRoleHealthBuffs = (units: any[]) => {
       roleHealthBuffMultiplier,
       maxHp: desiredMaxHp,
       hp: unit.hp <= 0 ? unit.hp : nextHp,
-      roleHealthBuffActive: desiredBuff
+      roleHealthBuffActive: desiredBuff,
+      formationGroupActive,
+      formationLineId
     };
   });
 };
@@ -1152,7 +1094,9 @@ export const didRoleHealthBuffStateChange = (currentUnits: any[], updatedUnits: 
       current?.maxHp !== unit?.maxHp ||
       current?.baseMaxHp !== unit?.baseMaxHp ||
       current?.roleHealthBuffMultiplier !== unit?.roleHealthBuffMultiplier ||
-      current?.roleHealthBuffActive !== unit?.roleHealthBuffActive
+      current?.roleHealthBuffActive !== unit?.roleHealthBuffActive ||
+      current?.formationGroupActive !== unit?.formationGroupActive ||
+      current?.formationLineId !== unit?.formationLineId
     );
   });
 };

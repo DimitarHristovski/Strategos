@@ -938,6 +938,21 @@
         0 0 20px rgba(16, 185, 129, 0.35);
 }
 
+/* Floating −HP on the defender tile (triggerAttackFeedback). */
+.battle-damage-popup {
+    animation: battleDamagePopup 3s ease-out forwards;
+}
+
+/* Hover preview damage (selected unit → enemy tile). */
+.battle-damage-preview {
+    animation: battleDamagePreviewIn 0.22s ease-out forwards;
+}
+
+/* Mitigated / blocked HP (defender reductions — shield, cover, formation, etc.). */
+.battle-damage-mitigated {
+    animation: battleDamagePopup 3s ease-out forwards;
+}
+
 /* Set by CodeConq on .battlefield-container when useReducedMotion is true (mirrors battleAnimation.ts). */
 [data-battle-motion="reduced"] .battle-arrow-salvo,
 [data-battle-motion="reduced"] .battle-rock-salvo,
@@ -971,6 +986,18 @@
 
 [data-battle-motion="reduced"] .battle-feedback-siege-fog {
     animation: none;
+}
+
+[data-battle-motion="reduced"] .battle-damage-popup {
+    animation: battleDamagePopupReduced 1.5s ease-out forwards;
+}
+
+[data-battle-motion="reduced"] .battle-damage-preview {
+    animation: none;
+}
+
+[data-battle-motion="reduced"] .battle-damage-mitigated {
+    animation: battleDamagePopupReduced 1.5s ease-out forwards;
 }
 
 /* Siege rocks: dust / powder fog on the target tile when the volley lands (timed with projectile travel). */
@@ -1022,6 +1049,7 @@
     position: relative;
     z-index: 30;
     backface-visibility: hidden;
+    overflow: visible;
 }
 
 /* Outer: position + rotation. Inner: CSS “props” (arrows / rocks / charge embers) flying along the arc. */
@@ -1789,6 +1817,51 @@
     }
 }
 
+@keyframes battleDamagePopup {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, 8px) scale(0.88);
+    }
+    8% {
+        opacity: 1;
+        transform: translate(-50%, -2px) scale(1.08);
+    }
+    72% {
+        opacity: 1;
+        transform: translate(-50%, -14px) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -22px) scale(1);
+    }
+}
+
+@keyframes battleDamagePopupReduced {
+    0% {
+        opacity: 0;
+    }
+    12% {
+        opacity: 1;
+    }
+    78% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes battleDamagePreviewIn {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, 4px) scale(0.92);
+    }
+    100% {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+    }
+}
+
 @keyframes battleRangedPulse {
     0% {
         filter: brightness(1) saturate(1);
@@ -1844,6 +1917,8 @@
     -webkit-overflow-scrolling: touch;
     /* Allow finger/trackpad scrolling on large maps; mouse pan uses pointer handlers below. */
     touch-action: pan-x pan-y;
+    /* Inset so buff tooltips above top-row units aren’t clipped by the scrollport edge. */
+    padding: 6px 4px;
 }
 
 .battlefield-scroll-viewport::-webkit-scrollbar {

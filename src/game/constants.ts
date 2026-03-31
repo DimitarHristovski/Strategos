@@ -6,6 +6,7 @@ import type {
   TeamName,
   TerrainGenerationSettings,
   TerrainPoint,
+  TerrainPreset,
   TerrainType
 } from "./types";
 
@@ -125,6 +126,8 @@ export const DEFAULT_GAME_OPTIONS: GameOptions = {
   sfxEnabled: true,
   showMoveHighlights: true,
   showAttackHighlights: true,
+  showFloatingDamageNumbers: true,
+  showAttackDamagePreview: true,
   showBattleLog: true,
   showTurnBanner: true,
   terrainEffectsEnabled: true,
@@ -170,6 +173,35 @@ export function writeGameAudioPrefs(prefs: StoredAudioPrefs): void {
   try {
     window.localStorage.setItem(GAME_AUDIO_PREFS_STORAGE_KEY, JSON.stringify(prefs));
     window.localStorage.removeItem(LEGACY_GAME_AUDIO_PREFS_STORAGE_KEY);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+/** Full options + graphics defaults (terrain mode / mixed pool) for cold starts and explicit Save. */
+export const GAME_USER_PREFS_STORAGE_KEY = "strategos-user-prefs";
+
+export type StoredUserPrefs = {
+  gameOptions: GameOptions;
+  terrainPreset: TerrainPreset;
+  terrainGenerationSettings: TerrainGenerationSettings;
+};
+
+export function readUserPrefs(): Partial<StoredUserPrefs> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(GAME_USER_PREFS_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Partial<StoredUserPrefs>;
+  } catch {
+    return null;
+  }
+}
+
+export function writeUserPrefs(prefs: StoredUserPrefs): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(GAME_USER_PREFS_STORAGE_KEY, JSON.stringify(prefs));
   } catch {
     /* ignore quota / private mode */
   }
