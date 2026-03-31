@@ -98,9 +98,9 @@ export const GAME_MECHANICS_INFO = [
 export const ADDITIONAL_MECHANICS_INFO = [
   {
     icon: "⚖️",
-    title: "Line weight (Light–Elite)",
+    title: "Line weight (Light–Unique)",
     description:
-      "Every role is tagged Light, Medium, Heavy, or Elite for roster balance and the unit reference. This is separate from troop type (melee, mounted, ranged, siege): weight describes typical durability and cost tier, not how the unit attacks. Search the roster by light, medium, heavy, or elite."
+      "Every role is tagged Light, Medium, Heavy, Elite, or Unique (faction rulers only) for roster balance and the unit reference. This is separate from troop type (melee, mounted, ranged, siege): weight describes typical durability and cost tier, not how the unit attacks. Search the roster by light, medium, heavy, elite, or unique."
   },
   {
     icon: "🐎🏹",

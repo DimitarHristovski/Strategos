@@ -205,6 +205,19 @@ const renderTeamSelectOptions = (
 
 const SETUP_ROSTER_TIP_CLOSE_MS = 140;
 
+/**
+ * Combine two same-role units for merge: sum current HP (capped to combined max) and combine max/base max
+ * so formation HP buffs (`baseMaxHp` in battle engine) stay consistent.
+ */
+function mergeTroopHpFields(a: { hp?: number; maxHp?: number; baseMaxHp?: number }, b: { hp?: number; maxHp?: number; baseMaxHp?: number }) {
+  const baseA = a.baseMaxHp ?? a.maxHp ?? 0;
+  const baseB = b.baseMaxHp ?? b.maxHp ?? 0;
+  const baseMaxHp = Math.max(0, Math.round(baseA + baseB));
+  const maxHp = Math.max(0, Math.round((a.maxHp ?? 0) + (b.maxHp ?? 0)));
+  const hp = Math.min(maxHp, Math.round((a.hp ?? 0) + (b.hp ?? 0)));
+  return { hp, maxHp, baseMaxHp };
+}
+
 /** Portal tooltip so setup roster previews are not clipped by the unit panel overflow. */
 function SetupTroopPaletteCell({
   troop,
@@ -2260,10 +2273,10 @@ function CodeConq() {
           
           // Second troop selected, perform merge
           if (mergeCount < 3) {
+            const mergedHp = mergeTroopHpFields(selectedForMerge, clicked);
             const mergedTroop = {
               ...selectedForMerge,
-              hp: Math.min(selectedForMerge.hp + clicked.hp, selectedForMerge.maxHp + clicked.maxHp),
-              maxHp: selectedForMerge.maxHp + clicked.maxHp,
+              ...mergedHp,
               attack: Math.floor((selectedForMerge.attack + clicked.attack) * 1),
               range: Math.max(selectedForMerge.range, clicked.range),
               move: Math.max(selectedForMerge.move, clicked.move),
@@ -2541,10 +2554,10 @@ function CodeConq() {
           const isAdjacent = (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
           
           if (isAdjacent && mergeCount < 2) {
+            const mergedHp = mergeTroopHpFields(draggedUnit, existingUnit);
             const mergedTroop = {
               ...draggedUnit,
-              hp: Math.min(draggedUnit.hp + existingUnit.hp, draggedUnit.maxHp + existingUnit.maxHp),
-              maxHp: draggedUnit.maxHp + existingUnit.maxHp,
+              ...mergedHp,
               attack: Math.floor((draggedUnit.attack + existingUnit.attack) * 1.2),
               range: Math.max(draggedUnit.range, existingUnit.range),
               move: Math.max(draggedUnit.move, existingUnit.move),
@@ -3896,7 +3909,7 @@ function CodeConq() {
                 type="text"
                 value={unitsReferenceQuery}
                 onChange={(event) => setUnitsReferenceQuery(event.target.value)}
-                placeholder="Search units, factions, or keywords (ranged, mounted, light, heavy, elite, siege…)"
+                placeholder="Search units, factions, or keywords (ranged, mounted, light, heavy, elite, unique, siege…)"
                 className="w-full rounded-lg border border-yellow-700/60 bg-black/30 px-3 py-2 text-sm text-yellow-100 placeholder:text-yellow-100/45 focus:border-yellow-400 focus:outline-none"
               />
               {unitsReferenceQuery.trim().length > 0 && (
@@ -4033,7 +4046,7 @@ function CodeConq() {
           </div>
           {visibleTroops.length === 0 && (
             <div className="border-t border-yellow-700/40 px-4 py-6 text-center text-sm text-yellow-100/80">
-              No units matched that search. Try a faction, role, or keywords like `ranged`, `mounted`, `light`, `heavy`, `elite`, `hybrid`, or `siege`.
+              No units matched that search. Try a faction, role, or keywords like `ranged`, `mounted`, `light`, `heavy`, `elite`, `unique`, `hybrid`, or `siege`.
             </div>
           )}
         </div>
@@ -6413,7 +6426,7 @@ function CodeConq() {
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-yellow-200/90">Placed</div>
                 {deploymentBudgetApplies && (
                   <p className="mt-1 text-[10px] leading-snug text-amber-100/85">
-                    Army tokens: light 1 · medium 2 · heavy 3 · elite 4 — max {SETUP_ARMY_TOKEN_BUDGET} per side.
+                    Army tokens: light 1 · medium 2 · heavy 3 · elite 4 · unique 5 — max {SETUP_ARMY_TOKEN_BUDGET} per side.
                   </p>
                 )}
                 <div className="mt-1.5 space-y-0.5 text-xs text-yellow-100/80">

@@ -78,7 +78,7 @@ const TROOP_ABILITY_DEFINITIONS: Record<TroopAbilityKey, TroopAbilityDefinition>
   guarded: {
     key: "guarded",
     name: "Guarded",
-    description: "-10% incoming damage while above 50% HP."
+    description: "-10% incoming damage while above 50% HP.-30% incoming damage while under 50% HP."
   },
   ferocity: {
     key: "ferocity",
@@ -88,17 +88,17 @@ const TROOP_ABILITY_DEFINITIONS: Record<TroopAbilityKey, TroopAbilityDefinition>
   deadeye: {
     key: "deadeye",
     name: "Deadeye",
-    description: "+1 range on hills, and +10% attack against unsupported ranged or siege targets."
+    description: "+1 range on hills, and +10% attack against ranged or siege targets."
   },
   crush: {
     key: "crush",
     name: "Crush",
-    description: "+15% attack against close-combat targets, plus +5% attack against Guarded or Shield Wall defenders."
+    description: "+15% attack against close-combat targets, plus +15% attack against Guarded or Shield Wall defenders."
   },
   command: {
     key: "command",
     name: "Command Aura",
-    description: "Adjacent allies gain +5% attack. This stacks with the normal +10% leader aura when both apply."
+    description: "Adjacent allies gain +5% HP. This stacks with the normal +10% leader aura when both apply."
   },
   siegeMastery: {
     key: "siegeMastery",
@@ -108,12 +108,12 @@ const TROOP_ABILITY_DEFINITIONS: Record<TroopAbilityKey, TroopAbilityDefinition>
   skirmishStep: {
     key: "skirmishStep",
     name: "Skirmish Step",
-    description: "+1 move while ammo remains."
+    description: "+1 move while ammo remains, and +5% attack and +5% HP while ammo remains."
   },
   resolve: {
     key: "resolve",
     name: "Resolve",
-    description: "+10% attack while adjacent to an allied unit at or below 50% HP."
+    description: "+10% attack while adjacent to an allied unit."
   }
 };
 
@@ -381,31 +381,42 @@ const ensureRoleMoveRules = (role: string, stats: TroopStats): TroopStats => {
   };
 };
 
+/**
+ * Per weight step (light→medium→heavy→elite): multiply each light-tier HP/attack endpoint by
+ * `TROOP_WEIGHT_TIER_MULTIPLIER ** tier`, rounded. `unique` is one step above elite (same factor).
+ * When retuning, update light bases or the multiplier, then recompute elite and unique per category.
+ */
+export const TROOP_WEIGHT_TIER_MULTIPLIER = 1.25;
+
 /** HP/attack bands by line weight, keyed like troop UI categories (siege / ranged / melee / mounted). */
 export const SCALED_WEIGHT_RANGES = {
   siege: {
     light: { hp: [50, 100], attack: [60, 100] },
-    medium: { hp: [75, 150], attack: [90, 150] },
-    heavy: { hp: [113, 225], attack: [135, 225] },
-    elite: { hp: [169, 338], attack: [203, 338] }
+    medium: { hp: [63, 125], attack: [75, 125] },
+    heavy: { hp: [78, 156], attack: [94, 156] },
+    elite: { hp: [98, 195], attack: [117, 195] },
+    unique: { hp: [123, 244], attack: [146, 244] }
   },
   ranged: {
     light: { hp: [80, 130], attack: [50, 90] },
-    medium: { hp: [120, 195], attack: [75, 135] },
-    heavy: { hp: [180, 293], attack: [113, 203] },
-    elite: { hp: [270, 439], attack: [169, 304] }
+    medium: { hp: [100, 163], attack: [63, 113] },
+    heavy: { hp: [125, 203], attack: [78, 141] },
+    elite: { hp: [156, 254], attack: [98, 176] },
+    unique: { hp: [195, 318], attack: [123, 220] }
   },
   closeCombat: {
     light: { hp: [130, 170], attack: [90, 140] },
-    medium: { hp: [195, 255], attack: [135, 210] },
-    heavy: { hp: [293, 383], attack: [203, 315] },
-    elite: { hp: [439, 574], attack: [304, 473] }
+    medium: { hp: [163, 213], attack: [113, 175] },
+    heavy: { hp: [203, 266], attack: [141, 219] },
+    elite: { hp: [254, 332], attack: [176, 273] },
+    unique: { hp: [318, 415], attack: [220, 341] }
   },
   mounted: {
     light: { hp: [160, 200], attack: [110, 160] },
-    medium: { hp: [240, 300], attack: [165, 240] },
-    heavy: { hp: [360, 450], attack: [248, 360] },
-    elite: { hp: [540, 675], attack: [371, 540] }
+    medium: { hp: [200, 250], attack: [138, 200] },
+    heavy: { hp: [250, 313], attack: [172, 250] },
+    elite: { hp: [313, 391], attack: [215, 313] },
+    unique: { hp: [391, 489], attack: [269, 391] }
   }
 } as const;
 
@@ -429,7 +440,7 @@ const getStatScaleCategory = (role: string, profile: TroopRoleProfile): StatScal
   return "closeCombat";
 };
 
-/** Per-role mobility & weapon profile; HP/attack come from `SCALED_WEIGHT_RANGES` × unit weight. */
+/** Per-role mobility & weapon profile; HP/attack min/max come from `SCALED_WEIGHT_RANGES` for unit weight + category. */
 const TROOP_ROLE_PROFILES: Record<string, TroopRoleProfile> = {
   // Romans
   "Roman King": { ammo: 0, range: 1, move: 1 },
@@ -662,7 +673,7 @@ export const getTroopReferenceStats = (role: string): TroopReferenceStats => {
   };
 };
 
-// Main troop stat lookup: scaled HP/attack from weight × category, plus per-role profile.
+// Main troop stat lookup: HP/attack rolls from `SCALED_WEIGHT_RANGES`, plus per-role profile.
 export const generateTroopStats = (role: string): TroopStats => {
   const template = getTroopStatTemplate(role);
   const templateStats = generateTemplateStats(template);

@@ -10,40 +10,6 @@ export const adjustMovePercent = (value: number, percent: number) => {
   return Math.max(1, Math.floor(value * (1 + percent)));
 };
 
-export const isInfantryRole = (role: string) => {
-  const lowerRole = role.toLowerCase();
-  const nonInfantryKeywords = [
-    "archer",
-    "slinger",
-    "ballista",
-    "catapult",
-    "polybolos",
-    "trebuchet",
-    "onager",
-    "bombard",
-    "cavalry",
-    "chariot",
-    "elephant",
-    "rider",
-    "horseman",
-    "lancer",
-    "equites",
-    "xystophoroi",
-    "turcopole",
-    "scout",
-    "knight",
-    "horse",
-    "camel",
-    "cataphract",
-    "king",
-    "jarl",
-    "general",
-    "marshal"
-  ];
-
-  return !nonInfantryKeywords.some((keyword) => lowerRole.includes(keyword));
-};
-
 export const stripUnitForStorage = (unit: any) => {
   if (!unit) return null;
   const { Icon, ...serializableUnit } = unit;
@@ -62,17 +28,17 @@ export const restoreUnitFromStorage = (unit: any) => {
 
 export const CIV_PASSIVES: Record<TeamName, { name: string; effect: string }> = {
   Romans: { name: "Roman Discipline", effect: "+10% hp, +10% attack" },
-  Barbarians: { name: "Barbarian Fury", effect: "+20% attack, -10% hp" },
-  Greeks: { name: "Phalanx Mastery", effect: "+1 range (infantry), -1 move (infantry)" },
-  Gauls: { name: "Swift Warriors", effect: "+1 move, -10% hp" },
+  Barbarians: { name: "Barbarian Fury", effect: "+20% attack, -10% damage taken" },
+  Greeks: { name: "Phalanx Mastery", effect: "-10% damage taken (close combat) +30% attack (close combat)" },
+  Gauls: { name: "Swift Warriors", effect: "+1 move, +10% hp" },
   Germanic: { name: "Brutal Strength", effect: "+15% attack" },
-  Carthage: { name: "Mercenary Tactics", effect: "+10% hp, +10% attack, -10% move" },
+  Carthage: { name: "Mercenary Tactics", effect: "+10% hp, +10% attack" },
   Egypt: { name: "Chariot Kingdom", effect: "+1 move (mounted), +10% attack (ranged)" },
-  Thracians: { name: "Hill Raiders", effect: "+10% attack (infantry), +1 move (ranged)" },
+  Thracians: { name: "Hill Raiders", effect: "+10% attack (close combat), +1 move (ranged)" },
   Dacians: { name: "Falx Discipline", effect: "+10% hp, +10% attack" },
   Parthians: { name: "Parthian Shot", effect: "+1 move (mounted), +10% attack (ranged)" },
-  Seleucids: { name: "Imperial Arms", effect: "+10% hp (infantry), +10% attack (siege and elephants)" },
-  Vikings: { name: "Relentless Raiders", effect: "+1 move, +10% attack, -10% hp" }
+  Seleucids: { name: "Imperial Arms", effect: "+10% hp (close combat), +10% attack (siege and mounted)" },
+  Vikings: { name: "Relentless Raiders", effect: "+1 move, +10% attack, +10% hp" }
 };
 
 export const PASSIVE_ICONS: Record<TeamName, string> = {
@@ -112,7 +78,7 @@ export const applyCivilizationPassive = (unit: any) => {
       normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.2);
       break;
     case "Greeks":
-      if (isInfantryRole(normalizedUnit.role)) {
+      if (getTroopMechanicType(normalizedUnit) === "closecombat") {
         normalizedUnit.range += 1;
         normalizedUnit.move = Math.max(0, normalizedUnit.move - 1);
       }
@@ -142,7 +108,7 @@ export const applyCivilizationPassive = (unit: any) => {
       break;
     }
     case "Thracians":
-      if (isInfantryRole(normalizedUnit.role)) {
+      if (getTroopMechanicType(normalizedUnit) === "closecombat") {
         normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
       }
       if (getTroopMechanicType(normalizedUnit) === "ranged") {
@@ -166,7 +132,7 @@ export const applyCivilizationPassive = (unit: any) => {
     }
     case "Seleucids": {
       const normalizedRole = String(normalizedUnit.role ?? "").toLowerCase();
-      if (isInfantryRole(normalizedUnit.role)) {
+      if (getTroopMechanicType(normalizedUnit) === "closecombat") {
         normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
         normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
       }

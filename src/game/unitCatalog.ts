@@ -192,7 +192,7 @@ const isHybridMountedRangedUnit = (unit: any) => {
   return hasMountedTrait && (unit?.ammo ?? 0) > 0 && (unit?.range ?? 1) > 1;
 };
 
-/** Line weight (Light / Medium / Heavy / Elite) — separate from troop type (melee, mounted, ranged, siege). */
+/** Line weight (Light / Medium / Heavy / Elite / Unique) — separate from troop type (melee, mounted, ranged, siege). */
 export const getTroopWeightDisplay = (unit: { role?: string } | null | undefined) => {
   const weight = getUnitWeight(String(unit?.role ?? ""));
   return {

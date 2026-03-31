@@ -1,12 +1,12 @@
 import type { UnitWeight } from "./types";
 
 /**
- * Core unit weight per role (design: light / medium / heavy / elite).
+ * Core unit weight per role (design: light / medium / heavy / elite / unique for rulers).
  * Default in `getUnitWeight` is `"medium"` for unknown roles.
  */
 export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   // Romans
-  "Roman King": "elite",
+  "Roman King": "unique",
   Praetorian: "elite",
   Centurion: "heavy",
   Legionary: "medium",
@@ -20,8 +20,8 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   Onager: "heavy",
 
   // Barbarians
-  "Barbarian Chief": "elite",
-  "Barbarian Warlord": "elite",
+  "Barbarian Chief": "unique",
+  "Barbarian Warlord": "unique",
   "Barbarian Warrior": "medium",
   "Barbarian Berserker": "medium",
   "Barbarian Axeman": "medium",
@@ -34,7 +34,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Barbarian Shaman": "light",
 
   // Greeks / Macedonians
-  "Macedonian King": "elite",
+  "Macedonian King": "unique",
   Agema: "elite",
   Hoplite: "heavy",
   Phalangite: "heavy",
@@ -49,7 +49,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Seleucid Phalangite": "heavy",
 
   // Gauls
-  "Gallic King": "elite",
+  "Gallic King": "unique",
   "Gallic Warrior": "medium",
   "Gallic Berserker": "medium",
   "Gallic Spearman": "medium",
@@ -63,7 +63,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Gallic Skirmisher": "light",
 
   // Germanic
-  "Germanic King": "elite",
+  "Germanic King": "unique",
   "Germanic Warrior": "medium",
   "Germanic Spearman": "medium",
   "Germanic Berserker": "medium",
@@ -77,7 +77,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Tribal Slinger": "light",
 
   // Carthage
-  "Carthaginian General": "elite",
+  "Carthaginian General": "unique",
   "Libyan Infantry": "medium",
   "Sacred Band": "heavy",
   "Liby-Phoenician Infantry": "medium",
@@ -91,7 +91,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Carthaginian Archer": "light",
 
   // Egypt
-  Pharaoh: "elite",
+  Pharaoh: "unique",
   "Egyptian Warrior": "medium",
   Medjay: "medium",
   "Khopesh Warrior": "medium",
@@ -105,7 +105,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Egyptian Catapult": "heavy",
 
   // Thracians
-  "Thracian King": "elite",
+  "Thracian King": "unique",
   "Thracian Warrior": "medium",
   "Rhomphaia Fighter": "medium",
   "Falx Warrior": "medium",
@@ -119,7 +119,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Thracian Catapult": "heavy",
 
   // Dacians
-  "Dacian King": "elite",
+  "Dacian King": "unique",
   "Dacian Warrior": "medium",
   Falxman: "medium",
   "Dacian Spearman": "medium",
@@ -133,7 +133,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Dacian Catapult": "heavy",
 
   // Parthians
-  "Parthian King": "elite",
+  "Parthian King": "unique",
   "Parthian Warrior": "medium",
   "Parthian Spearman": "medium",
   "Parthian Cataphract": "heavy",
@@ -147,7 +147,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Parthian Ballista": "heavy",
 
   // Seleucids
-  "Seleucid King": "elite",
+  "Seleucid King": "unique",
   "Eastern Spearman": "medium",
   "Silver Shield Infantry": "elite",
   Thorakitai: "medium",
@@ -160,7 +160,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Seleucid Catapult": "heavy",
 
   // Vikings
-  Jarl: "elite",
+  Jarl: "unique",
   Huscarl: "heavy",
   Hirdman: "medium",
   Ulfhednar: "medium",
@@ -174,14 +174,15 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
   "Viking Archer": "light"
 };
 
-export const UNIT_WEIGHT_ORDER: readonly UnitWeight[] = ["light", "medium", "heavy", "elite"] as const;
+export const UNIT_WEIGHT_ORDER: readonly UnitWeight[] = ["light", "medium", "heavy", "elite", "unique"] as const;
 
 /** Display title for UI badges and the troop details panel. */
 export const UNIT_WEIGHT_LABELS: Record<UnitWeight, string> = {
   light: "Light",
   medium: "Medium",
   heavy: "Heavy",
-  elite: "Elite"
+  elite: "Elite",
+  unique: "Unique"
 };
 
 /** One-line design intent (handbook + tooltips). */
@@ -189,7 +190,8 @@ export const UNIT_WEIGHT_SUMMARY: Record<UnitWeight, string> = {
   light: "Fast, lower HP — skirmishers, archers, scouts.",
   medium: "Standard line troops.",
   heavy: "Armored or slow shock — tanks and heavy infantry.",
-  elite: "Rare, powerful — leaders, guards, elite cavalry."
+  elite: "Rare, powerful — leaders, guards, elite cavalry.",
+  unique: "Faction ruler — supreme commander; costs the most army tokens."
 };
 
 /** Tailwind classes for compact weight chips (match cyan troop-type badges). */
@@ -197,7 +199,8 @@ export const UNIT_WEIGHT_BADGE_CLASS: Record<UnitWeight, string> = {
   light: "border-violet-600/55 bg-violet-950/35 text-violet-100",
   medium: "border-slate-600/55 bg-slate-900/40 text-slate-200",
   heavy: "border-orange-700/55 bg-orange-950/35 text-orange-100",
-  elite: "border-amber-500/55 bg-amber-950/45 text-amber-100"
+  elite: "border-amber-500/55 bg-amber-950/45 text-amber-100",
+  unique: "border-rose-500/60 bg-rose-950/50 text-rose-50"
 };
 
 export function getUnitWeight(role: string | undefined | null): UnitWeight {
@@ -206,14 +209,15 @@ export function getUnitWeight(role: string | undefined | null): UnitWeight {
   return UNIT_WEIGHT_BY_ROLE[key] ?? "medium";
 }
 
-/** Max total token cost per side when deploying in multiplayer or custom scenario (light=1 … elite=4). */
+/** Max total token cost per side when deploying in multiplayer or custom scenario (light=1 … unique=5). */
 export const SETUP_ARMY_TOKEN_BUDGET = 40;
 
 export const UNIT_WEIGHT_TOKEN_COST: Record<UnitWeight, number> = {
   light: 1,
   medium: 2,
   heavy: 3,
-  elite: 4
+  elite: 4,
+  unique: 5
 };
 
 export function getUnitWeightTokenCost(role: string | undefined | null): number {

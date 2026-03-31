@@ -19,8 +19,8 @@ export type GridOrientation = "north" | "east" | "south" | "west";
 export type HoverScrollDirection = "up" | "down" | "left" | "right" | null;
 export type TroopMechanicType = "closecombat" | "mounted" | "ranged" | "sieged";
 
-/** Line weight for balance / UI: light (fast, low HP) … elite (rare, powerful). */
-export type UnitWeight = "light" | "medium" | "heavy" | "elite";
+/** Line weight for balance / UI: light … elite; `unique` is reserved for faction rulers (kings, pharaoh, jarl, etc.). */
+export type UnitWeight = "light" | "medium" | "heavy" | "elite" | "unique";
 export type TerrainType = "plain" | "forest" | "hill" | "river" | "desert";
 export type TerrainPreset = "mixed" | Exclude<TerrainType, "river">;
 export type TerrainGenerationSettings = Record<TerrainType, boolean>;
