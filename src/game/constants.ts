@@ -230,7 +230,9 @@ export function readPersistedSessionNavigation(): {
     const s = JSON.parse(raw) as Record<string, unknown>;
     const gm = s.gameMode;
     const gameMode =
-      gm === "single-player" || gm === "multiplayer" || gm === "custom-scenario" ? gm : null;
+      gm === "single-player" || gm === "multiplayer" || gm === "custom-scenario" || gm === "ai-versus"
+        ? gm
+        : null;
     const ss = s.startScreen;
     const startScreen: StartScreenState =
       ss === "options" || ss === "about" || ss === "menu" ? ss : "menu";

@@ -12,7 +12,10 @@ export type TeamName =
   | "Seleucids"
   | "Vikings";
 
-export type GameMode = "single-player" | "multiplayer" | "custom-scenario";
+export type GameMode = "single-player" | "multiplayer" | "custom-scenario" | "ai-versus";
+
+/** AI quality for single-player opponents and AI vs AI spectator mode. */
+export type AiDifficulty = "easy" | "normal" | "hard" | "very-hard" | "nightmare" | "impossible";
 export type UnitsReferenceScope = TeamName | "All";
 export type BattlefieldSize = 8 | 10 | 12 | 14 | 16 | 18 | 20;
 export type GridOrientation = "north" | "east" | "south" | "west";
@@ -113,7 +116,11 @@ export type SavedGameState = {
   mergeCount?: number;
   selectedForMerge?: StoredBattleUnit | null;
   gameMode?: GameMode | null;
-  multiplayerTeams?: [TeamName, TeamName];
+  /** Hot-seat / AI vs AI roster: 2–12 unique factions. */
+  multiplayerTeams?: TeamName[];
+  aiDifficulty?: AiDifficulty;
+  /** Custom scenario: watch only — every faction is AI-controlled. */
+  customScenarioSpectator?: boolean;
   gridOrientation?: GridOrientation;
   terrainPreset?: TerrainPreset;
   terrainGenerationSettings?: Partial<TerrainGenerationSettings>;

@@ -3,6 +3,25 @@ import { ensureRangedAmmo, getTroopMechanicType } from "./battleEngine";
 import { getUnitDisplayIcon } from "./unitCatalog";
 import type { TeamName } from "./types";
 
+/** When set, AI-listed teams get HP/attack scaled after civilization passives. */
+export type PrepareBattleOpts = {
+  aiTeams: TeamName[];
+  aiHpAttackMultiplier: number;
+};
+
+export const applyAiTroopStatMultiplier = (unit: any, multiplier: number) => {
+  if (!unit || multiplier === 1) return unit;
+  const m = multiplier;
+  const next = { ...unit };
+  next.hp = Math.max(1, Math.round((next.hp ?? 0) * m));
+  next.maxHp = Math.max(1, Math.round((next.maxHp ?? 0) * m));
+  if (typeof next.baseMaxHp === "number") {
+    next.baseMaxHp = Math.max(1, Math.round(next.baseMaxHp * m));
+  }
+  next.attack = Math.max(0, Math.round((next.attack ?? 0) * m));
+  return next;
+};
+
 export const adjustStatPercent = (value: number, percent: number) => Math.max(0, Math.round(value * (1 + percent)));
 
 export const adjustMovePercent = (value: number, percent: number) => {
@@ -156,18 +175,26 @@ export const applyCivilizationPassive = (unit: any) => {
   return ensureRangedAmmo(normalizedUnit);
 };
 
-export const prepareUnitsForBattle = (units: any[]) =>
-  units.map((unit) =>
-    applyCivilizationPassive({
+export const prepareUnitsForBattle = (units: any[], opts?: PrepareBattleOpts) =>
+  units.map((unit) => {
+    let u = applyCivilizationPassive({
       ...unit,
       Icon: getUnitDisplayIcon(unit)
-    })
-  );
+    });
+    if (
+      opts &&
+      opts.aiHpAttackMultiplier !== 1 &&
+      opts.aiTeams.includes(unit.team as TeamName)
+    ) {
+      u = applyAiTroopStatMultiplier(u, opts.aiHpAttackMultiplier);
+    }
+    return u;
+  });
 
-export const rerollUnitStats = (unit: any) => {
+export const rerollUnitStats = (unit: any, opts?: PrepareBattleOpts) => {
   const rerolledStats = generateTroopStats(unit.role);
 
-  return applyCivilizationPassive({
+  let u = applyCivilizationPassive({
     ...unit,
     ...rerolledStats,
     Icon: getUnitDisplayIcon(unit),
@@ -175,6 +202,14 @@ export const rerollUnitStats = (unit: any) => {
     civPassiveName: undefined,
     civPassiveEffect: undefined
   });
+  if (
+    opts &&
+    opts.aiHpAttackMultiplier !== 1 &&
+    opts.aiTeams.includes(unit.team as TeamName)
+  ) {
+    u = applyAiTroopStatMultiplier(u, opts.aiHpAttackMultiplier);
+  }
+  return u;
 };
 
-export const rerollUnits = (units: any[]) => units.map((unit) => rerollUnitStats(unit));
+export const rerollUnits = (units: any[], opts?: PrepareBattleOpts) => units.map((unit) => rerollUnitStats(unit, opts));
