@@ -46,6 +46,8 @@ export type GameOptions = {
   showAttackDamagePreview: boolean;
   showBattleLog: boolean;
   showTurnBanner: boolean;
+  /** Corner minimap of all living units by faction during battle / setup. */
+  showBattlefieldMinimap: boolean;
   terrainEffectsEnabled: boolean;
   /** When true (and motion is not reduced), terrain uses animated tiles ("Shader: On" in Graphics). */
   terrainTileVideosEnabled: boolean;

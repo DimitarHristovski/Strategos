@@ -130,6 +130,7 @@ export const DEFAULT_GAME_OPTIONS: GameOptions = {
   showAttackDamagePreview: true,
   showBattleLog: true,
   showTurnBanner: true,
+  showBattlefieldMinimap: true,
   terrainEffectsEnabled: true,
   terrainTileVideosEnabled: true,
   timedPlayEnabled: false,
@@ -207,7 +208,7 @@ export function writeUserPrefs(prefs: StoredUserPrefs): void {
   }
 }
 
-export type StartScreenState = "menu" | "options" | "about";
+export type StartScreenState = "menu" | "options" | "about" | "tutorial";
 
 const ABOUT_SCREEN_SLIDE_COUNT = 4;
 
@@ -235,7 +236,7 @@ export function readPersistedSessionNavigation(): {
         : null;
     const ss = s.startScreen;
     const startScreen: StartScreenState =
-      ss === "options" || ss === "about" || ss === "menu" ? ss : "menu";
+      ss === "options" || ss === "about" || ss === "menu" || ss === "tutorial" ? ss : "menu";
     const idx = s.aboutSlideIndex;
     const aboutSlideIndex =
       typeof idx === "number" && Number.isFinite(idx) && idx >= 0 && idx < ABOUT_SCREEN_SLIDE_COUNT

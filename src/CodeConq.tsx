@@ -5,6 +5,7 @@ import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef
 import { createPortal } from "react-dom";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { BattlefieldSkyLayer } from "./components/codeconq/BattlefieldSkyLayer";
+import { BattlefieldMinimap } from "./components/codeconq/BattlefieldMinimap";
 import { FormationLoadingScreen } from "./components/codeconq/FormationLoadingScreen";
 import { useBattlefieldDayNightOverlay } from "./hooks/useBattlefieldDayNight";
 import { useBattlefieldViewport } from "./hooks/useBattlefieldViewport";
@@ -58,7 +59,8 @@ import {
   RIVER_TILE_VIDEO_SRC,
   TERRAIN_ASSETS,
   TERRAIN_LABELS,
-  TERRAIN_TYPES
+  TERRAIN_TYPES,
+  type StartScreenState
 } from "./game/constants";
 import { getAliveTeams, getLevelTeams, getValidLevelPlayerTeam } from "./game/levelUtils";
 import {
@@ -108,6 +110,15 @@ import {
   rerollUnits,
   stripUnitForStorage
 } from "./game/unitLifecycle";
+import {
+  buildTutorialTerrain,
+  buildTutorialUnits,
+  isTutorialMissionComplete,
+  TUTORIAL_BATTLEFIELD_SIZE,
+  getTutorialNextButtonLabel,
+  TUTORIAL_MISSIONS,
+  TUTORIAL_MISSION_COUNT
+} from "./game/tutorialMissions";
 import {
   ATTACK_RESOLVE_MELEE_MS,
   ATTACK_RESOLVE_RANGED_MS,
@@ -635,6 +646,11 @@ function CodeConq() {
   /** HTML5 DnD from battlefield in setup: ref is reliable when drop runs before React state updates. */
   const setupFieldDragUnitIdRef = useRef<string | null>(null);
   const [setupFieldDragActive, setSetupFieldDragActive] = useState(false);
+  /** Multiplayer / AI vs AI lobby: match type, factions, difficulty before deployment. */
+  const [multiplayerLobbyOpen, setMultiplayerLobbyOpen] = useState(false);
+  const [lobbyMatchType, setLobbyMatchType] = useState<"pvp" | "ai">("pvp");
+  const [lobbyTeams, setLobbyTeams] = useState<TeamName[]>(["Romans", "Barbarians"]);
+  const [lobbyAiDifficulty, setLobbyAiDifficulty] = useState<AiDifficulty>("normal");
   const [gameStarted, setGameStarted] = useState(false);
   /** Chess-clock: committed ms per team at end of their last turn; current slice uses ref start time. */
   const [timedPlayCommittedMs, setTimedPlayCommittedMs] = useState<Record<string, number>>({});
@@ -678,9 +694,10 @@ function CodeConq() {
   const feedbackTimeoutsRef = useRef<number[]>([]);
   const isRestoringSavedGameRef = useRef(false);
   const hasLoadedSavedGameRef = useRef(false);
-  const [startScreen, setStartScreen] = useState<"menu" | "options" | "about">(
-    () => INITIAL_SESSION_NAV.startScreen
-  );
+  const [startScreen, setStartScreen] = useState<StartScreenState>(() => INITIAL_SESSION_NAV.startScreen);
+  const [tutorialMissionIndex, setTutorialMissionIndex] = useState<number | null>(null);
+  const [tutorialCelebrate, setTutorialCelebrate] = useState(false);
+  const preTutorialGameOptionsRef = useRef<GameOptions | null>(null);
   const [aboutSlideIndex, setAboutSlideIndex] = useState(() => INITIAL_SESSION_NAV.aboutSlideIndex);
   /** False until the first full `localStorage` restore finishes (avoids wrong battle UI before units hydrate). */
   const [sessionRestored, setSessionRestored] = useState(() => {
@@ -976,7 +993,16 @@ function CodeConq() {
         ? mergedOptions.battlefieldSize
         : DEFAULT_GAME_OPTIONS.battlefieldSize;
       const audioPrefs = readGameAudioPrefs();
+      const resumeTutorialBattle =
+        typeof savedState.tutorialMissionIndex === "number" &&
+        savedState.tutorialMissionIndex >= 0 &&
+        savedState.tutorialMissionIndex < TUTORIAL_MISSION_COUNT &&
+        savedState.gameMode === "single-player" &&
+        Boolean(savedState.gameStarted);
       const optionsBase = { ...mergedOptions, battlefieldSize: restoredBattlefieldSize };
+      const optionsForRestore = resumeTutorialBattle
+        ? { ...optionsBase, battlefieldSize: TUTORIAL_BATTLEFIELD_SIZE }
+        : optionsBase;
 
       if (savedLevel && savedLevel in levels) {
         isRestoringSavedGameRef.current = true;
@@ -1012,8 +1038,14 @@ function CodeConq() {
       setGameMode(restoredGameMode);
       {
         const ss = savedState.startScreen;
-        if (ss === "menu" || ss === "options" || ss === "about") {
+        if (ss === "menu" || ss === "options" || ss === "about" || ss === "tutorial") {
           setStartScreen(ss);
+        }
+        const tmi = savedState.tutorialMissionIndex;
+        if (typeof tmi === "number" && tmi >= 0 && tmi < TUTORIAL_MISSION_COUNT) {
+          setTutorialMissionIndex(tmi);
+        } else {
+          setTutorialMissionIndex(null);
         }
         const asi = savedState.aboutSlideIndex;
         if (typeof asi === "number" && Number.isFinite(asi) && asi >= 0 && asi <= ABOUT_SCREEN_SLIDE_LAST) {
@@ -1041,24 +1073,26 @@ function CodeConq() {
       setTerrainGenerationSettings(restoredTerrainGenerationSettings);
       setGameOptions(
         audioPrefs
-          ? { ...optionsBase, musicEnabled: audioPrefs.musicEnabled, sfxEnabled: audioPrefs.sfxEnabled }
-          : optionsBase
+          ? { ...optionsForRestore, musicEnabled: audioPrefs.musicEnabled, sfxEnabled: audioPrefs.sfxEnabled }
+          : optionsForRestore
       );
       if (!audioPrefs) {
         writeGameAudioPrefs({
-          musicEnabled: optionsBase.musicEnabled,
-          sfxEnabled: optionsBase.sfxEnabled
+          musicEnabled: optionsForRestore.musicEnabled,
+          sfxEnabled: optionsForRestore.sfxEnabled
         });
       }
       setBattlefieldTerrain(
-        isValidTerrainMap(savedState.battlefieldTerrain, restoredBattlefieldSize)
-          ? savedState.battlefieldTerrain
-          : generateTerrainMap(restoredBattlefieldSize, restoredTerrainPreset, restoredTerrainGenerationSettings)
+        resumeTutorialBattle
+          ? buildTutorialTerrain(savedState.tutorialMissionIndex as number)
+          : isValidTerrainMap(savedState.battlefieldTerrain, restoredBattlefieldSize)
+            ? savedState.battlefieldTerrain
+            : generateTerrainMap(restoredBattlefieldSize, restoredTerrainPreset, restoredTerrainGenerationSettings)
       );
 
       const effectiveGameOptions = audioPrefs
-        ? { ...optionsBase, musicEnabled: audioPrefs.musicEnabled, sfxEnabled: audioPrefs.sfxEnabled }
-        : optionsBase;
+        ? { ...optionsForRestore, musicEnabled: audioPrefs.musicEnabled, sfxEnabled: audioPrefs.sfxEnabled }
+        : optionsForRestore;
       if (!effectiveGameOptions.timedPlayEnabled) {
         setTimedPlayCommittedMs({});
         setTimedPlayLoserTeam(null);
@@ -1103,6 +1137,7 @@ function CodeConq() {
       selectedForMerge: stripUnitForStorage(selectedForMerge),
       gameMode,
       startScreen,
+      tutorialMissionIndex,
       aboutSlideIndex,
       multiplayerTeams,
       aiDifficulty,
@@ -1138,6 +1173,7 @@ function CodeConq() {
     selectedForMerge,
     gameMode,
     startScreen,
+    tutorialMissionIndex,
     aboutSlideIndex,
     multiplayerTeams,
     aiDifficulty,
@@ -1916,6 +1952,10 @@ function CodeConq() {
   const selected = getUnitById(selectedId);
   const inspectedUnit = getUnitById(inspectedUnitId);
   const currentBattleUnits = isSetupMode ? customUnits : units;
+  const minimapUnits = useMemo(
+    () => (currentBattleUnits ?? []).filter((u: any) => u && (u.hp ?? 0) > 0),
+    [currentBattleUnits]
+  );
   const battlefieldSize = gameOptions.battlefieldSize;
   const timedPlayTeamKeys = useMemo(
     () => Object.keys(timedPlayCommittedMs).sort(),
@@ -2040,6 +2080,7 @@ function CodeConq() {
   const isTeamAllowedInSetup = (team: TeamName) => setupTeams.includes(team);
 
   const checkEnd = () => {
+    if (tutorialMissionIndex !== null) return null;
     const currentUnits = isSetupMode ? customUnits : units;
     if (!currentUnits || currentUnits.length === 0) return null;
 
@@ -2072,6 +2113,21 @@ function CodeConq() {
     battleOutcomeLoggedRef.current = true;
     setLog((prev) => [outcome, ...prev]);
   }, [gameStarted, isSetupMode, units, customUnits, timedPlayLoserTeam, gameMode, multiplayerTeams]);
+
+  useEffect(() => {
+    if (tutorialMissionIndex === null || !gameStarted || isSetupMode || !units) return;
+    if (tutorialCelebrate) return;
+    if (!isTutorialMissionComplete(tutorialMissionIndex, units, battlefieldTerrain, playerTeam)) return;
+    setTutorialCelebrate(true);
+  }, [
+    tutorialMissionIndex,
+    tutorialCelebrate,
+    gameStarted,
+    isSetupMode,
+    units,
+    battlefieldTerrain,
+    playerTeam
+  ]);
 
   const initTimedPlayFromUnitList = (battleUnits: { team: string; hp: number }[]) => {
     if (!gameOptions.timedPlayEnabled) {
@@ -2243,12 +2299,23 @@ function CodeConq() {
   gameModeForTimerRef.current = gameMode;
   aiTeamsForTimerRef.current = aiTeams;
 
+  /** Tutorial: skip enemy phases (no AI orders) but still advance turn order when the player ends turn. */
+  useEffect(() => {
+    if (tutorialMissionIndex === null || !gameStarted || isSetupMode || timedPlayLoserTeam || !units) return;
+    if (!aiTeams.includes(turn as TeamName)) return;
+    const id = window.setTimeout(() => {
+      advanceAiTurnRef.current(turn as TeamName);
+    }, 40);
+    return () => window.clearTimeout(id);
+  }, [turn, tutorialMissionIndex, gameStarted, isSetupMode, timedPlayLoserTeam, units, aiTeams]);
+
   // Automatic movement for AI teams - one unit at a time
   useEffect(() => {
     if (
       !gameStarted ||
       isSetupMode ||
       timedPlayLoserTeam ||
+      tutorialMissionIndex !== null ||
       gameMode === "multiplayer" ||
       !aiTeams.includes(turn as TeamName) ||
       !units
@@ -2384,7 +2451,18 @@ function CodeConq() {
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [turn, units, isSetupMode, gameMode, gameStarted, timedPlayLoserTeam, aiTeams, terrainEffectMap, aiDifficulty]);
+  }, [
+    turn,
+    units,
+    isSetupMode,
+    gameMode,
+    gameStarted,
+    timedPlayLoserTeam,
+    tutorialMissionIndex,
+    aiTeams,
+    terrainEffectMap,
+    aiDifficulty
+  ]);
 
   useBattlefieldViewport({
     battlefieldViewportRef,
@@ -2412,6 +2490,66 @@ function CodeConq() {
     }
   }, [gameOptions, terrainPreset, terrainGenerationSettings, gameStarted, setLog]);
 
+  const beginDualTeamSetup = useCallback(
+    (mode: "multiplayer" | "ai-versus", teams: TeamName[], aiD: AiDifficulty) => {
+      playBackgroundMusicFromUserGesture();
+      if (preTutorialGameOptionsRef.current) {
+        setGameOptions(preTutorialGameOptionsRef.current);
+        preTutorialGameOptionsRef.current = null;
+      }
+      setTutorialMissionIndex(null);
+      setTutorialCelebrate(false);
+      setIsGameMenuOpen(false);
+      setIsInGameOptionsOpen(false);
+      setIsInGameMechanicsOpen(false);
+      setIsInGameGraphicsOpen(false);
+      setIsInGameUnitsOpen(false);
+      setGridOrientation("north");
+      setMultiplayerTeams(teams);
+      setAiDifficulty(aiD);
+      setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
+      setGameMode(mode);
+      setIsSetupMode(true);
+      const opts = buildPrepareBattleOptsForGame(mode, currentLevel, playerTeam, aiD, teams, false, []);
+      setUnits(prepareUnitsForBattle(levels[currentLevel], opts));
+      setCustomUnits([]);
+      setSelectedTeam(teams[0]);
+      setTurn(teams[0]);
+      setRound(1);
+      setSelectedId(null);
+      setLog([
+        mode === "ai-versus"
+          ? `AI vs AI: assign ${teams.length} factions and deploy (max 16 per faction, ${SETUP_ARMY_TOKEN_BUDGET} army tokens each), then start. Fully automated — you watch only. Difficulty: ${AI_DIFFICULTY_LABELS[aiD]}.`
+          : `Multiplayer setup: pick factions (${teams.length} in this match), place troops (max 16 per faction, ${SETUP_ARMY_TOKEN_BUDGET} army tokens each), then start.`
+      ]);
+      setGameStarted(false);
+      setMergeCount(0);
+      setMergeMode(false);
+      setSelectedForMerge(null);
+    },
+    [
+      currentLevel,
+      playerTeam,
+      gameOptions.battlefieldSize,
+      terrainPreset,
+      terrainGenerationSettings,
+      playBackgroundMusicFromUserGesture
+    ]
+  );
+
+  const openMultiplayerLobby = useCallback(() => {
+    setLobbyMatchType(gameMode === "ai-versus" ? "ai" : "pvp");
+    setLobbyTeams([...multiplayerTeams]);
+    setLobbyAiDifficulty(aiDifficulty);
+    setMultiplayerLobbyOpen(true);
+  }, [gameMode, multiplayerTeams, aiDifficulty]);
+
+  const confirmMultiplayerLobby = useCallback(() => {
+    const mode = lobbyMatchType === "ai" ? "ai-versus" : "multiplayer";
+    beginDualTeamSetup(mode, lobbyTeams, lobbyAiDifficulty);
+    setMultiplayerLobbyOpen(false);
+  }, [lobbyMatchType, lobbyTeams, lobbyAiDifficulty, beginDualTeamSetup]);
+
   if (gameMode && !sessionRestored) {
     return <FormationLoadingScreen />;
   }
@@ -2420,6 +2558,177 @@ function CodeConq() {
   if (!units || units.length === 0) {
     return <FormationLoadingScreen />;
   }
+
+  const appBackgroundStyle = {
+    backgroundImage: 'linear-gradient(rgba(20, 15, 10, 0.55), rgba(20, 15, 10, 0.68)), url("/gamebkg.png")',
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+    backgroundAttachment: "fixed"
+  } as const;
+
+  const lobbyPortalContainer = typeof document !== "undefined" ? document.body : null;
+  const multiplayerLobbyModal =
+    multiplayerLobbyOpen && lobbyPortalContainer
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 px-3 py-8 backdrop-blur-md sm:px-6"
+            role="presentation"
+            tabIndex={-1}
+            onClick={() => setMultiplayerLobbyOpen(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setMultiplayerLobbyOpen(false);
+            }}
+          >
+            <div
+              className="game-ui flex max-h-[min(90vh,40rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border-2 border-amber-600/55 shadow-[0_0_0_1px_rgba(251,191,36,0.08),0_28px_80px_rgba(0,0,0,0.65)]"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="multiplayer-lobby-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-700/45 bg-gradient-to-r from-gray-950 via-gray-900 to-amber-950/30 px-4 py-3 sm:px-5">
+                <div className="min-w-0">
+                  <h2 id="multiplayer-lobby-title" className="text-lg font-bold tracking-tight text-amber-100 sm:text-xl">
+                    Multiplayer match
+                  </h2>
+                  <p className="mt-0.5 text-[10px] text-amber-200/65 sm:text-xs">
+                    Hot-seat PvP or AI vs AI spectator — then deploy on the map.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMultiplayerLobbyOpen(false)}
+                  className="battle-button shrink-0 rounded-full px-3 py-2 text-xs font-semibold bg-gray-800 hover:bg-gray-700 sm:text-sm"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+                <div className="space-y-4">
+                  <div>
+                    <label
+                      htmlFor="lobby-match-type"
+                      className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-yellow-200/90"
+                    >
+                      Match type
+                    </label>
+                    <select
+                      id="lobby-match-type"
+                      value={lobbyMatchType}
+                      onChange={(e) => setLobbyMatchType(e.target.value === "ai" ? "ai" : "pvp")}
+                      className="w-full cursor-pointer rounded-lg border border-yellow-600/70 bg-gray-900/90 px-3 py-2.5 text-sm font-medium text-yellow-100 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+                    >
+                      <option value="pvp">PvP (hot-seat)</option>
+                      <option value="ai">AI vs AI (spectator)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="lobby-faction-count"
+                      className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-yellow-200/90"
+                    >
+                      Factions in match (2–{ALL_TEAMS.length})
+                    </label>
+                    <input
+                      id="lobby-faction-count"
+                      type="number"
+                      min={2}
+                      max={ALL_TEAMS.length}
+                      title="How many factions in this match"
+                      className="w-full rounded-lg border border-yellow-600/70 bg-gray-900/90 px-3 py-2 text-center font-mono text-sm font-bold text-yellow-100 tabular-nums focus:border-amber-400 focus:outline-none"
+                      value={lobbyTeams.length}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        if (!Number.isFinite(n)) return;
+                        setLobbyTeams((prev) => resizeMultiplayerTeamList(prev, n));
+                      }}
+                    />
+                  </div>
+
+                  {lobbyMatchType === "ai" && (
+                    <div>
+                      <label
+                        htmlFor="lobby-ai-difficulty"
+                        className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-yellow-200/90"
+                      >
+                        AI difficulty
+                      </label>
+                      <select
+                        id="lobby-ai-difficulty"
+                        value={lobbyAiDifficulty}
+                        onChange={(e) => setLobbyAiDifficulty(e.target.value as AiDifficulty)}
+                        className="w-full cursor-pointer rounded-lg border border-yellow-600/70 bg-gray-900/90 px-3 py-2.5 text-sm font-medium text-yellow-100 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+                      >
+                        {AI_DIFFICULTY_ORDER.map((d) => (
+                          <option key={d} value={d}>
+                            {AI_DIFFICULTY_LABELS[d]}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-[10px] leading-snug text-yellow-100/55">
+                        Scales AI troop HP and attack in spectator mode.
+                      </p>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-yellow-200/90">Factions</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {lobbyTeams.map((team, index) => (
+                        <div key={`lobby-slot-${index}`}>
+                          <label
+                            htmlFor={`lobby-team-${index}`}
+                            className="mb-1 block text-[9px] font-semibold uppercase tracking-wide text-yellow-200/80"
+                          >
+                            {lobbyMatchType === "ai" ? `AI faction ${index + 1}` : `Player ${index + 1}`}
+                          </label>
+                          <select
+                            id={`lobby-team-${index}`}
+                            value={team}
+                            onChange={(e) => {
+                              const next = e.target.value as TeamName;
+                              if (lobbyTeams.some((t, j) => j !== index && t === next)) return;
+                              setLobbyTeams((prev) => {
+                                const nextTeams = [...prev];
+                                nextTeams[index] = next;
+                                return nextTeams;
+                              });
+                            }}
+                            className="w-full rounded-lg border border-yellow-600/70 bg-gray-900/90 px-2.5 py-2 text-xs text-yellow-200 focus:border-amber-400 focus:outline-none sm:text-sm"
+                          >
+                            {renderTeamSelectOptions(ALL_TEAMS)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-amber-800/35 bg-black/25 px-4 py-3 sm:px-5">
+                <button
+                  type="button"
+                  onClick={() => setMultiplayerLobbyOpen(false)}
+                  className="battle-button rounded-xl px-4 py-2.5 text-sm font-semibold bg-gray-800 hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmMultiplayerLobby}
+                  className="battle-button rounded-xl px-4 py-2.5 text-sm font-semibold bg-amber-700 hover:bg-amber-600"
+                >
+                  Continue to deployment
+                </button>
+              </div>
+            </div>
+          </div>,
+          lobbyPortalContainer
+        )
+      : null;
 
   /** BFS reachability in battle — occupied tiles block movement for all units (no passing through). */
   const battleMoveDestinationKeys =
@@ -2989,6 +3298,83 @@ function CodeConq() {
     }
   };
 
+  const startTutorialMission = (missionIndex: number) => {
+    playBackgroundMusicFromUserGesture();
+    preTutorialGameOptionsRef.current = gameOptions;
+    setGameOptions((prev) => ({ ...prev, battlefieldSize: TUTORIAL_BATTLEFIELD_SIZE, timedPlayEnabled: false }));
+    setTutorialCelebrate(false);
+    setTutorialMissionIndex(missionIndex);
+    setStartScreen("menu");
+    setIsGameMenuOpen(false);
+    setIsInGameOptionsOpen(false);
+    setIsInGameMechanicsOpen(false);
+    setIsInGameGraphicsOpen(false);
+    setIsInGameUnitsOpen(false);
+    setGridOrientation("north");
+    setBattlefieldTerrain(buildTutorialTerrain(missionIndex));
+    const rawUnits = buildTutorialUnits(missionIndex);
+    const prepared = prepareUnitsForBattle(
+      rawUnits,
+      buildPrepareBattleOptsForGame(
+        "single-player",
+        "Level1",
+        "Romans",
+        "easy",
+        ["Romans", "Barbarians"],
+        false,
+        []
+      )
+    );
+    setUnits(prepared);
+    setGameMode("single-player");
+    setCurrentLevel("Level1");
+    setPlayerTeam("Romans");
+    setMultiplayerTeams(["Romans", "Barbarians"]);
+    setIsSetupMode(false);
+    setTurn("Romans");
+    setRound(1);
+    setSelectedId(null);
+    const meta = TUTORIAL_MISSIONS[missionIndex];
+    setLog([`Tutorial — ${meta?.title ?? "Mission"} · ${meta?.subtitle ?? ""}`]);
+    setGameStarted(true);
+    setMergeCount(0);
+    setMergeMode(false);
+    setSelectedForMerge(null);
+    battleOutcomeLoggedRef.current = false;
+    setTimedPlayCommittedMs({});
+    setTimedPlayLoserTeam(null);
+    timedPlayTurnStartedAtRef.current = Date.now();
+  };
+
+  const continueTutorialAfterMission = () => {
+    if (tutorialMissionIndex === null || !tutorialCelebrate) return;
+    if (tutorialMissionIndex < TUTORIAL_MISSION_COUNT - 1) {
+      startTutorialMission(tutorialMissionIndex + 1);
+      return;
+    }
+    if (preTutorialGameOptionsRef.current) {
+      setGameOptions(preTutorialGameOptionsRef.current);
+      preTutorialGameOptionsRef.current = null;
+    }
+    setTutorialMissionIndex(null);
+    setTutorialCelebrate(false);
+    setGameStarted(false);
+    setGameMode(null);
+    setStartScreen("tutorial");
+    setCurrentLevel("Level1");
+    setUnits(
+      prepareUnitsForBattle(
+        levels.Level1,
+        buildPrepareBattleOptsForGame(null, "Level1", "Romans", aiDifficulty, ["Romans", "Barbarians"], false, [])
+      )
+    );
+    setPlayerTeam("Romans");
+    setTurn("Romans");
+    setRound(1);
+    setSelectedId(null);
+    setLog(["Tutorial complete — pick another mission or return to the main menu."]);
+  };
+
   const startSinglePlayerBattle = () => {
     playBackgroundMusicFromUserGesture();
     const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
@@ -3014,6 +3400,12 @@ function CodeConq() {
 
   const startSinglePlayerMode = () => {
     playBackgroundMusicFromUserGesture();
+    if (preTutorialGameOptionsRef.current) {
+      setGameOptions(preTutorialGameOptionsRef.current);
+      preTutorialGameOptionsRef.current = null;
+    }
+    setTutorialMissionIndex(null);
+    setTutorialCelebrate(false);
     setIsGameMenuOpen(false);
     setIsInGameOptionsOpen(false);
     setIsInGameMechanicsOpen(false);
@@ -3043,45 +3435,6 @@ function CodeConq() {
     setRound(1);
     setSelectedId(null);
     setLog([]);
-    setGameStarted(false);
-    setMergeCount(0);
-    setMergeMode(false);
-    setSelectedForMerge(null);
-  };
-
-  const startMultiplayerMode = () => {
-    playBackgroundMusicFromUserGesture();
-    setIsGameMenuOpen(false);
-    setIsInGameOptionsOpen(false);
-    setIsInGameMechanicsOpen(false);
-    setIsInGameGraphicsOpen(false);
-    setIsInGameUnitsOpen(false);
-    setGridOrientation("north");
-    setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
-    setGameMode("multiplayer");
-    setIsSetupMode(true);
-    setUnits(
-      prepareUnitsForBattle(
-        levels[currentLevel],
-        buildPrepareBattleOptsForGame(
-          "multiplayer",
-          currentLevel,
-          playerTeam,
-          aiDifficulty,
-          multiplayerTeams,
-          false,
-          []
-        )
-      )
-    );
-    setCustomUnits([]);
-    setSelectedTeam(multiplayerTeams[0]);
-    setTurn(multiplayerTeams[0]);
-    setRound(1);
-    setSelectedId(null);
-    setLog([
-      `Multiplayer setup: pick factions (${multiplayerTeams.length} in this match), place troops (max 16 per faction, ${SETUP_ARMY_TOKEN_BUDGET} army tokens each), then start.`
-    ]);
     setGameStarted(false);
     setMergeCount(0);
     setMergeMode(false);
@@ -3131,6 +3484,12 @@ function CodeConq() {
 
   const startCustomScenarioMode = () => {
     playBackgroundMusicFromUserGesture();
+    if (preTutorialGameOptionsRef.current) {
+      setGameOptions(preTutorialGameOptionsRef.current);
+      preTutorialGameOptionsRef.current = null;
+    }
+    setTutorialMissionIndex(null);
+    setTutorialCelebrate(false);
     setIsGameMenuOpen(false);
     setIsInGameOptionsOpen(false);
     setIsInGameMechanicsOpen(false);
@@ -3153,6 +3512,12 @@ function CodeConq() {
   };
 
   const backToMainMenu = () => {
+    if (preTutorialGameOptionsRef.current) {
+      setGameOptions(preTutorialGameOptionsRef.current);
+      preTutorialGameOptionsRef.current = null;
+    }
+    setTutorialMissionIndex(null);
+    setTutorialCelebrate(false);
     setStartScreen("menu");
     setIsGameMenuOpen(false);
     setGameMenuControlsOpen(false);
@@ -3192,6 +3557,15 @@ function CodeConq() {
 
   const restartCurrentGame = () => {
     if (gameMode === "single-player") {
+      if (tutorialMissionIndex !== null) {
+        startTutorialMission(tutorialMissionIndex);
+        setIsGameMenuOpen(false);
+        setIsInGameOptionsOpen(false);
+        setIsInGameMechanicsOpen(false);
+        setIsInGameGraphicsOpen(false);
+        setIsInGameUnitsOpen(false);
+        return;
+      }
       const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
       setIsGameMenuOpen(false);
       setIsInGameOptionsOpen(false);
@@ -4592,48 +4966,111 @@ function CodeConq() {
     battlefieldPanCleanupRef.current = () => stopPointerPan();
   };
 
-  const appBackgroundStyle = {
-    backgroundImage: 'linear-gradient(rgba(20, 15, 10, 0.55), rgba(20, 15, 10, 0.68)), url("/gamebkg.png")',
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat",
-    backgroundAttachment: "fixed"
-  } as const;
-
   if (!gameMode) {
     if (startScreen === "options") {
       return (
-        <div className="cc-game-cursors flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
-          <div className="game-ui p-8 text-center max-w-2xl w-full">
-            <div className="mb-4 flex items-center justify-between gap-4">
+        <>
+          <div className="cc-game-cursors flex flex-col items-center justify-center p-6 space-y-6 min-h-screen" style={appBackgroundStyle}>
+            <div className="game-ui p-8 text-center max-w-2xl w-full">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <button
+                  onClick={() => setStartScreen("menu")}
+                  className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                >
+                  Back
+                </button>
+                <h1 className="text-4xl font-bold text-yellow-200 drop-shadow-lg">Options</h1>
+                <button
+                  type="button"
+                  onClick={persistUserSettings}
+                  className="battle-button px-4 py-2 text-sm font-semibold bg-amber-700 hover:bg-amber-800"
+                >
+                  Save
+                </button>
+              </div>
+              {settingsSaveNotice && (
+                <p className="mb-4 text-center text-sm text-emerald-300/95">{settingsSaveNotice}</p>
+              )}
+              {renderGameOptionsContent()}
+            </div>
+            <AppVersionCorner />
+          </div>
+          {multiplayerLobbyModal}
+        </>
+      );
+    }
+
+    if (startScreen === "tutorial") {
+      return (
+        <>
+          <div
+            className="cc-game-cursors flex min-h-screen flex-col items-center justify-center p-4 sm:p-6"
+            style={appBackgroundStyle}
+          >
+            <div className="game-ui w-full max-w-2xl p-6 text-center sm:p-8">
               <button
+                type="button"
                 onClick={() => setStartScreen("menu")}
-                className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+                className="battle-button mb-6 w-fit px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
               >
                 Back
               </button>
-              <h1 className="text-4xl font-bold text-yellow-200 drop-shadow-lg">Options</h1>
+              <h1 className="text-3xl font-bold text-yellow-200 drop-shadow-lg sm:text-4xl">Interactive tutorial</h1>
+              <p className="mt-3 text-sm leading-relaxed text-yellow-100/85">
+                {TUTORIAL_MISSION_COUNT} lessons on an 8×8 field — basics, terrain, signatures, leader aura, merge, matchups,
+                and siege. Enemy turns are skipped. Use <span className="font-semibold text-amber-200/95">Next</span> after each
+                objective. The in-game <span className="font-semibold text-amber-200/95">Mechanics</span> menu has the full rulebook.
+              </p>
               <button
                 type="button"
-                onClick={persistUserSettings}
-                className="battle-button px-4 py-2 text-sm font-semibold bg-amber-700 hover:bg-amber-800"
+                onClick={() => startTutorialMission(0)}
+                className="battle-button mt-5 w-full rounded-xl border border-amber-500/70 bg-amber-950/50 px-4 py-3.5 text-base font-bold text-amber-50 shadow-[0_0_24px_rgba(245,158,11,0.18)] hover:bg-amber-900/55"
               >
-                Save
+                Start lesson 1 — play all in order
               </button>
+              <div className="mt-6 flex flex-col gap-3 text-left">
+                {TUTORIAL_MISSIONS.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex flex-col gap-2 rounded-xl border border-amber-900/45 bg-black/20 p-3 sm:flex-row sm:items-stretch sm:gap-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => startTutorialMission(m.id)}
+                      className="battle-button min-h-[4.25rem] flex-1 rounded-lg border border-amber-800/40 bg-black/25 px-4 py-3 text-left transition-colors hover:border-amber-500/60 hover:bg-amber-950/30"
+                    >
+                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300/90">
+                        Lesson {m.id + 1} · {m.subtitle}
+                      </span>
+                      <span className="mt-1 block text-base font-bold text-yellow-100">{m.title}</span>
+                    </button>
+                    {m.id < TUTORIAL_MISSION_COUNT - 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => startTutorialMission(m.id + 1)}
+                        className="battle-button shrink-0 rounded-lg border border-amber-700/50 bg-amber-950/35 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-900/45 sm:w-[7.5rem]"
+                        title={`Jump to lesson ${m.id + 2}`}
+                      >
+                        Next →
+                      </button>
+                    ) : (
+                      <div className="hidden w-[7.5rem] shrink-0 sm:block" aria-hidden />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-            {settingsSaveNotice && (
-              <p className="mb-4 text-center text-sm text-emerald-300/95">{settingsSaveNotice}</p>
-            )}
-            {renderGameOptionsContent()}
+            <AppVersionCorner />
           </div>
-          <AppVersionCorner />
-        </div>
+          {multiplayerLobbyModal}
+        </>
       );
     }
 
     if (startScreen === "about") {
       const aboutSlideLabels = ["Overview", "Modes & scale", "Developer", "Controls"] as const;
       return (
+        <>
         <div className="cc-game-cursors flex min-h-screen flex-col items-center justify-center p-4 sm:p-6" style={appBackgroundStyle}>
           <div className="game-ui w-full max-w-3xl overflow-hidden p-5 sm:p-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -4822,77 +5259,86 @@ function CodeConq() {
           </div>
           <AppVersionCorner />
         </div>
+        {multiplayerLobbyModal}
+        </>
       );
     }
 
     return (
-      <div
-        className="cc-game-cursors flex min-w-0 flex-col items-center justify-center overflow-visible p-3 pb-8 pt-24 min-h-screen sm:p-5 sm:pb-10 sm:pt-28"
-        style={appBackgroundStyle}
-      >
-        <div className="relative z-0 w-full min-w-0 max-w-3xl">
-          <div className="game-ui relative z-10 mx-auto w-full max-w-[min(100%,28rem)] overflow-hidden rounded-2xl px-4 pb-6 pt-[6rem] text-center shadow-[0_16px_40px_rgba(0,0,0,0.42)] ring-1 ring-black/25 sm:max-w-md sm:px-8 sm:pb-8 sm:pt-28">
-            <div className="mx-auto flex w-full max-w-md flex-col gap-4">
-              <button
-                type="button"
-                onClick={startSinglePlayerMode}
-                className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-              >
-                Single Player
-              </button>
-              <button
-                type="button"
-                onClick={startMultiplayerMode}
-                className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-              >
-                Multiplayer
-              </button>
-              <button
-                type="button"
-                onClick={startCustomScenarioMode}
-                className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-              >
-                Custom scenario
-              </button>
-              <button
-                type="button"
-                onClick={() => setStartScreen("about")}
-                className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-              >
-                About
-              </button>
-            </div>
+      <>
+        <div
+          className="cc-game-cursors flex min-w-0 flex-col items-center justify-center overflow-visible p-3 pb-8 pt-24 min-h-screen sm:p-5 sm:pb-10 sm:pt-28"
+          style={appBackgroundStyle}
+        >
+          <div className="relative z-0 w-full min-w-0 max-w-3xl">
+            <div className="game-ui relative z-10 mx-auto w-full max-w-[min(100%,28rem)] overflow-hidden rounded-2xl px-4 pb-6 pt-[6rem] text-center shadow-[0_16px_40px_rgba(0,0,0,0.42)] ring-1 ring-black/25 sm:max-w-md sm:px-8 sm:pb-8 sm:pt-28">
+              <div className="mx-auto flex w-full max-w-md flex-col gap-4">
+                <button
+                  type="button"
+                  onClick={startSinglePlayerMode}
+                  className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+                >
+                  Single Player
+                </button>
+                <button
+                  type="button"
+                  onClick={openMultiplayerLobby}
+                  className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+                >
+                  Multiplayer
+                </button>
+                <button
+                  type="button"
+                  onClick={startCustomScenarioMode}
+                  className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+                >
+                  Custom scenario
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStartScreen("tutorial")}
+                  className="battle-button w-full px-6 py-4 text-lg font-semibold bg-amber-900/80 hover:bg-amber-900"
+                >
+                  Tutorial
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStartScreen("about")}
+                  className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+                >
+                  About
+                </button>
+              </div>
 
-            <div className="mx-auto mt-6 w-full max-w-md border-t border-black/20 pt-4">
-              <button
-                type="button"
-                onClick={() => setStartScreen("options")}
-                className="battle-button w-full px-6 py-3 text-lg font-semibold bg-gray-800/90 hover:bg-gray-900"
-              >
-                Options
-              </button>
+              <div className="mx-auto mt-6 w-full max-w-md border-t border-black/20 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setStartScreen("options")}
+                  className="battle-button w-full px-6 py-3 text-lg font-semibold bg-gray-800/90 hover:bg-gray-900"
+                >
+                  Options
+                </button>
+              </div>
             </div>
+            <h1 className="pointer-events-none absolute left-1/2 top-0 z-30 w-[min(100%,25rem)] max-w-[calc(100vw-1rem)] -translate-x-1/2 -translate-y-[40%] px-1 sm:max-w-[42rem] sm:-translate-y-[44%]">
+              <img
+                src="/strategos.png"
+                alt="Strategos"
+                width={640}
+                height={200}
+                className="mx-auto h-auto max-h-[min(48vh,18rem)] w-full object-contain object-center drop-shadow-[0_20px_50px_rgba(0,0,0,0.55)] sm:max-h-[min(52vh,22rem)]"
+                decoding="async"
+              />
+            </h1>
           </div>
-          <h1 className="pointer-events-none absolute left-1/2 top-0 z-30 w-[min(100%,25rem)] max-w-[calc(100vw-1rem)] -translate-x-1/2 -translate-y-[40%] px-1 sm:max-w-[42rem] sm:-translate-y-[44%]">
-            <img
-              src="/strategos.png"
-              alt="Strategos"
-              width={640}
-              height={200}
-              className="mx-auto h-auto max-h-[min(48vh,18rem)] w-full object-contain object-center drop-shadow-[0_20px_50px_rgba(0,0,0,0.55)] sm:max-h-[min(52vh,22rem)]"
-              decoding="async"
-            />
-          </h1>
+          <AppVersionCorner />
         </div>
-        <AppVersionCorner />
-      </div>
+        {multiplayerLobbyModal}
+      </>
     );
   }
 
   const battleOutcomeBanner = gameStarted && !isSetupMode ? checkEnd() : null;
-  const dualBattleConfigLocked = Boolean(
-    gameStarted && !isSetupMode && (gameMode === "multiplayer" || gameMode === "ai-versus")
-  );
 
   return (
     <div
@@ -4905,6 +5351,37 @@ function CodeConq() {
           isBattlefieldFullscreen ? "bf-fs-root min-h-0 flex-1 justify-start" : "items-center"
         }`}
       >
+      {tutorialMissionIndex !== null &&
+        gameStarted &&
+        !isSetupMode &&
+        TUTORIAL_MISSIONS[tutorialMissionIndex] !== undefined && (
+          <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] w-[min(100%,26rem)] -translate-x-1/2 px-3">
+            <div className="pointer-events-auto rounded-xl border border-amber-600/55 bg-gray-950/92 p-4 text-sm text-yellow-50 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-sm">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-300/90">
+                Tutorial · Mission {tutorialMissionIndex + 1}/{TUTORIAL_MISSION_COUNT} ·{" "}
+                {TUTORIAL_MISSIONS[tutorialMissionIndex].subtitle}
+              </div>
+              <div className="mt-1 text-base font-bold text-yellow-100">{TUTORIAL_MISSIONS[tutorialMissionIndex].title}</div>
+              <p className="mt-2 text-[13px] leading-snug text-yellow-100/88">
+                {TUTORIAL_MISSIONS[tutorialMissionIndex].instruction}
+              </p>
+              {tutorialCelebrate ? (
+                <div className="mt-3 flex flex-col gap-2 border-t border-amber-800/40 pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+                  <p className="text-[13px] font-semibold text-emerald-300/95">Objective complete.</p>
+                  <button
+                    type="button"
+                    onClick={continueTutorialAfterMission}
+                    className="battle-button w-full px-4 py-2.5 text-sm font-bold bg-amber-600 hover:bg-amber-500 sm:ml-auto sm:w-auto sm:min-w-[10rem]"
+                  >
+                    {getTutorialNextButtonLabel(tutorialMissionIndex)}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-2 text-[11px] text-yellow-200/65">Tip: use End Turn only if you need to reset selection — the AI is idle here.</p>
+              )}
+            </div>
+          </div>
+        )}
       {/* Top Header */}
       <div className="sticky top-0 z-30 w-full shrink-0">
         <div className="game-ui w-full rounded-none border-x-0 px-2 sm:px-3 py-2 flex flex-wrap items-center gap-2 justify-between relative">
@@ -4926,83 +5403,27 @@ function CodeConq() {
                 <span>{dayNightClock.timeLabel}</span>
               </span>
               <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-2 py-0.5 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide text-yellow-100">
-                {gameMode === "multiplayer"
-                  ? `PvP hot-seat · ${multiplayerTeams.length} factions`
-                  : gameMode === "ai-versus"
-                    ? `AI vs AI · ${multiplayerTeams.length} factions`
-                    : gameMode === "custom-scenario"
-                      ? "Custom scenario"
-                      : "Player vs AI"}
+                {tutorialMissionIndex !== null
+                  ? "Tutorial"
+                  : gameMode === "multiplayer"
+                    ? `PvP hot-seat · ${multiplayerTeams.length} factions`
+                    : gameMode === "ai-versus"
+                      ? `AI vs AI · ${multiplayerTeams.length} factions`
+                      : gameMode === "custom-scenario"
+                        ? "Custom scenario"
+                        : "Player vs AI"}
               </span>
             </div>
-            {(gameMode === "multiplayer" || gameMode === "ai-versus") && (
-              <div className="mt-1.5 flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-[9px] sm:text-[10px] text-yellow-100/90">
-                <span className="font-semibold uppercase tracking-wide text-yellow-200/80">Match</span>
-                <select
-                  aria-label="Match type: player versus player or AI versus AI"
-                  className="max-w-[11rem] rounded border border-yellow-600/70 bg-gray-900/90 px-1.5 py-0.5 text-[9px] font-semibold text-yellow-100 focus:border-amber-400 focus:outline-none sm:text-[10px]"
-                  disabled={dualBattleConfigLocked}
-                  value={gameMode === "ai-versus" ? "ai" : "pvp"}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "ai") {
-                      setGameMode("ai-versus");
-                      restartSessionForGameplaySettings({ gameMode: "ai-versus" });
-                    } else {
-                      setGameMode("multiplayer");
-                      restartSessionForGameplaySettings({ gameMode: "multiplayer" });
-                    }
-                  }}
+            {(gameMode === "multiplayer" || gameMode === "ai-versus") && isSetupMode && !gameStarted && (
+              <div className="mt-1.5 flex max-w-full flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openMultiplayerLobby}
+                  className="rounded-lg border border-amber-600/70 bg-gray-900/90 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide text-amber-100 hover:border-amber-400 hover:bg-black/50 sm:text-[10px]"
                 >
-                  <option value="pvp">PvP (hot-seat)</option>
-                  <option value="ai">AI vs AI (spectator)</option>
-                </select>
-                <label className="inline-flex items-center gap-1 font-semibold uppercase tracking-wide text-yellow-200/80">
-                  Factions
-                  <input
-                    type="number"
-                    min={2}
-                    max={ALL_TEAMS.length}
-                    title="How many factions in this match (2–12)"
-                    className="w-10 rounded border border-yellow-600/70 bg-gray-900/90 px-1 py-0.5 text-center font-mono text-[10px] font-bold text-yellow-100 tabular-nums focus:border-amber-400 focus:outline-none sm:w-11 sm:text-[11px]"
-                    disabled={dualBattleConfigLocked}
-                    value={multiplayerTeams.length}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      if (!Number.isFinite(n)) return;
-                      const next = resizeMultiplayerTeamList(multiplayerTeams, n);
-                      const filtered = customUnits.filter((u: any) => next.includes(u.team));
-                      setMultiplayerTeams(next);
-                      setCustomUnits(filtered);
-                      setSelectedTeam((st) => (next.includes(st) ? st : next[0]));
-                      restartSessionForGameplaySettings({
-                        gameMode: gameMode === "ai-versus" ? "ai-versus" : "multiplayer",
-                        customUnitsForReroll: filtered
-                      });
-                    }}
-                  />
-                </label>
-                {gameMode === "ai-versus" && (
-                  <>
-                    <span className="font-semibold uppercase tracking-wide text-yellow-200/80">AI</span>
-                    <select
-                      aria-label="AI difficulty"
-                      className="max-w-[9rem] rounded border border-yellow-600/70 bg-gray-900/90 px-1.5 py-0.5 text-[9px] font-semibold text-yellow-100 focus:border-amber-400 focus:outline-none sm:max-w-none sm:text-[10px]"
-                      value={aiDifficulty}
-                      onChange={(e) => {
-                        const next = e.target.value as AiDifficulty;
-                        setAiDifficulty(next);
-                        restartSessionForGameplaySettings({ aiDifficulty: next });
-                      }}
-                    >
-                      {AI_DIFFICULTY_ORDER.map((d) => (
-                        <option key={d} value={d}>
-                          {AI_DIFFICULTY_LABELS[d]}
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                )}
+                  Match setup
+                </button>
+                <span className="text-[9px] text-yellow-100/65 sm:text-[10px]">Opens the same lobby as Multiplayer on the main menu.</span>
               </div>
             )}
           </div>
@@ -5064,7 +5485,7 @@ function CodeConq() {
               </span>
             )}
 
-            {!isSetupMode && gameMode !== "custom-scenario" && (
+            {!isSetupMode && gameMode !== "custom-scenario" && tutorialMissionIndex === null && (
               <div className="flex flex-wrap items-center gap-2">
                 <label htmlFor="level-select" className="text-xs uppercase tracking-wide text-yellow-100">
                   Level
@@ -7218,7 +7639,40 @@ function CodeConq() {
         )}
       </div>
       </div>
+      <div className="fixed bottom-0 left-0 z-[48] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))]">
+        {gameOptions.showBattlefieldMinimap ? (
+          <div className="pointer-events-auto flex items-end gap-2">
+            <BattlefieldMinimap units={minimapUnits} size={battlefieldSize} />
+            <button
+              type="button"
+              onClick={() => toggleOption("showBattlefieldMinimap")}
+              className="battle-button flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 border-amber-900/55 bg-gradient-to-b from-[#2a241c] to-[#1a1510] text-amber-200/95 shadow-[0_6px_18px_rgba(0,0,0,0.4)] hover:border-amber-500/65 hover:from-[#352e22] hover:to-[#221c16] hover:text-amber-50"
+              aria-label="Hide minimap"
+              title="Hide minimap"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => toggleOption("showBattlefieldMinimap")}
+            className="battle-button pointer-events-auto flex h-11 w-11 items-center justify-center rounded-xl border-2 border-[#6b5c45]/90 bg-gradient-to-b from-[#2a241c] to-[#1a1510] text-amber-200/90 shadow-[0_8px_24px_rgba(0,0,0,0.45)] hover:border-amber-500/70 hover:from-[#352e22] hover:to-[#221c16] hover:text-amber-50"
+            aria-label="Show minimap"
+            title="Show minimap"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden>
+              <rect x="3.5" y="3.5" width="17" height="17" rx="2" />
+              <path d="M3.5 9.5h17M3.5 15h17M9.5 3.5v17M15 3.5v17" />
+            </svg>
+          </button>
+        )}
+      </div>
       <AppVersionCorner />
+      {multiplayerLobbyModal}
     </div>
   );
 }
