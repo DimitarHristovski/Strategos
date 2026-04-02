@@ -208,7 +208,7 @@ export function writeUserPrefs(prefs: StoredUserPrefs): void {
   }
 }
 
-export type StartScreenState = "menu" | "options" | "about" | "tutorial";
+export type StartScreenState = "menu" | "options" | "about" | "tutorial" | "campaign";
 
 const ABOUT_SCREEN_SLIDE_COUNT = 4;
 
@@ -231,12 +231,16 @@ export function readPersistedSessionNavigation(): {
     const s = JSON.parse(raw) as Record<string, unknown>;
     const gm = s.gameMode;
     const gameMode =
-      gm === "single-player" || gm === "multiplayer" || gm === "custom-scenario" || gm === "ai-versus"
+      gm === "single-player" ||
+      gm === "campaign" ||
+      gm === "multiplayer" ||
+      gm === "custom-scenario" ||
+      gm === "ai-versus"
         ? gm
         : null;
     const ss = s.startScreen;
     const startScreen: StartScreenState =
-      ss === "options" || ss === "about" || ss === "menu" || ss === "tutorial" ? ss : "menu";
+      ss === "options" || ss === "about" || ss === "menu" || ss === "tutorial" || ss === "campaign" ? ss : "menu";
     const idx = s.aboutSlideIndex;
     const aboutSlideIndex =
       typeof idx === "number" && Number.isFinite(idx) && idx >= 0 && idx < ABOUT_SCREEN_SLIDE_COUNT

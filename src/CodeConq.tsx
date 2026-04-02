@@ -75,6 +75,15 @@ import {
 } from "./game/mechanicsInfo";
 import { buildPrepareBattleOptsForGame, getAiTroopScalingForTeamInGame } from "./game/aiTroopScaling";
 import {
+  CAMPAIGN_PLAYABLE_FACTIONS,
+  CAMPAIGN_STAGE_COUNT,
+  FACTION_CAMPAIGN_NAME,
+  getCampaignStage,
+  isCampaignMissionUnlocked,
+  persistCampaignProgressIfBetter,
+  readCampaignNextMission
+} from "./game/campaign";
+import {
   AI_DIFFICULTY_LABELS,
   AI_DIFFICULTY_ORDER,
   getAiDifficultyProfile,
@@ -697,6 +706,12 @@ function CodeConq() {
   const [startScreen, setStartScreen] = useState<StartScreenState>(() => INITIAL_SESSION_NAV.startScreen);
   const [tutorialMissionIndex, setTutorialMissionIndex] = useState<number | null>(null);
   const [tutorialCelebrate, setTutorialCelebrate] = useState(false);
+  const [campaignSelectedFaction, setCampaignSelectedFaction] = useState<TeamName | null>(null);
+  const [campaignNextMissionIndex, setCampaignNextMissionIndex] = useState(0);
+  const [campaignActiveMissionIndex, setCampaignActiveMissionIndex] = useState<number | null>(null);
+  const [campaignPreBattleBriefingOpen, setCampaignPreBattleBriefingOpen] = useState(false);
+  const campaignBattleMissionIndexRef = useRef(0);
+  const campaignBattleFactionRef = useRef<TeamName | null>(null);
   const preTutorialGameOptionsRef = useRef<GameOptions | null>(null);
   const [aboutSlideIndex, setAboutSlideIndex] = useState(() => INITIAL_SESSION_NAV.aboutSlideIndex);
   /** False until the first full `localStorage` restore finishes (avoids wrong battle UI before units hydrate). */
@@ -1038,7 +1053,7 @@ function CodeConq() {
       setGameMode(restoredGameMode);
       {
         const ss = savedState.startScreen;
-        if (ss === "menu" || ss === "options" || ss === "about" || ss === "tutorial") {
+        if (ss === "menu" || ss === "options" || ss === "about" || ss === "tutorial" || ss === "campaign") {
           setStartScreen(ss);
         }
         const tmi = savedState.tutorialMissionIndex;
@@ -1270,7 +1285,13 @@ function CodeConq() {
   }, []);
 
   useEffect(() => {
-    if (gameMode !== "single-player") return;
+    if (startScreen === "campaign" && !gameMode && campaignSelectedFaction) {
+      setCampaignNextMissionIndex(readCampaignNextMission(campaignSelectedFaction));
+    }
+  }, [startScreen, gameMode, campaignSelectedFaction]);
+
+  useEffect(() => {
+    if (gameMode !== "single-player" && gameMode !== "campaign") return;
 
     const validPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
     if (validPlayerTeam === playerTeam) return;
@@ -1318,7 +1339,8 @@ function CodeConq() {
     const alive = getAliveTeams(units);
     let correct: TeamName | null = null;
     if (gameMode === "multiplayer" || gameMode === "ai-versus") correct = multiplayerTeams[0];
-    else if (gameMode === "single-player") correct = getValidLevelPlayerTeam(currentLevel, playerTeam);
+    else if (gameMode === "single-player" || gameMode === "campaign")
+      correct = getValidLevelPlayerTeam(currentLevel, playerTeam);
     else if (gameMode === "custom-scenario") {
       if (customScenarioSpectator) {
         const present = new Set(units.filter((u) => u.hp > 0).map((u) => u.team));
@@ -2027,7 +2049,7 @@ function CodeConq() {
     isDualTeamBattle || (gameMode === "custom-scenario" && customScenarioSpectator) ? turn : playerTeam;
   const setupTeamsInPlay = (() => {
     if (isDualTeamBattle) return multiplayerTeams;
-    if (gameMode === "single-player") return levelTeams;
+    if (gameMode === "single-player" || gameMode === "campaign") return levelTeams;
 
     const customScenarioTeams = getAliveTeams(customUnits);
     return customScenarioTeams.length > 0 ? customScenarioTeams : [playerTeam];
@@ -2111,8 +2133,32 @@ function CodeConq() {
     if (!outcome) return;
     if (battleOutcomeLoggedRef.current) return;
     battleOutcomeLoggedRef.current = true;
-    setLog((prev) => [outcome, ...prev]);
-  }, [gameStarted, isSetupMode, units, customUnits, timedPlayLoserTeam, gameMode, multiplayerTeams]);
+    let campaignLine: string | null = null;
+    if (gameMode === "campaign") {
+      const win = outcome.match(/^Winner:\s*(.+)$/);
+      const winner = win?.[1]?.trim();
+      const cf = campaignBattleFactionRef.current;
+      if (winner === playerTeam && cf) {
+        persistCampaignProgressIfBetter(cf, campaignBattleMissionIndexRef.current);
+        setCampaignNextMissionIndex(readCampaignNextMission(cf));
+        const s = campaignBattleMissionIndexRef.current;
+        campaignLine =
+          s + 1 >= CAMPAIGN_STAGE_COUNT
+            ? `Campaign complete for ${cf} — all 30 chapters won. Open Campaign to replay or choose another faction.`
+            : `Campaign (${cf}): Chapter ${s + 1} finished. Main menu → Campaign for the next chapter.`;
+      }
+    }
+    setLog((prev) => (campaignLine ? [campaignLine, outcome, ...prev] : [outcome, ...prev]));
+  }, [
+    gameStarted,
+    isSetupMode,
+    units,
+    customUnits,
+    timedPlayLoserTeam,
+    gameMode,
+    multiplayerTeams,
+    playerTeam
+  ]);
 
   useEffect(() => {
     if (tutorialMissionIndex === null || !gameStarted || isSetupMode || !units) return;
@@ -2176,12 +2222,12 @@ function CodeConq() {
       setRound(1);
       setGridOrientation("north");
 
-      if (mode === "single-player") {
+      if (mode === "single-player" || mode === "campaign") {
         const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, pt);
         setUnits(
           prepareUnitsForBattle(
             levels[currentLevel],
-            buildPrepareBattleOptsForGame("single-player", currentLevel, nextPlayerTeam, aiD, multiplayerTeams, false, [])
+            buildPrepareBattleOptsForGame(mode, currentLevel, nextPlayerTeam, aiD, multiplayerTeams, false, [])
           )
         );
         setPlayerTeam(nextPlayerTeam);
@@ -3398,6 +3444,52 @@ function CodeConq() {
     setGridOrientation("north");
   };
 
+  const startCampaignMission = (faction: TeamName, missionIndex: number) => {
+    if (!isCampaignMissionUnlocked(faction, missionIndex, campaignNextMissionIndex)) return;
+    const stage = getCampaignStage(faction, missionIndex);
+    if (!stage) return;
+    playBackgroundMusicFromUserGesture();
+    if (preTutorialGameOptionsRef.current) {
+      setGameOptions(preTutorialGameOptionsRef.current);
+      preTutorialGameOptionsRef.current = null;
+    }
+    setTutorialMissionIndex(null);
+    setTutorialCelebrate(false);
+    setIsGameMenuOpen(false);
+    setIsInGameOptionsOpen(false);
+    setIsInGameMechanicsOpen(false);
+    setIsInGameGraphicsOpen(false);
+    setIsInGameUnitsOpen(false);
+    setGridOrientation("north");
+    setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
+    campaignBattleMissionIndexRef.current = missionIndex;
+    campaignBattleFactionRef.current = faction;
+    setCampaignActiveMissionIndex(missionIndex);
+    setCurrentLevel(stage.levelKey);
+    const nextPlayerTeam = getValidLevelPlayerTeam(stage.levelKey, faction);
+    setGameMode("campaign");
+    setIsSetupMode(false);
+    setUnits(
+      prepareUnitsForBattle(
+        levels[stage.levelKey],
+        buildPrepareBattleOptsForGame("campaign", stage.levelKey, nextPlayerTeam, aiDifficulty, multiplayerTeams, false, [])
+      )
+    );
+    setPlayerTeam(nextPlayerTeam);
+    setTurn(nextPlayerTeam);
+    setRound(1);
+    setSelectedId(null);
+    setLog([]);
+    setGameStarted(false);
+    setMergeCount(0);
+    setMergeMode(false);
+    setSelectedForMerge(null);
+    setMultiplayerTeams(["Romans", "Barbarians"]);
+    setCustomScenarioSpectator(false);
+    setCampaignPreBattleBriefingOpen(true);
+    setStartScreen("menu");
+  };
+
   const startSinglePlayerMode = () => {
     playBackgroundMusicFromUserGesture();
     if (preTutorialGameOptionsRef.current) {
@@ -3518,6 +3610,9 @@ function CodeConq() {
     }
     setTutorialMissionIndex(null);
     setTutorialCelebrate(false);
+    setCampaignActiveMissionIndex(null);
+    setCampaignPreBattleBriefingOpen(false);
+    campaignBattleFactionRef.current = null;
     setStartScreen("menu");
     setIsGameMenuOpen(false);
     setGameMenuControlsOpen(false);
@@ -3598,6 +3693,35 @@ function CodeConq() {
       setMergeCount(0);
       setMergeMode(false);
       setSelectedForMerge(null);
+      return;
+    }
+
+    if (gameMode === "campaign") {
+      const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
+      setIsGameMenuOpen(false);
+      setIsInGameOptionsOpen(false);
+      setIsInGameMechanicsOpen(false);
+      setIsInGameGraphicsOpen(false);
+      setIsInGameUnitsOpen(false);
+      setGridOrientation("north");
+      setGameMode("campaign");
+      setIsSetupMode(false);
+      setUnits(
+        rerollUnits(
+          levels[currentLevel],
+          buildPrepareBattleOptsForGame("campaign", currentLevel, nextPlayerTeam, aiDifficulty, multiplayerTeams, false, [])
+        )
+      );
+      setPlayerTeam(nextPlayerTeam);
+      setTurn(nextPlayerTeam);
+      setRound(1);
+      setSelectedId(null);
+      setLog([]);
+      setGameStarted(false);
+      setMergeCount(0);
+      setMergeMode(false);
+      setSelectedForMerge(null);
+      setCampaignPreBattleBriefingOpen(true);
       return;
     }
 
@@ -5067,6 +5191,131 @@ function CodeConq() {
       );
     }
 
+    if (startScreen === "campaign") {
+      return (
+        <>
+          <div
+            className="cc-game-cursors flex min-h-screen flex-col items-center justify-center p-4 sm:p-6"
+            style={appBackgroundStyle}
+          >
+            <div className="game-ui w-full max-w-2xl p-6 text-left sm:p-8">
+              <button
+                type="button"
+                onClick={() => {
+                  setCampaignSelectedFaction(null);
+                  setStartScreen("menu");
+                }}
+                className="battle-button mb-6 w-fit px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+              >
+                Back
+              </button>
+              <h1 className="text-center text-3xl font-bold text-yellow-200 drop-shadow-lg sm:text-4xl">Campaign</h1>
+              {!campaignSelectedFaction ? (
+                <>
+                  <p className="mt-3 text-center text-sm leading-relaxed text-yellow-100/88">
+                    Choose a faction. Each has its own <span className="font-semibold text-amber-200/95">30-chapter story</span>,{" "}
+                    <span className="font-semibold text-amber-200/95">mission order</span> across the skirmish maps, and{" "}
+                    <span className="font-semibold text-amber-200/95">separate saved progress</span>. Beat missions in order to
+                    unlock the next.
+                  </p>
+                  <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {CAMPAIGN_PLAYABLE_FACTIONS.map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => {
+                          setCampaignSelectedFaction(f);
+                          setCampaignNextMissionIndex(readCampaignNextMission(f));
+                        }}
+                        className="battle-button rounded-xl border border-emerald-800/50 bg-emerald-950/35 px-4 py-3.5 text-left text-base font-bold text-emerald-50 hover:border-emerald-500/60 hover:bg-emerald-900/45"
+                      >
+                        {f}
+                        <span className="mt-0.5 block text-xs font-normal text-emerald-200/80">
+                          {FACTION_CAMPAIGN_NAME[f] ?? "Campaign"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-800/45 bg-black/25 px-4 py-3">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-300/90">Your faction</p>
+                      <p className="text-lg font-bold text-amber-100">{campaignSelectedFaction}</p>
+                      <p className="text-xs text-amber-200/75">{FACTION_CAMPAIGN_NAME[campaignSelectedFaction]}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCampaignSelectedFaction(null)}
+                      className="battle-button shrink-0 rounded-lg border border-amber-700/50 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-950/40"
+                    >
+                      Change faction
+                    </button>
+                  </div>
+                  <p className="mt-3 text-center text-sm leading-relaxed text-yellow-100/88">
+                    Missions, titles, and briefings are unique to {campaignSelectedFaction}. Progress for this faction is saved
+                    separately from others.
+                  </p>
+                  <div className="mt-4 rounded-xl border border-amber-800/45 bg-black/25 px-4 py-3 text-center text-xs text-amber-100/85">
+                    Next chapter:{" "}
+                    <span className="font-bold text-amber-200">
+                      {campaignNextMissionIndex >= CAMPAIGN_STAGE_COUNT
+                        ? "Campaign complete — replay any mission below."
+                        : `Chapter ${campaignNextMissionIndex + 1} of ${CAMPAIGN_STAGE_COUNT}`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={campaignNextMissionIndex >= CAMPAIGN_STAGE_COUNT}
+                    onClick={() => startCampaignMission(campaignSelectedFaction, campaignNextMissionIndex)}
+                    className="battle-button mt-4 w-full rounded-xl border border-emerald-600/60 bg-emerald-950/40 px-4 py-3.5 text-base font-bold text-emerald-50 shadow-[0_0_24px_rgba(16,185,129,0.15)] hover:bg-emerald-900/50 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {campaignNextMissionIndex >= CAMPAIGN_STAGE_COUNT
+                      ? "All chapters cleared"
+                      : `Continue — chapter ${campaignNextMissionIndex + 1}`}
+                  </button>
+                  <div className="mt-6 max-h-[min(55vh,28rem)] space-y-2 overflow-y-auto pr-1">
+                    {Array.from({ length: CAMPAIGN_STAGE_COUNT }, (_, i) => {
+                      const st = getCampaignStage(campaignSelectedFaction, i);
+                      if (!st) return null;
+                      const unlocked = isCampaignMissionUnlocked(campaignSelectedFaction, i, campaignNextMissionIndex);
+                      return (
+                        <div
+                          key={`${campaignSelectedFaction}-${st.index}`}
+                          className={`flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center ${
+                            unlocked ? "border-amber-900/45 bg-black/20" : "border-gray-800/60 bg-black/10 opacity-60"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300/85">
+                              {st.act} · Mission {i + 1}
+                            </div>
+                            <div className="text-base font-bold text-yellow-100">{st.title}</div>
+                            <p className="mt-1 text-[13px] leading-snug text-yellow-100/80">{st.blurb}</p>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!unlocked}
+                            onClick={() => startCampaignMission(campaignSelectedFaction, i)}
+                            className="battle-button shrink-0 rounded-lg border border-amber-700/50 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-900/40 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {unlocked ? "Fight" : "Locked"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+            <AppVersionCorner />
+          </div>
+          {multiplayerLobbyModal}
+        </>
+      );
+    }
+
     if (startScreen === "about") {
       const aboutSlideLabels = ["Overview", "Modes & scale", "Developer", "Controls"] as const;
       return (
@@ -5282,6 +5531,13 @@ function CodeConq() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setStartScreen("campaign")}
+                  className="battle-button w-full px-6 py-4 text-lg font-semibold border border-emerald-700/50 bg-emerald-950/45 hover:bg-emerald-900/55"
+                >
+                  Campaign
+                </button>
+                <button
+                  type="button"
                   onClick={openMultiplayerLobby}
                   className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
                 >
@@ -5340,6 +5596,64 @@ function CodeConq() {
 
   const battleOutcomeBanner = gameStarted && !isSetupMode ? checkEnd() : null;
 
+  const campaignStageForBanner =
+    gameMode === "campaign" && campaignActiveMissionIndex !== null
+      ? getCampaignStage(playerTeam, campaignActiveMissionIndex)
+      : null;
+
+  const campaignBriefingStage =
+    campaignPreBattleBriefingOpen &&
+    gameMode === "campaign" &&
+    !gameStarted &&
+    !isSetupMode &&
+    campaignActiveMissionIndex !== null
+      ? getCampaignStage(playerTeam, campaignActiveMissionIndex)
+      : null;
+
+  const campaignBriefingModal =
+    campaignBriefingStage && lobbyPortalContainer
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 px-3 py-8 backdrop-blur-sm sm:px-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="campaign-briefing-title"
+          >
+            <div className="game-ui flex max-h-[min(88vh,40rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border-2 border-emerald-700/55 shadow-[0_0_0_1px_rgba(16,185,129,0.12),0_28px_80px_rgba(0,0,0,0.7)]">
+              <div className="overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300/90">
+                  Chapter {campaignBriefingStage.index + 1} of {CAMPAIGN_STAGE_COUNT} · {campaignBriefingStage.act}
+                </p>
+                <h2 id="campaign-briefing-title" className="mt-2 text-xl font-bold leading-tight text-yellow-100 sm:text-2xl">
+                  {campaignBriefingStage.title}
+                </h2>
+                <p className="mt-2 text-xs font-medium text-amber-200/90">
+                  Scenario: {LEVEL_MATCHUP_LABELS[campaignBriefingStage.levelKey]}
+                </p>
+                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-400/90">
+                  Leading {campaignBriefingStage.faction}
+                </p>
+                <p className="mt-2 text-sm italic leading-snug text-yellow-100/75">{campaignBriefingStage.blurb}</p>
+                <p className="mt-4 text-[15px] leading-relaxed text-yellow-50/95">{campaignBriefingStage.briefing}</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-emerald-900/45 bg-black/30 px-5 py-4 sm:px-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCampaignPreBattleBriefingOpen(false);
+                    startSinglePlayerBattle();
+                  }}
+                  className="battle-button rounded-xl px-6 py-3 text-sm font-bold bg-emerald-700 hover:bg-emerald-600"
+                >
+                  Begin battle
+                </button>
+              </div>
+            </div>
+          </div>,
+          lobbyPortalContainer
+        )
+      : null;
+
   return (
     <div
       className="cc-game-cursors flex w-full max-w-full min-w-0 flex-col items-center overflow-x-hidden min-h-screen min-h-[100dvh]"
@@ -5382,6 +5696,18 @@ function CodeConq() {
             </div>
           </div>
         )}
+      {campaignStageForBanner && gameStarted && !isSetupMode && campaignActiveMissionIndex !== null && (
+          <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] w-[min(100%,26rem)] -translate-x-1/2 px-3">
+            <div className="pointer-events-auto rounded-xl border border-emerald-600/50 bg-gray-950/92 p-4 text-sm text-yellow-50 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-sm">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300/90">
+                Campaign ({campaignStageForBanner.faction}) · Chapter {campaignActiveMissionIndex + 1}/{CAMPAIGN_STAGE_COUNT} ·{" "}
+                {campaignStageForBanner.act}
+              </div>
+              <div className="mt-1 text-base font-bold text-yellow-100">{campaignStageForBanner.title}</div>
+              <p className="mt-2 text-[13px] leading-snug text-yellow-100/88">{campaignStageForBanner.blurb}</p>
+            </div>
+          </div>
+        )}
       {/* Top Header */}
       <div className="sticky top-0 z-30 w-full shrink-0">
         <div className="game-ui w-full rounded-none border-x-0 px-2 sm:px-3 py-2 flex flex-wrap items-center gap-2 justify-between relative">
@@ -5405,13 +5731,15 @@ function CodeConq() {
               <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-2 py-0.5 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide text-yellow-100">
                 {tutorialMissionIndex !== null
                   ? "Tutorial"
-                  : gameMode === "multiplayer"
-                    ? `PvP hot-seat · ${multiplayerTeams.length} factions`
-                    : gameMode === "ai-versus"
-                      ? `AI vs AI · ${multiplayerTeams.length} factions`
-                      : gameMode === "custom-scenario"
-                        ? "Custom scenario"
-                        : "Player vs AI"}
+                  : gameMode === "campaign"
+                    ? "Campaign"
+                    : gameMode === "multiplayer"
+                      ? `PvP hot-seat · ${multiplayerTeams.length} factions`
+                      : gameMode === "ai-versus"
+                        ? `AI vs AI · ${multiplayerTeams.length} factions`
+                        : gameMode === "custom-scenario"
+                          ? "Custom scenario"
+                          : "Player vs AI"}
               </span>
             </div>
             {(gameMode === "multiplayer" || gameMode === "ai-versus") && isSetupMode && !gameStarted && (
@@ -5485,7 +5813,10 @@ function CodeConq() {
               </span>
             )}
 
-            {!isSetupMode && gameMode !== "custom-scenario" && tutorialMissionIndex === null && (
+            {!isSetupMode &&
+              gameMode !== "custom-scenario" &&
+              gameMode !== "campaign" &&
+              tutorialMissionIndex === null && (
               <div className="flex flex-wrap items-center gap-2">
                 <label htmlFor="level-select" className="text-xs uppercase tracking-wide text-yellow-100">
                   Level
@@ -5841,7 +6172,10 @@ function CodeConq() {
             </button>
           )}
 
-          {gameMode === "single-player" && !isSetupMode && !gameStarted && (
+          {(gameMode === "single-player" ||
+            (gameMode === "campaign" && !campaignPreBattleBriefingOpen)) &&
+            !isSetupMode &&
+            !gameStarted && (
             <button
               type="button"
               onClick={startSinglePlayerBattle}
@@ -5916,7 +6250,9 @@ function CodeConq() {
           {!isSetupMode &&
             gameStarted &&
             (gameMode === "multiplayer" ||
-              ((gameMode === "single-player" || gameMode === "custom-scenario") &&
+              ((gameMode === "single-player" ||
+                gameMode === "campaign" ||
+                gameMode === "custom-scenario") &&
                 turn === playerTeam &&
                 !(gameMode === "custom-scenario" && customScenarioSpectator))) && (
             <button
@@ -7673,6 +8009,7 @@ function CodeConq() {
       </div>
       <AppVersionCorner />
       {multiplayerLobbyModal}
+      {campaignBriefingModal}
     </div>
   );
 }

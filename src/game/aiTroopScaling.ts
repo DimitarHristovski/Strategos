@@ -17,7 +17,7 @@ export function buildPrepareBattleOptsForGame(
   if (mult === 1) return undefined;
   if (gameMode === "multiplayer") return undefined;
 
-  if (gameMode === "single-player" || gameMode === null) {
+  if (gameMode === "single-player" || gameMode === "campaign" || gameMode === null) {
     const levelTeams = getLevelTeams(currentLevel);
     const aiTeams = levelTeams.filter((t) => t !== playerTeam);
     if (aiTeams.length === 0) return undefined;
@@ -53,7 +53,7 @@ export function getAiTroopScalingForTeamInGame(
   const mult = getAiTroopHpAttackMultiplier(aiDifficulty);
   if (mult === 1) return 1;
   if (gameMode === "multiplayer") return 1;
-  if (gameMode === "single-player" || gameMode === null) {
+  if (gameMode === "single-player" || gameMode === "campaign" || gameMode === null) {
     const levelTeams = getLevelTeams(currentLevel);
     if (!levelTeams.includes(team) || team === playerTeam) return 1;
     return mult;

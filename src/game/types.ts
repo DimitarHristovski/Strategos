@@ -12,7 +12,7 @@ export type TeamName =
   | "Seleucids"
   | "Vikings";
 
-export type GameMode = "single-player" | "multiplayer" | "custom-scenario" | "ai-versus";
+export type GameMode = "single-player" | "campaign" | "multiplayer" | "custom-scenario" | "ai-versus";
 
 /** AI quality for single-player opponents and AI vs AI spectator mode. */
 export type AiDifficulty = "easy" | "normal" | "hard" | "very-hard" | "nightmare" | "impossible";
