@@ -4,6 +4,10 @@ import type { TeamName, TerrainType } from "./types";
 
 export const TUTORIAL_BATTLEFIELD_SIZE = 8 as const;
 
+/** Mission 0 (March): one move from start to goal (legionary move range is 1). */
+export const TUTORIAL_MISSION_0_START = { x: 3, y: 4 } as const;
+export const TUTORIAL_MISSION_0_GOAL = { x: 4, y: 4 } as const;
+
 const PT: TeamName = "Romans";
 const ET: TeamName = "Barbarians";
 
@@ -60,7 +64,17 @@ export function buildTutorialTerrain(missionIndex: number): TerrainType[][] {
 export function buildTutorialUnits(missionIndex: number): any[] {
   switch (missionIndex) {
     case 0:
-      return [makeUnit("tut_m0_leg", PT, "Legionary", "Legionary", 1, 1, "⚔️")];
+      return [
+        makeUnit(
+          "tut_m0_leg",
+          PT,
+          "Legionary",
+          "Legionary",
+          TUTORIAL_MISSION_0_START.x,
+          TUTORIAL_MISSION_0_START.y,
+          "⚔️"
+        )
+      ];
     case 1:
       return [
         makeUnit("tut_m1_leg", PT, "Legionary", "Legionary", 2, 4, "⚔️"),
@@ -149,11 +163,14 @@ export function isTutorialMissionComplete(
 ): boolean {
   if (!units || units.length === 0) return false;
 
-  /** Kills remove units from state — no row with hp ≤ 0. Treat “no living enemies” as a completed strike. */
+  const isWounded = (u: { hp: number; maxHp?: number }) =>
+    typeof u.maxHp === "number" && Number.isFinite(u.maxHp) && u.hp > 0 && u.hp < u.maxHp;
+
+  /** Deal damage once: any living enemy below max HP, or no living enemies left (kill is optional). */
   const strikeObjectiveMet = () => {
     const living = units.filter((u) => u.team !== playerTeam && u.hp > 0);
     if (living.length === 0) return true;
-    return living.some((u) => u.hp < (u.maxHp ?? u.hp));
+    return living.some((u) => isWounded(u));
   };
 
   const mergedRomanUnit = () =>
@@ -161,7 +178,13 @@ export function isTutorialMissionComplete(
 
   switch (missionIndex) {
     case 0:
-      return units.some((u) => u.team === playerTeam && u.hp > 0 && u.x === 4 && u.y === 4);
+      return units.some(
+        (u) =>
+          u.team === playerTeam &&
+          u.hp > 0 &&
+          u.x === TUTORIAL_MISSION_0_GOAL.x &&
+          u.y === TUTORIAL_MISSION_0_GOAL.y
+      );
     case 1:
     case 3:
     case 5:
@@ -197,10 +220,11 @@ export function isTutorialMissionComplete(
     case 7: {
       const foes = units.filter((u) => u.team !== playerTeam);
       if (foes.length === 0) return true;
-      const woundedAlive = foes.filter((u) => u.hp > 0 && u.hp < (u.maxHp ?? u.hp));
-      if (woundedAlive.length >= 2) return true;
-      if (foes.length === 1) return woundedAlive.length === 1;
-      return false;
+      const living = foes.filter((u) => u.hp > 0);
+      if (living.length === 0) return true;
+      const eliminated = foes.length - living.length;
+      const livingWounded = living.filter((u) => isWounded(u)).length;
+      return eliminated + livingWounded >= 2;
     }
     case 9:
       return mergedRomanUnit();
@@ -229,14 +253,14 @@ export const TUTORIAL_MISSIONS: readonly TutorialMissionMeta[] = [
     title: "March",
     subtitle: "Movement",
     instruction:
-      "Select your legionary, then click a highlighted tile to move. Reach the marked objective tile (4,4)."
+      "Select your legionary, then click the highlighted goal tile (4,4) — one move finishes the lesson. No combat."
   },
   {
     id: 1,
     title: "Strike",
     subtitle: "Melee attack",
     instruction:
-      "Select your legionary. The foe is adjacent — click the enemy’s tile to attack (red highlight). Deal damage once."
+      "Select your legionary. The foe is adjacent — click the enemy’s tile to attack (red highlight). One successful hit is enough — a wound counts; you do not need a kill."
   },
   {
     id: 2,

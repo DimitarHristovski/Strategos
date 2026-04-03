@@ -1,4 +1,5 @@
 import { generateTroopStats } from "./troopStats";
+import { buildMissingPairLevels } from "../game/composeSkirmishLevels";
 
 const createUnit = (
   id: string,
@@ -19,7 +20,7 @@ const createUnit = (
   Icon
 });
 
-export const levels = {
+const LEVELS_BASE = {
   Level1: [
     createUnit("roman_king", "Romans", "Roman King", "Roman King", 3, 0, "👑"),
     createUnit("roman_ballista_left", "Romans", "Ballista", "Ballista", 0, 0, "⚔️"),
@@ -347,4 +348,9 @@ export const levels = {
     createUnit("seleucid_elephant_16", "Seleucids", "War Elephant", "Seleucid War Elephant", 6, 4, "🐘"),
     createUnit("seleucid_catapult_16", "Seleucids", "Seleucid Catapult", "Seleucid Catapult", 4, 4, "⚙️")
   ]
+};
+
+export const levels = {
+  ...LEVELS_BASE,
+  ...buildMissingPairLevels(LEVELS_BASE as Record<string, any[]>)
 };

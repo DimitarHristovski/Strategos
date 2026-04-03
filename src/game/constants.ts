@@ -35,24 +35,14 @@ export const TEAM_SELECT_GROUPS = [
   { label: "Tribal Realms", teams: ["Barbarians", "Gauls", "Germanic", "Vikings"] as TeamName[] }
 ] as const;
 
-export const LEVEL_MATCHUP_LABELS: Record<keyof typeof levels, string> = {
-  Level1: "Romans vs Barbarians",
-  Level2: "Greeks vs Gauls",
-  Level3: "Carthage vs Vikings",
-  Level4: "Germanic vs Egypt",
-  Level5: "Romans vs Carthage",
-  Level6: "Greeks vs Germanic",
-  Level7: "Gauls vs Vikings",
-  Level8: "Barbarians vs Egypt",
-  Level9: "Egypt vs Romans",
-  Level10: "Egypt vs Greeks",
-  Level11: "Gauls vs Carthage",
-  Level12: "Vikings vs Egypt",
-  Level13: "Thracians vs Dacians",
-  Level14: "Parthians vs Seleucids",
-  Level15: "Thracians vs Parthians",
-  Level16: "Dacians vs Seleucids"
-};
+/** Human-readable matchup for every skirmish map (base + auto-generated missing faction pairs). */
+export const LEVEL_MATCHUP_LABELS: Record<keyof typeof levels, string> = Object.fromEntries(
+  (Object.keys(levels) as (keyof typeof levels)[]).map((k) => {
+    const teams = Array.from(new Set(levels[k].map((u: { team: string }) => u.team)));
+    const label = teams.length >= 2 ? `${teams[0]} vs ${teams[1]}` : String(k);
+    return [k, label];
+  })
+) as Record<keyof typeof levels, string>;
 
 export const TERRAIN_ASSETS: Record<TerrainType, string> = {
   plain: "/tiles/plain.png",
@@ -208,9 +198,10 @@ export function writeUserPrefs(prefs: StoredUserPrefs): void {
   }
 }
 
-export type StartScreenState = "menu" | "options" | "about" | "tutorial" | "campaign";
+export type StartScreenState = "menu" | "options" | "about" | "tutorial" | "campaign" | "single-player-setup";
 
-const ABOUT_SCREEN_SLIDE_COUNT = 4;
+/** About screen carousel panel count (must match slides in `CodeConq` About UI). */
+export const ABOUT_SCREEN_SLIDE_COUNT = 5;
 
 /** Sync read of mode + pre-game UI from the same save blob (avoids a main-menu flash on refresh). */
 export function readPersistedSessionNavigation(): {
@@ -240,7 +231,14 @@ export function readPersistedSessionNavigation(): {
         : null;
     const ss = s.startScreen;
     const startScreen: StartScreenState =
-      ss === "options" || ss === "about" || ss === "menu" || ss === "tutorial" || ss === "campaign" ? ss : "menu";
+      ss === "options" ||
+      ss === "about" ||
+      ss === "menu" ||
+      ss === "tutorial" ||
+      ss === "campaign" ||
+      ss === "single-player-setup"
+        ? ss
+        : "menu";
     const idx = s.aboutSlideIndex;
     const aboutSlideIndex =
       typeof idx === "number" && Number.isFinite(idx) && idx >= 0 && idx < ABOUT_SCREEN_SLIDE_COUNT

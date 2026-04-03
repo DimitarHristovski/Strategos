@@ -117,6 +117,18 @@ export type SavedGameState = {
   mergeMode?: boolean;
   mergeCount?: number;
   selectedForMerge?: StoredBattleUnit | null;
+  spyMode?: boolean;
+  spyCount?: number;
+  /** Unit ids that received a spy report this battle (full intel for the rest of the match). */
+  spiedEnemyIds?: string[];
+  /** @deprecated migrated away; ignored on load. */
+  civActiveUsedByTeam?: Partial<Record<TeamName, boolean>>;
+  /** Per faction: how many times that side’s turn has started this battle (for ability cooldown). */
+  civOwnTurnOrdinalForAbility?: Partial<Record<TeamName, number>>;
+  /** Per faction: own-turn ordinal index when faction ability becomes available again. */
+  civAbilityUnlockAtOwnOrdinal?: Partial<Record<TeamName, number>>;
+  /** Per faction: battle round when ability is ready (cooldowns keyed by `cooldownBattleRounds` in civ defs). */
+  civAbilityUnlockAtBattleRound?: Partial<Record<TeamName, number>>;
   gameMode?: GameMode | null;
   /** Hot-seat / AI vs AI roster: 2–12 unique factions. */
   multiplayerTeams?: TeamName[];

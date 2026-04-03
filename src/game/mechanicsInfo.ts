@@ -45,6 +45,20 @@ export const getBattleLogAppearance = (entry: string) => {
       bg: "bg-fuchsia-950/35"
     };
   }
+  if (normalizedEntry.includes("spy")) {
+    return {
+      accent: "border-slate-400/70",
+      text: "text-slate-100",
+      bg: "bg-slate-950/40"
+    };
+  }
+  if (normalizedEntry.includes("[civilization ability]")) {
+    return {
+      accent: "border-cyan-500/65",
+      text: "text-cyan-50",
+      bg: "bg-cyan-950/40"
+    };
+  }
   if (normalizedEntry.includes("move clock")) {
     return {
       accent: "border-amber-400/70",
@@ -84,8 +98,27 @@ export const GAME_MECHANICS_INFO = [
   },
   {
     icon: "🧬",
-    title: "Merge Limit",
-    description: "You can merge adjacent same-role troops into elite units a limited number of times each battle."
+    title: "Merge (2 per battle)",
+    description:
+      "On your turn, use the 🔗 toolbar button to enter merge mode (single-player, campaign, custom scenario, hot-seat, or AI vs AI). Click two orthogonally adjacent friendly units of the same role to combine them. **Two merges per battle** (HUD counter). Merge mode and Spy mode cancel each other."
+  },
+  {
+    icon: "🕵️",
+    title: "Spy (3 reports per battle)",
+    description:
+      "On your turn, use 🕵️ to enter Spy mode: living enemies highlight; click one to file a **spy report** and unlock full stats, skills, and effects for that unit in the side panel for the rest of the match. **Three reports per battle** (HUD counter). Unspied enemies show **classified** intel (hidden numbers) until reported. Re-opening a unit you already spied costs nothing."
+  },
+  {
+    icon: "⚡",
+    title: "Faction ability (targeted + cooldown)",
+    description:
+      "Each civilization has a **targeted** ability on the **cyan** button beside its passive on the **left rail**. Tap to **arm** it (again to cancel): **volley** factions pick **one enemy** in range of any ally (≤5 tiles); **reinforcement** factions pick **one living ally** to heal/buff; **Romans** **summon** one **Legionary** on an empty tile in range. Resolving it **ends your turn**. **Cooldown:** most factions wait **3 of your side’s turns**; **Romans** use a **20 full battle-round** cooldown (each time the turn order wraps to the first side again—see hover tooltip). Hover the cyan button for **preview motion** (flying arrows, siege stones, thrown axes, or javelins for volley factions; heal sparks for reinforce; deploy streak for summon). Not in the tutorial or **AI vs AI** watch. Log lines: **[Civilization Ability]** (cyan)."
+  },
+  {
+    icon: "🧭",
+    title: "Skirmish setup (single player)",
+    description:
+      "Main menu **Single player** opens a setup screen: choose any skirmish map (original scenarios plus extra faction pairings), pick your faction, then start. During skirmish, **🧭** returns to that screen (confirms if a battle is in progress). Skirmish **level** is chosen there or via 🧭—not from a header dropdown. The header can still set **faction** and **AI difficulty** for skirmish when you are not in the tutorial."
   },
   {
     icon: "🗺️",
@@ -116,7 +149,14 @@ export const ADDITIONAL_MECHANICS_INFO = [
   {
     icon: "🏴",
     title: "Civilization Passives",
-    description: "Each faction applies a passive bonus before battle starts, which can change movement, health, range, or attack depending on the civilization."
+    description:
+      "Each faction applies a **passive bonus before battle starts** (movement, health, range, or attack depending on the civ). **Yellow-bordered icons** on the **left rail** are the in-battle reference—hover for the full tooltip (passive aura + icon motion). The **cyan** button is the **cooldown-based targeted** ability (see **Faction ability** in core rules); its hover tooltip adds **faction-themed motion** (volley projectiles, reinforcement sparks, Roman deploy drop)."
+  },
+  {
+    icon: "⚡",
+    title: "Faction ability (left rail)",
+    description:
+      "Full wording under **Core rules → Faction ability**. Map: **yellow** = passive · **cyan** = arm **volley**, **reinforcement**, or **Roman summon** · valid targets **pulse** on the grid · **amber** cyan = targeting armed · ends turn on resolve · cooldown per faction (**3 own turns** by default; **Romans** = **20 battle rounds**—see tooltip)."
   },
   {
     icon: "🎺",
@@ -142,7 +182,13 @@ export const ADDITIONAL_MECHANICS_INFO = [
     icon: "📜",
     title: "Battle Log",
     description:
-      "Use the scroll button on the floating toolbar to open a centered battle log modal; tap the same button again to close. Entries are color-coded (attacks, kills, moves, charges, morale, merges, time events). With Turn Banner on, the panel also shows whose turn it is and—when timed play is on—the active move clock."
+      "Use the scroll button on the floating toolbar to open a centered battle log modal; tap the same button again to close. Entries are color-coded (attacks, kills, moves, charges, morale, merges, spy, **civilization abilities**, time events). With Turn Banner on, the panel also shows whose turn it is and—when timed play is on—the active move clock."
+  },
+  {
+    icon: "📚",
+    title: "Tutorial lessons",
+    description:
+      "Sixteen short missions on an 8×8 field teach movement, melee, terrain, ranged ammo, signatures, rivers, merge, and more. Enemy turns auto-skip. Lesson 1 (March) completes in **one move** onto the goal tile—no combat. Strike-style lessons count **any damaging hit** (wound or kill). The handbook here matches what you see in-game."
   }
 ] as const;
 
@@ -323,6 +369,7 @@ export const FORMATION_BUFF_MECHANICS_INFO: ReadonlyArray<{
 ] as const;
 
 export const AI_MECHANICS_INFO = [
+  "AI-controlled factions **use civilization abilities** on cooldown when a good target exists (volley vs exposed enemies, reinforcement on injured or key troops, Roman summon toward the fight).",
   "Front-line melee units now push harder and value moves that create an immediate attack on the next turn.",
   "The AI focuses wounded enemies, exposed ranged units, siege crews, and isolated leaders more aggressively.",
   "Ranged and siege troops still prefer safer firing ground, but they now step into pressure range sooner instead of drifting too far back.",

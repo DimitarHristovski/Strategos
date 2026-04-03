@@ -778,6 +778,549 @@
     pointer-events: none;
 }
 
+/* Spy mode — valid enemy targets */
+.spy-target-highlight {
+    background:
+        radial-gradient(circle at center, rgba(251, 191, 36, 0.55) 0%, rgba(245, 158, 11, 0.28) 70%, transparent 100%);
+    border: 2px dashed rgba(251, 191, 36, 0.95);
+    animation: pulse 2s infinite;
+    position: relative;
+}
+
+.spy-target-highlight::after {
+    content: '🕵️';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.25rem;
+    text-shadow: 0 0 10px rgba(251, 191, 36, 0.85);
+    pointer-events: none;
+    opacity: 0.92;
+}
+
+/* Faction ability — volley (enemy) targets */
+.civ-volley-highlight {
+    background:
+        radial-gradient(circle at center, rgba(239, 68, 68, 0.42) 0%, rgba(185, 28, 28, 0.22) 70%, transparent 100%);
+    border: 2px dashed rgba(248, 113, 113, 0.95);
+    animation: pulse 2s infinite;
+    position: relative;
+}
+
+.civ-volley-highlight::after {
+    content: '🏹';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.2rem;
+    text-shadow: 0 0 10px rgba(248, 113, 113, 0.85);
+    pointer-events: none;
+    opacity: 0.9;
+}
+
+/* Faction ability — reinforcement (ally) targets */
+.civ-reinforce-highlight {
+    background:
+        radial-gradient(circle at center, rgba(34, 197, 94, 0.4) 0%, rgba(22, 163, 74, 0.2) 70%, transparent 100%);
+    border: 2px dashed rgba(74, 222, 128, 0.95);
+    animation: pulse 2s infinite;
+    position: relative;
+}
+
+.civ-reinforce-highlight::after {
+    content: '➕';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.15rem;
+    text-shadow: 0 0 10px rgba(74, 222, 128, 0.85);
+    pointer-events: none;
+    opacity: 0.9;
+}
+
+/* Faction summon — valid empty deployment tiles */
+.civ-summon-tile-highlight {
+    background:
+        radial-gradient(circle at center, rgba(96, 165, 250, 0.38) 0%, rgba(59, 130, 246, 0.18) 70%, transparent 100%);
+    border: 2px dashed rgba(147, 197, 253, 0.95);
+    animation: pulse 2.2s infinite;
+    position: relative;
+}
+
+.civ-summon-tile-highlight::after {
+    content: '🏛️';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.1rem;
+    text-shadow: 0 0 10px rgba(147, 197, 253, 0.9);
+    pointer-events: none;
+    opacity: 0.88;
+}
+
+/* —— Left rail: passive / active skill hover tooltips —— */
+@keyframes fr-tt-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fr-passive-spin-glow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes fr-passive-shimmer-x {
+    0%, 100% { transform: translateX(-12%) skewX(-6deg); opacity: 0.12; }
+    50% { transform: translateX(12%) skewX(-6deg); opacity: 0.28; }
+}
+
+.fr-rail-tt {
+    animation: fr-tt-fade-in 0.22s ease-out;
+}
+
+.fr-rail-tt-passive-aura::before {
+    content: '';
+    position: absolute;
+    width: 140%;
+    height: 140%;
+    left: -20%;
+    top: -20%;
+    opacity: 0.2;
+    pointer-events: none;
+}
+
+.fr-rail-tt-passive-aura[data-team="Romans"]::before,
+.fr-rail-tt-passive-aura[data-team="Carthage"]::before,
+.fr-rail-tt-passive-aura[data-team="Seleucids"]::before {
+    background: conic-gradient(from 0deg, rgba(251, 191, 36, 0.2), transparent 40%, rgba(234, 179, 8, 0.15), transparent 75%);
+    animation: fr-passive-spin-glow 14s linear infinite;
+}
+
+.fr-rail-tt-passive-aura[data-team="Barbarians"]::before,
+.fr-rail-tt-passive-aura[data-team="Germanic"]::before {
+    background: radial-gradient(ellipse at 30% 20%, rgba(248, 113, 113, 0.35), transparent 55%);
+    animation: fr-passive-shimmer-x 2.1s ease-in-out infinite;
+}
+
+.fr-rail-tt-passive-aura[data-team="Greeks"]::before,
+.fr-rail-tt-passive-aura[data-team="Thracians"]::before,
+.fr-rail-tt-passive-aura[data-team="Dacians"]::before {
+    background: linear-gradient(120deg, rgba(96, 165, 250, 0.2), transparent 45%, rgba(59, 130, 246, 0.18));
+    animation: fr-passive-shimmer-x 2.8s ease-in-out infinite;
+}
+
+.fr-rail-tt-passive-aura[data-team="Gauls"]::before,
+.fr-rail-tt-passive-aura[data-team="Vikings"]::before {
+    background: radial-gradient(circle at 50% 100%, rgba(74, 222, 128, 0.22), transparent 50%);
+    animation: fr-passive-spin-glow 18s linear infinite reverse;
+}
+
+.fr-rail-tt-passive-aura[data-team="Egypt"]::before {
+    background: radial-gradient(circle at 50% 0%, rgba(253, 224, 71, 0.35), transparent 45%);
+    animation: fr-passive-shimmer-x 2.4s ease-in-out infinite;
+}
+
+.fr-rail-tt-passive-aura[data-team="Parthians"]::before {
+    background: linear-gradient(90deg, transparent, rgba(167, 139, 250, 0.25), transparent);
+    animation: fr-passive-shimmer-x 1.6s ease-in-out infinite;
+}
+
+@keyframes fr-mo-discipline {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.07); }
+}
+
+@keyframes fr-mo-fury {
+    0%, 100% { transform: rotate(-2deg) scale(1); }
+    25% { transform: rotate(3deg) scale(1.06); }
+    75% { transform: rotate(-3deg) scale(1.04); }
+}
+
+@keyframes fr-mo-shield {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(3px); }
+}
+
+@keyframes fr-mo-sun {
+    0%, 100% { filter: brightness(1) drop-shadow(0 0 2px rgba(253, 224, 71, 0.4)); }
+    50% { filter: brightness(1.2) drop-shadow(0 0 10px rgba(253, 224, 71, 0.55)); }
+}
+
+@keyframes fr-mo-wind {
+    0%, 100% { transform: rotate(-4deg); }
+    50% { transform: rotate(4deg); }
+}
+
+.fr-rail-tt-passive-motion--Romans,
+.fr-rail-tt-passive-motion--Carthage,
+.fr-rail-tt-passive-motion--Seleucids {
+    animation: fr-mo-discipline 2.4s ease-in-out infinite;
+}
+
+.fr-rail-tt-passive-motion--Barbarians,
+.fr-rail-tt-passive-motion--Germanic {
+    animation: fr-mo-fury 0.85s ease-in-out infinite;
+}
+
+.fr-rail-tt-passive-motion--Greeks,
+.fr-rail-tt-passive-motion--Thracians,
+.fr-rail-tt-passive-motion--Dacians {
+    animation: fr-mo-shield 2s ease-in-out infinite;
+}
+
+.fr-rail-tt-passive-motion--Gauls,
+.fr-rail-tt-passive-motion--Vikings {
+    animation: fr-mo-wind 2.2s ease-in-out infinite;
+}
+
+.fr-rail-tt-passive-motion--Egypt {
+    animation: fr-mo-sun 2s ease-in-out infinite;
+}
+
+.fr-rail-tt-passive-motion--Parthians {
+    animation: fr-mo-discipline 1.8s ease-in-out infinite;
+}
+
+@keyframes fr-act-volley {
+    0%, 100% { transform: translateX(0) scale(1); }
+    40% { transform: translateX(4px) scale(1.06); }
+    70% { transform: translateX(-2px) scale(1.02); }
+}
+
+@keyframes fr-act-heal {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.45); transform: scale(1); }
+    50% { box-shadow: 0 0 14px 3px rgba(74, 222, 128, 0.25); transform: scale(1.05); }
+}
+
+@keyframes fr-act-summon {
+    0%, 100% { transform: translateY(0); }
+    45% { transform: translateY(-4px); }
+}
+
+.fr-rail-tt-active-icon-motion--enemy_volley {
+    animation: fr-act-volley 1.05s ease-in-out infinite;
+}
+
+.fr-rail-tt-active-icon-motion--ally_reinforce {
+    animation: fr-act-heal 1.75s ease-in-out infinite;
+}
+
+.fr-rail-tt-active-icon-motion--summon_unit {
+    animation: fr-act-summon 1.25s ease-in-out infinite;
+}
+
+@keyframes fr-sweep-volley {
+    0% { transform: translateX(-40%) skewX(-10deg); opacity: 0; }
+    35% { opacity: 0.85; }
+    100% { transform: translateX(140%) skewX(-10deg); opacity: 0; }
+}
+
+@keyframes fr-heal-ring {
+    0% { transform: scale(0.88); opacity: 0.55; }
+    65% { transform: scale(1.08); opacity: 0; }
+    100% { opacity: 0; }
+}
+
+@keyframes fr-drop-summon {
+    0% { transform: translateY(-8px) scale(0.6); opacity: 0; }
+    30% { opacity: 1; }
+    55% { transform: translateY(42px) scale(1); opacity: 0.75; }
+    100% { transform: translateY(72px) scale(0.4); opacity: 0; }
+}
+
+.fr-rail-tt-active-aura[data-targeting="enemy_volley"]::before {
+    content: '';
+    position: absolute;
+    top: 28%;
+    left: -15%;
+    right: -15%;
+    height: 36%;
+    background: linear-gradient(90deg, transparent, rgba(248, 113, 113, 0.22), transparent);
+    animation: fr-sweep-volley 1.85s ease-in-out infinite;
+}
+
+.fr-rail-tt-active-aura[data-targeting="enemy_volley"][data-volley-fx="siege_stones"]::before {
+    top: 22%;
+    height: 44%;
+    background: linear-gradient(90deg, transparent, rgba(168, 162, 158, 0.32), rgba(87, 83, 78, 0.18), transparent);
+    animation: fr-sweep-volley 2.15s ease-in-out infinite;
+}
+
+.fr-rail-tt-active-aura[data-targeting="enemy_volley"][data-volley-fx="thrown_axes"]::before {
+    background: linear-gradient(90deg, transparent, rgba(251, 146, 60, 0.3), rgba(234, 88, 12, 0.15), transparent);
+    animation: fr-sweep-volley 1.45s ease-in-out infinite;
+}
+
+.fr-rail-tt-active-aura[data-targeting="enemy_volley"][data-volley-fx="javelins"]::before {
+    background: linear-gradient(90deg, transparent, rgba(252, 211, 77, 0.24), transparent);
+    animation: fr-sweep-volley 1.55s ease-in-out infinite;
+}
+
+/* Flying projectiles in active volley tooltip (emoji + motion; decorative only) */
+.fr-rail-volley-fx {
+    pointer-events: none;
+}
+
+.fr-rail-vp {
+    position: absolute;
+    font-size: 15px;
+    line-height: 1;
+    opacity: 0;
+    filter: drop-shadow(0 0 5px rgba(248, 113, 113, 0.45));
+    will-change: transform, opacity;
+}
+
+.fr-rail-volley-fx[data-volley-fx="arrows"] .fr-rail-vp--1 {
+    left: 6%;
+    bottom: 22%;
+    animation: fr-vp-arrow-1 1.38s ease-in-out infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="arrows"] .fr-rail-vp--2 {
+    left: 11%;
+    bottom: 13%;
+    animation: fr-vp-arrow-2 1.38s ease-in-out 0.32s infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="arrows"] .fr-rail-vp--3 {
+    left: 3%;
+    bottom: 11%;
+    animation: fr-vp-arrow-3 1.38s ease-in-out 0.64s infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="arrows"][data-team="Parthians"] .fr-rail-vp {
+    animation-duration: 0.95s;
+}
+
+.fr-rail-volley-fx[data-volley-fx="siege_stones"] .fr-rail-vp {
+    filter: drop-shadow(0 0 6px rgba(120, 113, 108, 0.65));
+}
+
+.fr-rail-volley-fx[data-volley-fx="siege_stones"] .fr-rail-vp--1 {
+    left: 5%;
+    bottom: 18%;
+    animation: fr-vp-siege-1 1.95s ease-in-out infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="siege_stones"] .fr-rail-vp--2 {
+    left: 14%;
+    bottom: 12%;
+    font-size: 13px;
+    animation: fr-vp-siege-2 1.95s ease-in-out 0.45s infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="siege_stones"] .fr-rail-vp--3 {
+    left: 7%;
+    bottom: 8%;
+    animation: fr-vp-siege-3 1.95s ease-in-out 0.9s infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="thrown_axes"] .fr-rail-vp {
+    filter: drop-shadow(0 0 5px rgba(251, 146, 60, 0.55));
+}
+
+.fr-rail-volley-fx[data-volley-fx="thrown_axes"] .fr-rail-vp--1 {
+    left: 4%;
+    bottom: 20%;
+    animation: fr-vp-axe-1 1.25s ease-in-out infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="thrown_axes"] .fr-rail-vp--2 {
+    left: 12%;
+    bottom: 14%;
+    animation: fr-vp-axe-2 1.25s ease-in-out 0.38s infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="thrown_axes"] .fr-rail-vp--3 {
+    left: 8%;
+    bottom: 9%;
+    animation: fr-vp-axe-3 1.25s ease-in-out 0.72s infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="javelins"] .fr-rail-vp {
+    filter: drop-shadow(0 0 4px rgba(252, 211, 77, 0.5));
+}
+
+.fr-rail-volley-fx[data-volley-fx="javelins"] .fr-rail-vp--1 {
+    left: 5%;
+    bottom: 24%;
+    animation: fr-vp-jav-1 1.12s ease-out infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="javelins"] .fr-rail-vp--2 {
+    left: 10%;
+    bottom: 16%;
+    animation: fr-vp-jav-2 1.12s ease-out 0.28s infinite;
+}
+
+.fr-rail-volley-fx[data-volley-fx="javelins"] .fr-rail-vp--3 {
+    left: 2%;
+    bottom: 12%;
+    font-size: 13px;
+    animation: fr-vp-jav-3 1.12s ease-out 0.56s infinite;
+}
+
+@keyframes fr-vp-arrow-1 {
+    0% { transform: translate(0, 0) rotate(-44deg) scale(0.88); opacity: 0; }
+    14% { opacity: 0.92; }
+    100% { transform: translate(128%, -108%) rotate(6deg) scale(1); opacity: 0; }
+}
+
+@keyframes fr-vp-arrow-2 {
+    0% { transform: translate(0, 0) rotate(-38deg) scale(0.9); opacity: 0; }
+    12% { opacity: 0.88; }
+    100% { transform: translate(118%, -125%) rotate(12deg) scale(1); opacity: 0; }
+}
+
+@keyframes fr-vp-arrow-3 {
+    0% { transform: translate(0, 0) rotate(-50deg) scale(0.82); opacity: 0; }
+    16% { opacity: 0.9; }
+    100% { transform: translate(140%, -96%) rotate(4deg) scale(1); opacity: 0; }
+}
+
+@keyframes fr-vp-siege-1 {
+    0% { transform: translate(0, 0) rotate(0deg) scale(0.55); opacity: 0; }
+    12% { opacity: 0.9; }
+    48% { transform: translate(52%, -102%) rotate(155deg) scale(1.05); }
+    100% { transform: translate(108%, -38%) rotate(280deg) scale(0.7); opacity: 0; }
+}
+
+@keyframes fr-vp-siege-2 {
+    0% { transform: translate(0, 0) rotate(20deg) scale(0.5); opacity: 0; }
+    14% { opacity: 0.85; }
+    50% { transform: translate(48%, -88%) rotate(200deg) scale(1); }
+    100% { transform: translate(95%, -52%) rotate(300deg) scale(0.65); opacity: 0; }
+}
+
+@keyframes fr-vp-siege-3 {
+    0% { transform: translate(0, 0) rotate(-15deg) scale(0.58); opacity: 0; }
+    15% { opacity: 0.88; }
+    52% { transform: translate(58%, -110%) rotate(175deg) scale(1.02); }
+    100% { transform: translate(112%, -42%) rotate(265deg) scale(0.68); opacity: 0; }
+}
+
+@keyframes fr-vp-axe-1 {
+    0% { transform: translate(0, 0) rotate(-95deg) scale(0.75); opacity: 0; }
+    12% { opacity: 0.9; }
+    100% { transform: translate(115%, -95%) rotate(35deg) scale(1); opacity: 0; }
+}
+
+@keyframes fr-vp-axe-2 {
+    0% { transform: translate(0, 0) rotate(-110deg) scale(0.78); opacity: 0; }
+    14% { opacity: 0.86; }
+    100% { transform: translate(125%, -108%) rotate(50deg) scale(1); opacity: 0; }
+}
+
+@keyframes fr-vp-axe-3 {
+    0% { transform: translate(0, 0) rotate(-88deg) scale(0.72); opacity: 0; }
+    13% { opacity: 0.9; }
+    100% { transform: translate(108%, -88%) rotate(28deg) scale(1); opacity: 0; }
+}
+
+@keyframes fr-vp-jav-1 {
+    0% { transform: translate(0, 0) rotate(-32deg) scale(0.85); opacity: 0; }
+    10% { opacity: 0.9; }
+    100% { transform: translate(132%, -118%) rotate(-8deg) scale(1); opacity: 0; }
+}
+
+@keyframes fr-vp-jav-2 {
+    0% { transform: translate(0, 0) rotate(-28deg) scale(0.88); opacity: 0; }
+    10% { opacity: 0.88; }
+    100% { transform: translate(124%, -128%) rotate(-4deg) scale(1); opacity: 0; }
+}
+
+@keyframes fr-vp-jav-3 {
+    0% { transform: translate(0, 0) rotate(-40deg) scale(0.82); opacity: 0; }
+    12% { opacity: 0.85; }
+    100% { transform: translate(138%, -105%) rotate(-12deg) scale(1); opacity: 0; }
+}
+
+/* Reinforcement tooltip: soft rising sparks */
+.fr-rail-reinforce-fx {
+    pointer-events: none;
+}
+
+.fr-rail-rf {
+    position: absolute;
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0;
+    filter: drop-shadow(0 0 6px rgba(74, 222, 128, 0.45));
+}
+
+.fr-rail-reinforce-fx .fr-rail-rf--1 {
+    left: 16%;
+    bottom: 14%;
+    color: rgba(167, 243, 208, 0.95);
+    animation: fr-rf-rise-1 2.1s ease-out infinite;
+}
+
+.fr-rail-reinforce-fx .fr-rail-rf--2 {
+    left: 72%;
+    bottom: 18%;
+    color: rgba(134, 239, 172, 0.9);
+    animation: fr-rf-rise-2 2.1s ease-out 0.55s infinite;
+}
+
+.fr-rail-reinforce-fx .fr-rail-rf--3 {
+    left: 44%;
+    bottom: 10%;
+    font-size: 13px;
+    animation: fr-rf-rise-3 2.4s ease-out 0.25s infinite;
+}
+
+@keyframes fr-rf-rise-1 {
+    0% { transform: translate(0, 0) scale(0.6); opacity: 0; }
+    18% { opacity: 0.88; }
+    100% { transform: translate(12px, -86px) scale(1); opacity: 0; }
+}
+
+@keyframes fr-rf-rise-2 {
+    0% { transform: translate(0, 0) scale(0.55); opacity: 0; }
+    20% { opacity: 0.82; }
+    100% { transform: translate(-10px, -92px) scale(1); opacity: 0; }
+}
+
+@keyframes fr-rf-rise-3 {
+    0% { transform: translate(0, 0) scale(0.65); opacity: 0; }
+    15% { opacity: 0.75; }
+    100% { transform: translate(4px, -78px) scale(1); opacity: 0; }
+}
+
+.fr-rail-tt-active-aura[data-targeting="ally_reinforce"]::before {
+    content: '';
+    position: absolute;
+    inset: 8%;
+    border-radius: 20px;
+    border: 2px solid rgba(74, 222, 128, 0.35);
+    animation: fr-heal-ring 2.1s ease-out infinite;
+}
+
+.fr-rail-tt-active-aura[data-targeting="summon_unit"]::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 6px;
+    width: 10px;
+    height: 10px;
+    margin-left: -5px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(147, 197, 253, 0.95), rgba(59, 130, 246, 0.4));
+    animation: fr-drop-summon 1.55s ease-in infinite;
+}
+
+.fr-rail-skill-btn--passive:hover {
+    transform: scale(1.05);
+}
+
+.fr-rail-skill-btn--active:not(:disabled):hover {
+    transform: scale(1.05);
+}
+
 /* Merge target highlight */
 .merge-target-highlight {
     background: 

@@ -48,6 +48,7 @@ import {
   GAME_STATE_STORAGE_KEY,
   LEGACY_GAME_STATE_STORAGE_KEY,
   GAME_VERSION,
+  ABOUT_SCREEN_SLIDE_COUNT,
   GRID_ORIENTATIONS,
   LEVEL_MATCHUP_LABELS,
   TEAM_SELECT_GROUPS,
@@ -110,6 +111,23 @@ import {
 } from "./game/unitCatalog";
 import { SETUP_ARMY_TOKEN_BUDGET, getUnitWeightTokenCost, sumSetupTokensForTeam } from "./game/unitWeight";
 import {
+  applyCivAbilityOnTarget,
+  CIV_ACTIVES,
+  CIV_VOLLEY_RANGE,
+  createSummonedTroopFromRole,
+  civAbilityUnlockOrdinal,
+  getCivActiveCooldownSummary,
+  getCivActiveHowItWorks,
+  getVolleyTooltipFx,
+  getVolleyTooltipGlyphs,
+  isCivAbilityReady,
+  isEnemyInCivVolleyRange,
+  isSummonReinforcementTileValid,
+  pickAiCivReinforceTarget,
+  pickAiCivSummonTile,
+  pickAiCivVolleyTarget
+} from "./game/civActives";
+import {
   applyAiTroopStatMultiplier,
   applyCivilizationPassive,
   CIV_PASSIVES,
@@ -126,7 +144,8 @@ import {
   TUTORIAL_BATTLEFIELD_SIZE,
   getTutorialNextButtonLabel,
   TUTORIAL_MISSIONS,
-  TUTORIAL_MISSION_COUNT
+  TUTORIAL_MISSION_COUNT,
+  TUTORIAL_MISSION_0_GOAL
 } from "./game/tutorialMissions";
 import {
   ATTACK_RESOLVE_MELEE_MS,
@@ -166,8 +185,8 @@ const EMPTY_TERRAIN_EFFECT_MAP: TerrainType[][] = [];
 const DAMAGE_POPUP_LIFESPAN_MS = 3000;
 const DAMAGE_POPUP_LIFESPAN_REDUCED_MS = 1500;
 
-/** About screen carousel: four panels (indices 0–3). */
-const ABOUT_SCREEN_SLIDE_LAST = 3;
+/** About screen carousel: last valid slide index (see `ABOUT_SCREEN_SLIDE_COUNT` in constants). */
+const ABOUT_SCREEN_SLIDE_LAST = ABOUT_SCREEN_SLIDE_COUNT - 1;
 
 const INITIAL_SESSION_NAV = readPersistedSessionNavigation();
 
@@ -454,81 +473,140 @@ function SetupTroopPaletteCell({
   );
 }
 
-const FACTION_PASSIVE_RAIL_TIP_MS = 140;
+const FACTION_PASSIVE_RAIL_TIP_MS = 200;
 
-/** Left-rail faction passive: portal tooltip avoids overflow clip; rail stays scrollable and clickable. */
-function FactionPassiveRailCell({ team }: { team: TeamName }) {
+type FactionRailActiveSlot =
+  | null
+  | {
+      show: boolean;
+      canFire: boolean;
+      isPrimed: boolean;
+      onFire: () => void;
+    };
+
+function computeRailTooltipPos(anchorEl: HTMLElement | null) {
+  if (!anchorEl) return { left: 0, top: 0 };
+  const r = anchorEl.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const cardW = Math.min(21 * 16, vw - 24);
+  const gap = 10;
+  let left = r.right + gap;
+  if (left + cardW > vw - 12) {
+    left = r.left - gap - cardW;
+  }
+  left = Math.max(10, Math.min(left, vw - cardW - 10));
+  return { left, top: r.top + r.height / 2 };
+}
+
+/** Left-rail passive (yellow) and active (cyan): separate hover cards with faction-themed motion + ability-type effects. */
+function FactionPassiveRailCell({ team, activeSlot }: { team: TeamName; activeSlot?: FactionRailActiveSlot }) {
   const passive = CIV_PASSIVES[team];
-  const anchorRef = useRef<HTMLButtonElement>(null);
-  const [tipOpen, setTipOpen] = useState(false);
-  const [tipPos, setTipPos] = useState({ left: 0, top: 0 });
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeAbility = CIV_ACTIVES[team];
+  const passiveAnchorRef = useRef<HTMLButtonElement>(null);
+  const activeAnchorRef = useRef<HTMLButtonElement>(null);
+  const [passiveTipOpen, setPassiveTipOpen] = useState(false);
+  const [activeTipOpen, setActiveTipOpen] = useState(false);
+  const [passiveTipPos, setPassiveTipPos] = useState({ left: 0, top: 0 });
+  const [activeTipPos, setActiveTipPos] = useState({ left: 0, top: 0 });
+  const passiveCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const cancelClose = useCallback(() => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
+  const cancelPassiveClose = useCallback(() => {
+    if (passiveCloseTimerRef.current) {
+      clearTimeout(passiveCloseTimerRef.current);
+      passiveCloseTimerRef.current = null;
     }
   }, []);
 
-  const syncTipPos = useCallback(() => {
-    const el = anchorRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const cardW = Math.min(21 * 16, vw - 24);
-    const gap = 10;
-    let left = r.right + gap;
-    if (left + cardW > vw - 12) {
-      left = r.left - gap - cardW;
+  const cancelActiveClose = useCallback(() => {
+    if (activeCloseTimerRef.current) {
+      clearTimeout(activeCloseTimerRef.current);
+      activeCloseTimerRef.current = null;
     }
-    left = Math.max(10, Math.min(left, vw - cardW - 10));
-    setTipPos({ left, top: r.top + r.height / 2 });
   }, []);
 
-  const openTip = useCallback(() => {
-    cancelClose();
-    syncTipPos();
-    setTipOpen(true);
-  }, [cancelClose, syncTipPos]);
+  const openPassiveTip = useCallback(() => {
+    cancelPassiveClose();
+    cancelActiveClose();
+    setActiveTipOpen(false);
+    setPassiveTipPos(computeRailTooltipPos(passiveAnchorRef.current));
+    setPassiveTipOpen(true);
+  }, [cancelPassiveClose, cancelActiveClose]);
 
-  const scheduleClose = useCallback(() => {
-    cancelClose();
-    closeTimerRef.current = setTimeout(() => setTipOpen(false), FACTION_PASSIVE_RAIL_TIP_MS);
-  }, [cancelClose]);
+  const schedulePassiveClose = useCallback(() => {
+    cancelPassiveClose();
+    passiveCloseTimerRef.current = setTimeout(() => setPassiveTipOpen(false), FACTION_PASSIVE_RAIL_TIP_MS);
+  }, [cancelPassiveClose]);
 
-  useEffect(() => () => cancelClose(), [cancelClose]);
+  const openActiveTip = useCallback(() => {
+    cancelActiveClose();
+    cancelPassiveClose();
+    setPassiveTipOpen(false);
+    setActiveTipPos(computeRailTooltipPos(activeAnchorRef.current));
+    setActiveTipOpen(true);
+  }, [cancelActiveClose, cancelPassiveClose]);
+
+  const scheduleActiveClose = useCallback(() => {
+    cancelActiveClose();
+    activeCloseTimerRef.current = setTimeout(() => setActiveTipOpen(false), FACTION_PASSIVE_RAIL_TIP_MS);
+  }, [cancelActiveClose]);
+
+  useEffect(
+    () => () => {
+      cancelPassiveClose();
+      cancelActiveClose();
+    },
+    [cancelPassiveClose, cancelActiveClose]
+  );
 
   useEffect(() => {
-    if (!tipOpen) return;
-    syncTipPos();
-    const handle = () => syncTipPos();
+    if (!passiveTipOpen) return;
+    const handle = () => setPassiveTipPos(computeRailTooltipPos(passiveAnchorRef.current));
+    handle();
     window.addEventListener("scroll", handle, true);
     window.addEventListener("resize", handle);
     return () => {
       window.removeEventListener("scroll", handle, true);
       window.removeEventListener("resize", handle);
     };
-  }, [tipOpen, syncTipPos]);
+  }, [passiveTipOpen]);
+
+  useEffect(() => {
+    if (!activeTipOpen) return;
+    const handle = () => setActiveTipPos(computeRailTooltipPos(activeAnchorRef.current));
+    handle();
+    window.addEventListener("scroll", handle, true);
+    window.addEventListener("resize", handle);
+    return () => {
+      window.removeEventListener("scroll", handle, true);
+      window.removeEventListener("resize", handle);
+    };
+  }, [activeTipOpen]);
 
   if (!passive) return null;
 
-  const tooltip =
-    tipOpen &&
+  const passiveMotionClass = `fr-rail-tt-passive-motion fr-rail-tt-passive-motion--${team}`;
+  const activeMotionClass = `fr-rail-tt-active-icon-motion fr-rail-tt-active-icon-motion--${activeAbility?.targeting ?? "enemy_volley"}`;
+
+  const passiveTooltip =
+    passiveTipOpen &&
     createPortal(
       <div
         role="tooltip"
-        className="pointer-events-auto fixed z-[280] w-[min(21rem,calc(100vw-1.5rem))] -translate-y-1/2 overflow-hidden rounded-[22px] border border-yellow-500/80 bg-slate-950/95 text-left shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-amber-200/10 backdrop-blur-md"
-        style={{ left: tipPos.left, top: tipPos.top }}
-        onMouseEnter={openTip}
-        onMouseLeave={scheduleClose}
+        className="fr-rail-tt fr-rail-tt--passive pointer-events-auto fixed z-[280] w-[min(21rem,calc(100vw-1.5rem))] -translate-y-1/2 overflow-hidden rounded-[22px] border border-yellow-500/80 bg-slate-950/95 text-left shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-amber-200/10 backdrop-blur-md"
+        style={{ left: passiveTipPos.left, top: passiveTipPos.top }}
+        data-team={team}
+        onMouseEnter={openPassiveTip}
+        onMouseLeave={schedulePassiveClose}
       >
+        <div className="fr-rail-tt-passive-aura pointer-events-none absolute inset-0 overflow-hidden" data-team={team} aria-hidden />
         <div className="absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.3),_transparent_70%)]" />
-        <div className="absolute right-[-18px] top-[-22px] h-24 w-24 rounded-full bg-amber-300/8 blur-2xl" />
         <div className="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-yellow-300/85 to-transparent" />
         <div className="relative max-h-[min(70vh,28rem)] overflow-y-auto overscroll-contain p-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-yellow-400/65 bg-gradient-to-br from-amber-300/20 via-amber-200/10 to-transparent text-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_10px_24px_rgba(0,0,0,0.3)]">
+            <div
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-yellow-400/65 bg-gradient-to-br from-amber-300/20 via-amber-200/10 to-transparent text-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_10px_24px_rgba(0,0,0,0.3)] ${passiveMotionClass}`}
+            >
               {PASSIVE_ICONS[team]}
             </div>
             <div className="min-w-0 flex-1">
@@ -537,12 +615,16 @@ function FactionPassiveRailCell({ team }: { team: TeamName }) {
                 <div className="h-px flex-1 bg-gradient-to-r from-yellow-400/35 to-transparent" />
               </div>
               <div className="mt-2 inline-flex rounded-full border border-yellow-500/35 bg-yellow-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-yellow-300/95">
-                Passive
+                Passive skill
               </div>
             </div>
           </div>
+          <p className="mt-3 text-[12px] leading-relaxed text-yellow-100/75">
+            Applied automatically at the start of the battle to every unit on this faction. Hover the <span className="text-cyan-200/90">cyan</span> icon for the
+            targeted active skill.
+          </p>
           <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-300/80">Faction Bonus</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-300/80">Faction bonus</div>
             <div className="mt-2 text-base font-semibold leading-tight text-yellow-100">{passive.name}</div>
             <div className="mt-3 rounded-xl border border-yellow-500/15 bg-slate-950/45 px-3 py-2.5 text-[13px] leading-6 text-yellow-50/95">
               {passive.effect}
@@ -553,20 +635,146 @@ function FactionPassiveRailCell({ team }: { team: TeamName }) {
       document.body
     );
 
+  const activeCooldownLine = getCivActiveCooldownSummary(team);
+  const activeHowLine = activeAbility ? getCivActiveHowItWorks(activeAbility.targeting) : "";
+
+  const activeTooltip =
+    activeTipOpen &&
+    activeAbility &&
+    createPortal(
+      <div
+        role="tooltip"
+        className="fr-rail-tt fr-rail-tt--active pointer-events-auto fixed z-[280] w-[min(21rem,calc(100vw-1.5rem))] -translate-y-1/2 overflow-hidden rounded-[22px] border border-cyan-500/75 bg-slate-950/95 text-left shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-cyan-200/15 backdrop-blur-md"
+        style={{ left: activeTipPos.left, top: activeTipPos.top }}
+        data-team={team}
+        data-targeting={activeAbility.targeting}
+        data-volley-fx={
+          activeAbility.targeting === "enemy_volley" ? getVolleyTooltipFx(team) ?? "arrows" : undefined
+        }
+        onMouseEnter={openActiveTip}
+        onMouseLeave={scheduleActiveClose}
+      >
+        <div
+          className="fr-rail-tt-active-aura pointer-events-none absolute inset-0 z-0 overflow-hidden"
+          data-targeting={activeAbility.targeting}
+          data-volley-fx={
+            activeAbility.targeting === "enemy_volley" ? getVolleyTooltipFx(team) ?? "arrows" : undefined
+          }
+          aria-hidden
+        />
+        <div className="absolute inset-x-0 top-0 z-[1] h-20 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.22),_transparent_72%)]" />
+        <div className="absolute inset-x-5 top-0 z-[1] h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
+        {activeAbility.targeting === "enemy_volley" && (
+          <div
+            className="fr-rail-volley-fx pointer-events-none absolute inset-0 z-[1] overflow-hidden rounded-[22px]"
+            data-volley-fx={getVolleyTooltipFx(team) ?? "arrows"}
+            data-team={team}
+            aria-hidden
+          >
+            {getVolleyTooltipGlyphs(team).map((glyph, i) => (
+              <span key={i} className={`fr-rail-vp fr-rail-vp--${i + 1}`}>
+                {glyph}
+              </span>
+            ))}
+          </div>
+        )}
+        {activeAbility.targeting === "ally_reinforce" && (
+          <div
+            className="fr-rail-reinforce-fx pointer-events-none absolute inset-0 z-[1] overflow-hidden rounded-[22px]"
+            aria-hidden
+          >
+            <span className="fr-rail-rf fr-rail-rf--1">✦</span>
+            <span className="fr-rail-rf fr-rail-rf--2">✦</span>
+            <span className="fr-rail-rf fr-rail-rf--3">💚</span>
+          </div>
+        )}
+        <div className="relative z-[2] max-h-[min(70vh,28rem)] overflow-y-auto overscroll-contain p-4">
+          <div className="flex items-start gap-3">
+            <div
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/55 bg-gradient-to-br from-cyan-400/20 via-cyan-500/10 to-transparent text-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_24px_rgba(0,0,0,0.35)] ${activeMotionClass}`}
+            >
+              {activeAbility.icon}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <div className="text-[15px] font-bold tracking-[0.08em] text-cyan-50">{team}</div>
+                <div className="h-px flex-1 bg-gradient-to-r from-cyan-400/35 to-transparent" />
+              </div>
+              <div className="mt-2 inline-flex rounded-full border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/95">
+                Active skill
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 rounded-[18px] border border-cyan-500/25 bg-cyan-950/25 px-3.5 py-3.5">
+            <div className="text-base font-semibold leading-tight text-cyan-50">{activeAbility.name}</div>
+            <div className="mt-2 rounded-xl border border-cyan-500/20 bg-slate-950/55 px-3 py-2.5 text-[13px] leading-6 text-cyan-50/95">
+              {activeAbility.description}
+            </div>
+            <div className="mt-3 space-y-2 border-t border-cyan-700/30 pt-3 text-[12px] leading-relaxed text-cyan-100/85">
+              <p>
+                <span className="font-semibold text-cyan-200/95">How it works:</span> {activeHowLine}
+              </p>
+              <p>
+                <span className="font-semibold text-cyan-200/95">Cooldown</span>{" "}
+                {activeCooldownLine.replace(/^Cooldown:\s*/i, "").trim()}
+              </p>
+              <p className="text-cyan-200/65">Hidden in tutorial and AI-vs-AI watch. Cancels merge/spy when armed.</p>
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+
+  const showActiveBtn = Boolean(activeSlot?.show && activeAbility);
+
   return (
     <>
-      <button
-        type="button"
-        ref={anchorRef}
-        className="cc-cursor-faction-info game-ui flex h-11 w-11 shrink-0 items-center justify-center border border-yellow-600 bg-gray-950 text-lg shadow-lg transition-colors hover:border-yellow-400 focus:border-yellow-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
-        aria-label={`${team} passive: ${passive.name}. ${passive.effect}`}
-        title={`${team} — ${passive.name}`}
-        onMouseEnter={openTip}
-        onMouseLeave={scheduleClose}
-      >
-        {PASSIVE_ICONS[team]}
-      </button>
-      {tooltip}
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          ref={passiveAnchorRef}
+          className={`fr-rail-skill-btn fr-rail-skill-btn--passive fr-rail-skill-btn--${team} cc-cursor-faction-info game-ui flex h-11 w-11 shrink-0 items-center justify-center border border-yellow-600 bg-gray-950 text-lg shadow-lg transition-all duration-200 hover:border-yellow-400 hover:shadow-[0_0_18px_rgba(251,191,36,0.35)] focus:border-yellow-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40`}
+          aria-label={`${team} passive: ${passive.name}. ${passive.effect}`}
+          title=""
+          onMouseEnter={openPassiveTip}
+          onMouseLeave={schedulePassiveClose}
+        >
+          {PASSIVE_ICONS[team]}
+        </button>
+        {showActiveBtn && activeAbility && activeSlot && (
+          <button
+            type="button"
+            ref={activeAnchorRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              activeSlot.onFire();
+            }}
+            disabled={!activeSlot.canFire}
+            className={`fr-rail-skill-btn fr-rail-skill-btn--active fr-rail-skill-btn--active-${activeAbility.targeting} game-ui flex h-11 w-11 shrink-0 items-center justify-center border text-lg shadow-lg transition-all duration-200 focus:outline-none focus:ring-2 ${
+              activeSlot.canFire
+                ? activeSlot.isPrimed
+                  ? "cc-cursor-faction-info border-amber-400/90 bg-amber-950/90 ring-1 ring-amber-400/50 hover:border-amber-300 hover:shadow-[0_0_16px_rgba(251,191,36,0.4)] focus:ring-amber-500/50"
+                  : "cc-cursor-faction-info border-cyan-400/80 bg-cyan-950/80 hover:border-cyan-300 hover:bg-cyan-900/90 hover:shadow-[0_0_18px_rgba(34,211,238,0.35)] focus:border-cyan-300 focus:ring-cyan-500/40"
+                : "cursor-not-allowed border-cyan-800/50 bg-gray-950/90 text-cyan-200/50 opacity-70 focus:ring-cyan-900/30"
+            } disabled:cursor-not-allowed disabled:opacity-55`}
+            aria-label={
+              activeSlot.canFire
+                ? activeSlot.isPrimed
+                  ? `${activeAbility.name} — targeting (tap again to cancel)`
+                  : `${activeAbility.name} — ${activeAbility.description}`
+                : `${activeAbility.name} — on cooldown or unavailable`
+            }
+            title=""
+            onMouseEnter={openActiveTip}
+            onMouseLeave={scheduleActiveClose}
+          >
+            {activeAbility.icon}
+          </button>
+        )}
+      </div>
+      {passiveTooltip}
+      {activeTooltip}
     </>
   );
 }
@@ -680,6 +888,9 @@ function CodeConq() {
   const [mergeMode, setMergeMode] = useState(false);
   const [mergeCount, setMergeCount] = useState(0);
   const [selectedForMerge, setSelectedForMerge] = useState<any>(null);
+  const [spyMode, setSpyMode] = useState(false);
+  const [spyCount, setSpyCount] = useState(0);
+  const [spiedEnemyIds, setSpiedEnemyIds] = useState<string[]>([]);
   const [gameMode, setGameMode] = useState<GameMode | null>(() => INITIAL_SESSION_NAV.gameMode);
   const [multiplayerTeams, setMultiplayerTeams] = useState<TeamName[]>(["Romans", "Barbarians"]);
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>("normal");
@@ -687,6 +898,19 @@ function CodeConq() {
   const [customScenarioSpectator, setCustomScenarioSpectator] = useState(false);
   /** Hot-seat two factions (multiplayer) or AI vs AI — shared roster/setup rules. */
   const isDualTeamBattle = gameMode === "multiplayer" || gameMode === "ai-versus";
+  const [civAbilityModeTeam, setCivAbilityModeTeam] = useState<TeamName | null>(null);
+  const [civOwnTurnOrdinalForAbility, setCivOwnTurnOrdinalForAbility] = useState<Partial<Record<TeamName, number>>>({});
+  const [civAbilityUnlockAtOwnOrdinal, setCivAbilityUnlockAtOwnOrdinal] = useState<Partial<Record<TeamName, number>>>({});
+  const [civAbilityUnlockAtBattleRound, setCivAbilityUnlockAtBattleRound] = useState<Partial<Record<TeamName, number>>>({});
+  const resetSpyState = () => {
+    setSpyMode(false);
+    setSpyCount(0);
+    setSpiedEnemyIds([]);
+    setCivAbilityModeTeam(null);
+    setCivOwnTurnOrdinalForAbility({});
+    setCivAbilityUnlockAtOwnOrdinal({});
+    setCivAbilityUnlockAtBattleRound({});
+  };
   const [gridOrientation, setGridOrientation] = useState<GridOrientation>("north");
   const [isBattlefieldFullscreen, setIsBattlefieldFullscreen] = useState(false);
   const battlefieldRef = useRef<HTMLDivElement | null>(null);
@@ -702,6 +926,8 @@ function CodeConq() {
   const lastTurnCueRef = useRef<string | null>(null);
   const feedbackTimeoutsRef = useRef<number[]>([]);
   const isRestoringSavedGameRef = useRef(false);
+  /** Skip one civ-ordinal bump after hydrate when ordinals were restored from save. */
+  const suppressCivOrdinalBumpRef = useRef(false);
   const hasLoadedSavedGameRef = useRef(false);
   const [startScreen, setStartScreen] = useState<StartScreenState>(() => INITIAL_SESSION_NAV.startScreen);
   const [tutorialMissionIndex, setTutorialMissionIndex] = useState<number | null>(null);
@@ -932,6 +1158,7 @@ function CodeConq() {
       setMergeCount(0);
       setMergeMode(false);
       setSelectedForMerge(null);
+      resetSpyState();
       setGridOrientation("north");
       setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
     }
@@ -964,7 +1191,19 @@ function CodeConq() {
 
   useEffect(() => {
     setAttackPreviewHover(null);
-  }, [selectedId, turn, playerTeam, mergeMode, isSetupMode, gameStarted, timedPlayLoserTeam]);
+  }, [selectedId, turn, playerTeam, mergeMode, spyMode, civAbilityModeTeam, isSetupMode, gameStarted, timedPlayLoserTeam]);
+
+  /** Count “own turn starts” per faction for civilization ability cooldown. */
+  useEffect(() => {
+    if (!gameStarted || isSetupMode || timedPlayLoserTeam) return;
+    const t = turn as TeamName;
+    if (!ALL_TEAMS.includes(t)) return;
+    if (suppressCivOrdinalBumpRef.current) {
+      suppressCivOrdinalBumpRef.current = false;
+      return;
+    }
+    setCivOwnTurnOrdinalForAbility((prev) => ({ ...prev, [t]: (prev[t] ?? 0) + 1 }));
+  }, [turn, gameStarted, isSetupMode, timedPlayLoserTeam]);
 
   useEffect(() => {
     if (!gameOptions.showAttackDamagePreview) setAttackPreviewHover(null);
@@ -1001,6 +1240,16 @@ function CodeConq() {
       }
 
       const savedState = JSON.parse(savedStateRaw);
+      const parseTeamNumberRecord = (raw: unknown): Partial<Record<TeamName, number>> => {
+        const out: Partial<Record<TeamName, number>> = {};
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+        const o = raw as Record<string, unknown>;
+        for (const t of ALL_TEAMS) {
+          const n = o[t];
+          if (typeof n === "number" && Number.isFinite(n) && n >= 0) out[t] = Math.floor(n);
+        }
+        return out;
+      };
       const restoredAiDifficulty = parseAiDifficulty(savedState.aiDifficulty);
       const savedLevel = savedState.currentLevel ?? savedState.currentFormation;
       const mergedOptions = savedState.gameOptions ? { ...DEFAULT_GAME_OPTIONS, ...savedState.gameOptions } : DEFAULT_GAME_OPTIONS;
@@ -1048,12 +1297,35 @@ function CodeConq() {
       setGameStarted(Boolean(savedState.gameStarted));
       setMergeMode(Boolean(savedState.mergeMode));
       setMergeCount(typeof savedState.mergeCount === "number" ? savedState.mergeCount : 0);
+      setSpyMode(Boolean(savedState.spyMode));
+      setSpyCount(typeof savedState.spyCount === "number" ? savedState.spyCount : 0);
+      setSpiedEnemyIds(Array.isArray(savedState.spiedEnemyIds) ? savedState.spiedEnemyIds : []);
+      {
+        const ordSaved = parseTeamNumberRecord(savedState.civOwnTurnOrdinalForAbility);
+        const unlSaved = parseTeamNumberRecord(savedState.civAbilityUnlockAtOwnOrdinal);
+        if (Object.keys(ordSaved).length > 0) {
+          suppressCivOrdinalBumpRef.current = true;
+          setCivOwnTurnOrdinalForAbility(ordSaved);
+        } else {
+          setCivOwnTurnOrdinalForAbility({});
+        }
+        setCivAbilityUnlockAtOwnOrdinal(unlSaved);
+        setCivAbilityUnlockAtBattleRound(parseTeamNumberRecord(savedState.civAbilityUnlockAtBattleRound));
+      }
+      setCivAbilityModeTeam(null);
       setSelectedForMerge(savedState.selectedForMerge ? applyCivilizationPassive(restoreUnitFromStorage(savedState.selectedForMerge)) : null);
       const restoredGameMode = (savedState.gameMode ?? null) as GameMode | null;
       setGameMode(restoredGameMode);
       {
         const ss = savedState.startScreen;
-        if (ss === "menu" || ss === "options" || ss === "about" || ss === "tutorial" || ss === "campaign") {
+        if (
+          ss === "menu" ||
+          ss === "options" ||
+          ss === "about" ||
+          ss === "tutorial" ||
+          ss === "campaign" ||
+          ss === "single-player-setup"
+        ) {
           setStartScreen(ss);
         }
         const tmi = savedState.tutorialMissionIndex;
@@ -1149,6 +1421,12 @@ function CodeConq() {
       gameStarted,
       mergeMode,
       mergeCount,
+      spyMode,
+      spyCount,
+      spiedEnemyIds,
+      civOwnTurnOrdinalForAbility,
+      civAbilityUnlockAtOwnOrdinal,
+      civAbilityUnlockAtBattleRound,
       selectedForMerge: stripUnitForStorage(selectedForMerge),
       gameMode,
       startScreen,
@@ -1185,6 +1463,12 @@ function CodeConq() {
     gameStarted,
     mergeMode,
     mergeCount,
+    spyMode,
+    spyCount,
+    spiedEnemyIds,
+    civOwnTurnOrdinalForAbility,
+    civAbilityUnlockAtOwnOrdinal,
+    civAbilityUnlockAtBattleRound,
     selectedForMerge,
     gameMode,
     startScreen,
@@ -1291,15 +1575,18 @@ function CodeConq() {
   }, [startScreen, gameMode, campaignSelectedFaction]);
 
   useEffect(() => {
-    if (gameMode !== "single-player" && gameMode !== "campaign") return;
+    const onSkirmishSetup = startScreen === "single-player-setup";
+    if (gameMode !== "single-player" && gameMode !== "campaign" && !onSkirmishSetup) return;
 
     const validPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
     if (validPlayerTeam === playerTeam) return;
 
     setPlayerTeam(validPlayerTeam);
-    setTurn(validPlayerTeam);
-    setSelectedId(null);
-  }, [currentLevel, gameMode, playerTeam]);
+    if (gameMode === "single-player" || gameMode === "campaign") {
+      setTurn(validPlayerTeam);
+      setSelectedId(null);
+    }
+  }, [currentLevel, gameMode, playerTeam, startScreen]);
 
   useEffect(() => {
     if (
@@ -1952,7 +2239,64 @@ function CodeConq() {
       });
     });
 
-    return bestDecision ?? getFallbackAiAction(currentTeam, battleUnits);
+    const regular = bestDecision ?? getFallbackAiAction(currentTeam, battleUnits);
+    const regScore = regular?.score ?? -999;
+
+    const civReady = isCivAbilityReady(
+      currentTeam,
+      civOwnTurnOrdinalForAbility,
+      civAbilityUnlockAtOwnOrdinal,
+      round,
+      civAbilityUnlockAtBattleRound
+    );
+    const civDef = CIV_ACTIVES[currentTeam];
+    if (civReady && civDef) {
+      if (civDef.targeting === "enemy_volley") {
+        const v = pickAiCivVolleyTarget(battleUnits, currentTeam, terrainEffectMap, round);
+        if (v && v.score >= Math.max(40, regScore - 18)) {
+          return {
+            type: "civ_ability",
+            sub: "volley",
+            targetId: v.target.id,
+            score: v.score,
+            reason: "called a civilization volley"
+          };
+        }
+      } else if (civDef.targeting === "ally_reinforce") {
+        const ally = pickAiCivReinforceTarget(battleUnits, currentTeam);
+        if (ally) {
+          const missing = (ally.maxHp - ally.hp) / Math.max(1, ally.maxHp);
+          const reinScore = missing * 110 + (isLeaderRole(ally.role) ? 32 : 0) + (ally.hp < ally.maxHp ? 22 : 10);
+          if (reinScore >= Math.max(36, regScore - 30)) {
+            return {
+              type: "civ_ability",
+              sub: "reinforce",
+              targetId: ally.id,
+              score: reinScore,
+              reason: "used the civilization reinforcement"
+            };
+          }
+        }
+      } else if (civDef.targeting === "summon_unit" && civDef.summonRole) {
+        const tile = pickAiCivSummonTile(battleUnits, currentTeam, battlefieldSize, battlefieldSize);
+        if (tile && regScore < 94) {
+          const allies = battleUnits.filter((u) => u.team === currentTeam && u.hp > 0).length;
+          const enemies = enemyUnits.length;
+          if (allies <= enemies + 1 || regScore < 65) {
+            return {
+              type: "civ_ability",
+              sub: "summon",
+              x: tile.x,
+              y: tile.y,
+              score: 70,
+              reason: "deployed a legion reinforcement"
+            };
+          }
+        }
+      }
+    }
+
+    return regular;
   };
   const buildAttackLogLine = (
     attacker: any,
@@ -2018,6 +2362,14 @@ function CodeConq() {
       })
     : [];
   const focusedBattleUnit = inspectedUnit ?? selected ?? null;
+  const isFocusedIntelObscured = useMemo(() => {
+    if (!focusedBattleUnit || !gameStarted) return false;
+    if (spiedEnemyIds.includes(focusedBattleUnit.id)) return false;
+    if (gameMode === "multiplayer" || gameMode === "ai-versus") return focusedBattleUnit.team !== turn;
+    if (gameMode === "single-player" || gameMode === "campaign") return focusedBattleUnit.team !== playerTeam;
+    if (gameMode === "custom-scenario" && !customScenarioSpectator) return focusedBattleUnit.team !== playerTeam;
+    return false;
+  }, [focusedBattleUnit, gameStarted, spiedEnemyIds, gameMode, turn, playerTeam, customScenarioSpectator]);
   const focusedUnitAbilities = focusedBattleUnit ? getTroopAbilities(focusedBattleUnit.role) : [];
   const focusedTroopTypeDisplay = focusedBattleUnit ? getTroopTypeDisplay(focusedBattleUnit) : null;
   const focusedWeightDisplay = focusedBattleUnit ? getTroopWeightDisplay(focusedBattleUnit) : null;
@@ -2034,6 +2386,14 @@ function CodeConq() {
   const showGridNavigation = needsBattlefieldScrollChrome;
   /** Fullscreen: bounded shell + scroll viewport when chrome is active. */
   const useFullscreenBoundedBattlefield = isBattlefieldFullscreen && needsBattlefieldScrollChrome;
+  const sortedSkirmishLevelKeys = useMemo(
+    () =>
+      (Object.keys(levels) as (keyof typeof levels)[]).sort(
+        (a, b) =>
+          (Number(String(a).replace(/\D/g, "")) || 0) - (Number(String(b).replace(/\D/g, "")) || 0)
+      ),
+    []
+  );
   const levelTeams = getLevelTeams(currentLevel);
   const aliveBattleTeams = useMemo(() => getAliveTeams(units), [units]);
   const aiTeams = useMemo(() => {
@@ -2057,6 +2417,52 @@ function CodeConq() {
   const passiveTeams = (isSetupMode ? setupTeamsInPlay : aliveBattleTeams).filter((team, index, arr) => arr.indexOf(team) === index);
   const setupTeams: TeamName[] = isDualTeamBattle ? [...multiplayerTeams] : [...ALL_TEAMS];
   const iconActionButtonClass = "battle-button flex h-10 w-10 items-center justify-center p-0 text-lg font-semibold";
+  const toggleCivAbilityTargeting = (team: TeamName) => {
+    if (timedPlayLoserTeam) return;
+    if (tutorialMissionIndex !== null) return;
+    if (team !== turn) return;
+    if (gameMode === "custom-scenario" && customScenarioSpectator) return;
+    if (!(gameMode === "multiplayer" || gameMode === "single-player" || gameMode === "campaign" || gameMode === "custom-scenario")) {
+      return;
+    }
+    if (gameMode !== "multiplayer" && team !== playerTeam) return;
+    if (!ALL_TEAMS.includes(team)) return;
+    if (civAbilityModeTeam === team) {
+      setCivAbilityModeTeam(null);
+      setLog((prev) => [`Faction ability cancelled.`, ...prev]);
+      return;
+    }
+    if (!isCivAbilityReady(team, civOwnTurnOrdinalForAbility, civAbilityUnlockAtOwnOrdinal, round, civAbilityUnlockAtBattleRound)) {
+      return;
+    }
+    setSpyMode(false);
+    setMergeMode(false);
+    setSelectedForMerge(null);
+    setSelectedId(null);
+    setCivAbilityModeTeam(team);
+    const def = CIV_ACTIVES[team];
+    const hint =
+      def.targeting === "summon_unit"
+        ? `Click an empty tile within ${CIV_VOLLEY_RANGE} steps of a living ally to deploy a ${def.summonRole ?? "unit"}.`
+        : def.targeting === "enemy_volley"
+          ? `Click an enemy in volley range (≤${CIV_VOLLEY_RANGE} tiles from any ally).`
+          : `Click a living ally to reinforce.`;
+    setLog((prev) => [`${def.icon} ${def.name}: ${hint} Cancel: tap the ability button again.`, ...prev]);
+  };
+  const civSummonValidTileKeys = useMemo(() => {
+    const cm = civAbilityModeTeam;
+    if (!cm) return new Set<string>();
+    const def = CIV_ACTIVES[cm];
+    if (def.targeting !== "summon_unit" || !def.summonRole) return new Set<string>();
+    const sz = gameOptions.battlefieldSize;
+    const keys = new Set<string>();
+    for (let xi = 0; xi < sz; xi++) {
+      for (let yi = 0; yi < sz; yi++) {
+        if (isSummonReinforcementTileValid(units, cm, xi, yi)) keys.add(`${xi},${yi}`);
+      }
+    }
+    return keys;
+  }, [civAbilityModeTeam, units, gameOptions.battlefieldSize]);
   const troopReferenceStats = useMemo(() => {
     const references: Record<string, TroopReferenceStats> = {};
 
@@ -2217,6 +2623,7 @@ function CodeConq() {
       setMergeCount(0);
       setMergeMode(false);
       setSelectedForMerge(null);
+      resetSpyState();
       setDraggedTroop(null);
       setGameStarted(false);
       setRound(1);
@@ -2379,6 +2786,51 @@ function CodeConq() {
         return;
       }
 
+      if (aiDecision.type === "civ_ability") {
+        const team = currentTeam as TeamName;
+        const def = CIV_ACTIVES[team];
+        const useOrd = civOwnTurnOrdinalForAbility[team] ?? 0;
+        if (aiDecision.sub === "summon" && def?.summonRole) {
+          const raw = createSummonedTroopFromRole(team, def.summonRole, aiDecision.x, aiDecision.y);
+          if (raw) {
+            const finalized = finalizeSetupPlacedTroop(raw);
+            setUnits((prev) => [...prev, finalized]);
+            const cdRounds = def.cooldownBattleRounds ?? 20;
+            setCivAbilityUnlockAtBattleRound((p) => ({ ...p, [team]: round + cdRounds }));
+            setLog((existingLog) => [
+              `[Civilization Ability] ${def.icon} ${team} — ${def.name}! ${def.summonRole} joins the battle. Cooldown: ${cdRounds} battle rounds.`,
+              `${team} ${aiDecision.reason}.`,
+              ...existingLog
+            ]);
+            triggerCellFeedback(`${aiDecision.x},${aiDecision.y}`, "move", 2000);
+            advanceAiTurn(team);
+            return;
+          }
+          advanceAiTurn(team);
+          return;
+        }
+        const target = units.find((unit: any) => unit.id === aiDecision.targetId);
+        if (!target || !def) {
+          advanceAiTurn(team);
+          return;
+        }
+        const res = applyCivAbilityOnTarget(units, team, target, battlefieldTerrain, round);
+        if (!res) {
+          advanceAiTurn(team);
+          return;
+        }
+        setUnits(res.units);
+        setCivAbilityUnlockAtOwnOrdinal((p) => ({ ...p, [team]: civAbilityUnlockOrdinal(useOrd) }));
+        setLog((existingLog) => [res.logLine, `${team} ${aiDecision.reason}.`, ...existingLog]);
+        if (aiDecision.sub === "volley") {
+          triggerCellFeedback(`${target.x},${target.y}`, "hit", HIT_FLASH_MS);
+        } else {
+          triggerCellFeedback(`${target.x},${target.y}`, "move", 1200);
+        }
+        advanceAiTurn(team);
+        return;
+      }
+
       if (aiDecision.type === "attack") {
         const actingUnit = units.find((unit: any) => unit.id === aiDecision.unitId);
         const targetUnit = units.find((unit: any) => unit.id === aiDecision.targetId);
@@ -2507,7 +2959,12 @@ function CodeConq() {
     tutorialMissionIndex,
     aiTeams,
     terrainEffectMap,
-    aiDifficulty
+    aiDifficulty,
+    round,
+    battlefieldTerrain,
+    civOwnTurnOrdinalForAbility,
+    civAbilityUnlockAtOwnOrdinal,
+    civAbilityUnlockAtBattleRound
   ]);
 
   useBattlefieldViewport({
@@ -2572,6 +3029,7 @@ function CodeConq() {
       setMergeCount(0);
       setMergeMode(false);
       setSelectedForMerge(null);
+      resetSpyState();
     },
     [
       currentLevel,
@@ -2947,7 +3405,114 @@ function CodeConq() {
 
     const clicked = getUnit(x, y);
 
-    if (clicked && clicked.id === selectedId && !mergeMode) {
+    if (spyMode) {
+      if (!clicked) {
+        setSpyMode(false);
+        setInspectedUnitId(null);
+        setInspectedTile({ x, y });
+        return;
+      }
+      if (clicked.team === turn) {
+        setSpyMode(false);
+        setLog((prev) => [`Spy cancelled — click an enemy troop while Spy mode is on.`, ...prev]);
+      } else if (clicked.hp > 0) {
+        if (spiedEnemyIds.includes(clicked.id)) {
+          setInspectedTile(null);
+          setInspectedUnitId(clicked.id);
+          setSelectedId(null);
+          setSpyMode(false);
+          setLog((prev) => [`Intel file: ${clicked.name} (${clicked.team}).`, ...prev]);
+          return;
+        }
+        if (spyCount >= 3) {
+          setLog((prev) => [`No spy reports left this battle (3 per game).`, ...prev]);
+          return;
+        }
+        const leftAfter = 3 - (spyCount + 1);
+        setSpiedEnemyIds((prev) => [...prev, clicked.id]);
+        setSpyCount((c) => c + 1);
+        setInspectedTile(null);
+        setInspectedUnitId(clicked.id);
+        setSelectedId(null);
+        setSpyMode(false);
+        setLog((prev) => [
+          `Spy report: ${clicked.name} (${clicked.team}). ${leftAfter} report${leftAfter === 1 ? "" : "s"} left.`,
+          ...prev
+        ]);
+        return;
+      }
+    }
+
+    if (civAbilityModeTeam) {
+      const team = civAbilityModeTeam;
+      const def = CIV_ACTIVES[team];
+      if (team !== turn) {
+        setCivAbilityModeTeam(null);
+        return;
+      }
+
+      if (def.targeting === "summon_unit" && def.summonRole) {
+        if (clicked) {
+          setLog((prev) => [`Deploy on an empty tile near an ally — not on ${clicked.name}.`, ...prev]);
+          return;
+        }
+        if (!isSummonReinforcementTileValid(units, team, x, y)) {
+          setLog((prev) => [
+            `Invalid tile — empty cell within ${CIV_VOLLEY_RANGE} steps of a living ally.`,
+            ...prev
+          ]);
+          return;
+        }
+        const raw = createSummonedTroopFromRole(team, def.summonRole, x, y);
+        if (!raw) {
+          setLog((prev) => [`Could not summon ${def.summonRole}.`, ...prev]);
+          return;
+        }
+        const finalized = finalizeSetupPlacedTroop(raw);
+        setUnits((prev) => [...prev, finalized]);
+        const cdRounds = def.cooldownBattleRounds ?? 20;
+        setCivAbilityUnlockAtBattleRound((p) => ({ ...p, [team]: round + cdRounds }));
+        setCivAbilityModeTeam(null);
+        setSelectedId(null);
+        setLog((prev) => [
+          `[Civilization Ability] ${def.icon} ${team} — ${def.name}! ${def.summonRole} joins the battle. Cooldown: ${cdRounds} battle rounds.`,
+          ...prev
+        ]);
+        advanceTurn();
+        return;
+      }
+
+      if (!clicked) {
+        setCivAbilityModeTeam(null);
+        setLog((prev) => [`Faction ability cancelled.`, ...prev]);
+        return;
+      }
+      if (def.targeting === "enemy_volley") {
+        if (clicked.team === team || clicked.hp <= 0) {
+          setLog((prev) => [`Volley needs an enemy — ${clicked.name} is not valid.`, ...prev]);
+          return;
+        }
+        if (!isEnemyInCivVolleyRange(units, team, clicked)) {
+          setLog((prev) => [`No volley angle — keep an ally within ${CIV_VOLLEY_RANGE} tiles of that target.`, ...prev]);
+          return;
+        }
+      } else if (clicked.team !== team || clicked.hp <= 0) {
+        setLog((prev) => [`Reinforcement — pick one of your living units.`, ...prev]);
+        return;
+      }
+      const useOrd = civOwnTurnOrdinalForAbility[team] ?? 0;
+      const res = applyCivAbilityOnTarget(units, team, clicked, battlefieldTerrain, round);
+      if (!res) return;
+      setUnits(res.units);
+      setCivAbilityUnlockAtOwnOrdinal((p) => ({ ...p, [team]: civAbilityUnlockOrdinal(useOrd) }));
+      setCivAbilityModeTeam(null);
+      setSelectedId(null);
+      setLog((prev) => [res.logLine, ...prev]);
+      advanceTurn();
+      return;
+    }
+
+    if (clicked && clicked.id === selectedId && !mergeMode && !spyMode && !civAbilityModeTeam) {
       setInspectedTile(null);
       setInspectedUnitId(clicked.id);
       return;
@@ -3042,6 +3607,14 @@ function CodeConq() {
           setInspectedTile(null);
           setSelectedId(null);
           advanceTurn();
+          if (
+            tutorialMissionIndex === 0 &&
+            selected.team === playerTeam &&
+            x === TUTORIAL_MISSION_0_GOAL.x &&
+            y === TUTORIAL_MISSION_0_GOAL.y
+          ) {
+            setTutorialCelebrate(true);
+          }
           return;
         }
         setInspectedUnitId(null);
@@ -3333,6 +3906,7 @@ function CodeConq() {
     setMergeCount(0); // Reset merge count for new game
     setMergeMode(false);
     setSelectedForMerge(null);
+    resetSpyState();
     battleOutcomeLoggedRef.current = false;
     initTimedPlayFromUnitList(prepared);
     playBackgroundMusicFromUserGesture();
@@ -3386,6 +3960,7 @@ function CodeConq() {
     setMergeCount(0);
     setMergeMode(false);
     setSelectedForMerge(null);
+    resetSpyState();
     battleOutcomeLoggedRef.current = false;
     setTimedPlayCommittedMs({});
     setTimedPlayLoserTeam(null);
@@ -3433,6 +4008,7 @@ function CodeConq() {
     setMergeCount(0);
     setMergeMode(false);
     setSelectedForMerge(null);
+    resetSpyState();
     battleOutcomeLoggedRef.current = false;
     initTimedPlayFromUnitList(units);
   };
@@ -3484,13 +4060,14 @@ function CodeConq() {
     setMergeCount(0);
     setMergeMode(false);
     setSelectedForMerge(null);
+    resetSpyState();
     setMultiplayerTeams(["Romans", "Barbarians"]);
     setCustomScenarioSpectator(false);
     setCampaignPreBattleBriefingOpen(true);
     setStartScreen("menu");
   };
 
-  const startSinglePlayerMode = () => {
+  const beginSinglePlayerBattle = (levelKey: keyof typeof levels, preferredTeam: TeamName) => {
     playBackgroundMusicFromUserGesture();
     if (preTutorialGameOptionsRef.current) {
       setGameOptions(preTutorialGameOptionsRef.current);
@@ -3505,15 +4082,16 @@ function CodeConq() {
     setIsInGameUnitsOpen(false);
     setGridOrientation("north");
     setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
-    const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
+    const nextPlayerTeam = getValidLevelPlayerTeam(levelKey, preferredTeam);
+    setCurrentLevel(levelKey);
     setGameMode("single-player");
     setIsSetupMode(false);
     setUnits(
       prepareUnitsForBattle(
-        levels[currentLevel],
+        levels[levelKey],
         buildPrepareBattleOptsForGame(
           "single-player",
-          currentLevel,
+          levelKey,
           nextPlayerTeam,
           aiDifficulty,
           multiplayerTeams,
@@ -3531,6 +4109,8 @@ function CodeConq() {
     setMergeCount(0);
     setMergeMode(false);
     setSelectedForMerge(null);
+    resetSpyState();
+    setStartScreen("menu");
   };
 
   const startMultiplayerGame = () => {
@@ -3569,6 +4149,7 @@ function CodeConq() {
     setRound(1);
     setGameStarted(true);
     setMergeCount(0);
+    resetSpyState();
     battleOutcomeLoggedRef.current = false;
     initTimedPlayFromUnitList(prepared);
     playBackgroundMusicFromUserGesture();
@@ -3601,6 +4182,37 @@ function CodeConq() {
     setMergeMode(false);
     setSelectedForMerge(null);
     resetCustomSetup();
+  };
+
+  const openSinglePlayerSkirmishSetup = () => {
+    if (gameMode !== "single-player" || tutorialMissionIndex !== null) return;
+    if (gameStarted) {
+      if (!window.confirm("Leave this battle and open skirmish setup? Your progress on this map will be lost.")) {
+        return;
+      }
+    }
+    setIsGameMenuOpen(false);
+    setGameMenuControlsOpen(false);
+    setIsInGameOptionsOpen(false);
+    setIsInGameMechanicsOpen(false);
+    setIsInGameGraphicsOpen(false);
+    setIsInGameUnitsOpen(false);
+    setGameMode(null);
+    setIsSetupMode(false);
+    setGameStarted(false);
+    setSelectedId(null);
+    setInspectedUnitId(null);
+    setInspectedTile(null);
+    setMeleeApproachPendingTargetId(null);
+    setLog([]);
+    setMergeMode(false);
+    setMergeCount(0);
+    setSelectedForMerge(null);
+    resetSpyState();
+    setStartScreen("single-player-setup");
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
   };
 
   const backToMainMenu = () => {
@@ -3641,6 +4253,7 @@ function CodeConq() {
     setMergeMode(false);
     setMergeCount(0);
     setSelectedForMerge(null);
+    resetSpyState();
     setMultiplayerTeams(["Romans", "Barbarians"]);
     setCustomScenarioSpectator(false);
     setGridOrientation("north");
@@ -3693,6 +4306,7 @@ function CodeConq() {
       setMergeCount(0);
       setMergeMode(false);
       setSelectedForMerge(null);
+      resetSpyState();
       return;
     }
 
@@ -3721,6 +4335,7 @@ function CodeConq() {
       setMergeCount(0);
       setMergeMode(false);
       setSelectedForMerge(null);
+      resetSpyState();
       setCampaignPreBattleBriefingOpen(true);
       return;
     }
@@ -3748,6 +4363,7 @@ function CodeConq() {
       setMergeCount(0);
       setMergeMode(false);
       setSelectedForMerge(null);
+      resetSpyState();
       return;
     }
 
@@ -3783,6 +4399,7 @@ function CodeConq() {
       setMergeCount(0);
       setMergeMode(false);
       setSelectedForMerge(null);
+      resetSpyState();
       return;
     }
 
@@ -3817,6 +4434,7 @@ function CodeConq() {
       setMergeCount(0);
       setMergeMode(false);
       setSelectedForMerge(null);
+      resetSpyState();
     }
   };
 
@@ -4585,7 +5203,8 @@ function CodeConq() {
     {
       key: "special",
       title: "Special Systems",
-      subtitle: "Ammo, hybrid troops, civilization passives, battle feedback, optional timed play (bank + move clock), terrain lock, and the scrollable battle log.",
+      subtitle:
+        "Ammo, hybrid troops, civilization passives and left-rail faction actives, battle feedback, optional timed play (bank + move clock), terrain lock, scrollable battle log, and tutorial lesson notes.",
       badge: "Expanded",
       badgeClass: "border-cyan-700/50 bg-cyan-500/10 text-cyan-100",
       tabClass: "border-cyan-700/40 bg-cyan-950/20 text-cyan-100",
@@ -4713,7 +5332,8 @@ function CodeConq() {
             <div className="max-w-2xl">
               <h3 className="text-2xl font-bold text-yellow-100 sm:text-3xl">Mechanics at a Glance</h3>
               <p className="mt-2 text-sm leading-relaxed text-yellow-100/80 sm:text-[15px]">
-                Use this handbook to read the battle flow quickly: core rules, signature abilities and formation lines,
+                Use this handbook to read the battle flow quickly: core rules (merge, spy, faction ability on the left rail,
+                skirmish setup), signature abilities and formation lines,
                 special systems (ammo, timers, log), AI doctrine, combat roles, and the terrain atlas. Tabs below switch
                 sections—Core rules, Signature Abilities, Formations (per-line buffs), then Special Systems, AI, Roles, Terrain.
               </p>
@@ -5191,6 +5811,72 @@ function CodeConq() {
       );
     }
 
+    if (startScreen === "single-player-setup") {
+      const setupTeams = getLevelTeams(currentLevel);
+      return (
+        <>
+          <div
+            className="cc-game-cursors flex min-h-screen flex-col items-center justify-center p-4 sm:p-6"
+            style={appBackgroundStyle}
+          >
+            <div className="game-ui w-full max-w-2xl p-6 text-left sm:p-8">
+              <button
+                type="button"
+                onClick={() => setStartScreen("menu")}
+                className="battle-button mb-6 w-fit px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+              >
+                Back
+              </button>
+              <h1 className="text-center text-3xl font-bold text-yellow-200 drop-shadow-lg sm:text-4xl">Single player</h1>
+              <p className="mt-3 text-center text-sm leading-relaxed text-yellow-100/88">
+                Pick a skirmish map and which faction you command. Extra maps fill in faction matchups not covered by the
+                original sixteen levels.
+              </p>
+              <div className="mt-6 flex flex-col gap-4">
+                <label className="flex flex-col gap-1.5 text-sm text-amber-100/90">
+                  <span className="font-semibold text-amber-200/95">Level</span>
+                  <select
+                    className="rounded-lg border border-amber-800/50 bg-black/40 px-3 py-2.5 text-base text-yellow-100"
+                    value={currentLevel}
+                    onChange={(e) => setCurrentLevel(e.target.value as keyof typeof levels)}
+                  >
+                    {sortedSkirmishLevelKeys.map((key) => (
+                      <option key={key} value={key}>
+                        {key} — {LEVEL_MATCHUP_LABELS[key]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1.5 text-sm text-amber-100/90">
+                  <span className="font-semibold text-amber-200/95">Your faction</span>
+                  <select
+                    className="rounded-lg border border-amber-800/50 bg-black/40 px-3 py-2.5 text-base text-yellow-100"
+                    value={playerTeam}
+                    onChange={(e) => setPlayerTeam(e.target.value as TeamName)}
+                  >
+                    {setupTeams.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <button
+                type="button"
+                onClick={() => beginSinglePlayerBattle(currentLevel, playerTeam)}
+                className="battle-button mt-8 w-full rounded-xl border border-amber-500/70 bg-amber-950/50 px-4 py-3.5 text-base font-bold text-amber-50 shadow-[0_0_24px_rgba(245,158,11,0.18)] hover:bg-amber-900/55"
+              >
+                Start battle
+              </button>
+            </div>
+            <AppVersionCorner />
+          </div>
+          {multiplayerLobbyModal}
+        </>
+      );
+    }
+
     if (startScreen === "campaign") {
       return (
         <>
@@ -5317,7 +6003,7 @@ function CodeConq() {
     }
 
     if (startScreen === "about") {
-      const aboutSlideLabels = ["Overview", "Modes & scale", "Developer", "Controls"] as const;
+      const aboutSlideLabels = ["Overview", "Modes & scale", "Developer", "What's new", "Controls"] as const;
       return (
         <>
         <div className="cc-game-cursors flex min-h-screen flex-col items-center justify-center p-4 sm:p-6" style={appBackgroundStyle}>
@@ -5398,8 +6084,11 @@ function CodeConq() {
                     <h2 className="mt-2 text-xl font-bold text-yellow-100 sm:text-2xl">Tactical battles across living battlefields</h2>
                     <p className="mt-3 text-sm leading-7 text-yellow-50/85">
                       Strategos is a tactical grid war game where historical-inspired factions clash across changing terrain. Each
-                      battle is shaped by troop roles, linked formation lines, civilization passives, signature abilities,
-                      and battlefield feedback that helps you read momentum in real time.
+                      battle is shaped by troop roles, linked formation lines, civilization passives, cooldown faction
+                      abilities (volley / reinforcement on the left rail), signature abilities,
+                      and battlefield feedback that helps you read momentum in real time. Open{" "}
+                      <span className="font-semibold text-amber-200/95">Game Menu → Mechanics</span> anytime for the full handbook
+                      (merge, spy, faction abilities, skirmish setup, tutorial notes, terrain, AI, and more).
                     </p>
                   </div>
 
@@ -5410,7 +6099,10 @@ function CodeConq() {
                       <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
                         <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">Single player</div>
                         <p className="mt-1 text-sm leading-6 text-yellow-50/82">
-                          Campaign battles against the AI—terrain, faction buffs, and momentum all matter.
+                          <span className="font-semibold text-yellow-100/95">Skirmish:</span> setup screen to pick map (many faction
+                          matchups) and faction, then fight the AI. Toolbar 🧭 jumps back to setup.{" "}
+                          <span className="font-semibold text-yellow-100/95">Campaign:</span> chapter progression per faction with
+                          briefings and story maps.
                         </p>
                       </div>
                       <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
@@ -5477,6 +6169,52 @@ function CodeConq() {
                   </div>
 
                   <div className="w-full shrink-0 px-4 py-5 sm:px-6 sm:py-6">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-amber-300/85">Changelog</div>
+                    <h2 className="mt-2 text-xl font-bold text-yellow-100 sm:text-2xl">Latest updates</h2>
+                    <p className="mt-3 text-sm leading-7 text-yellow-50/85">
+                      Highlights from recent releases. For full rule text, use{" "}
+                      <span className="font-semibold text-amber-200/95">Game Menu → Mechanics</span> (same handbook in and out of
+                      battle).
+                    </p>
+                    <ul className="mt-4 list-disc space-y-2.5 pl-5 text-sm leading-7 text-yellow-50/88 marker:text-amber-500/80">
+                      <li>
+                        <span className="font-semibold text-yellow-100/92">Faction abilities</span> —{" "}
+                        <span className="font-semibold text-cyan-200/90">Volley</span> (enemy in range of allies),{" "}
+                        <span className="font-semibold text-emerald-200/90">reinforcement</span> (ally heal/buff), or{" "}
+                        <span className="font-semibold text-sky-200/90">Roman summon</span> (empty tile): arm with the cyan button on
+                        the <span className="font-semibold text-amber-200/90">left rail</span>, then click a valid target. Hover the
+                        cyan icon for <span className="font-semibold text-cyan-200/85">themed motion</span> (arrows, siege stones,
+                        axes, javelins by faction; heal sparks; deploy streak). Cooldown:{" "}
+                        <span className="font-semibold text-amber-200/90">3 own turns</span> for most;{" "}
+                        <span className="font-semibold text-amber-200/90">20 battle rounds</span> for Romans. Tutorial and AI vs AI
+                        watch skip it. Log:{" "}
+                        <span className="font-mono text-[13px] text-cyan-200/85">[Civilization Ability]</span>.
+                      </li>
+                      <li>
+                        <span className="font-semibold text-yellow-100/92">Skirmish flow</span> — Main menu Single player opens map
+                        + faction setup; extra skirmish maps cover more faction pairs. Battlefield 🧭 returns to that setup
+                        (confirms if you are mid-fight).
+                      </li>
+                      <li>
+                        <span className="font-semibold text-yellow-100/92">Spy</span> — 🕵️ on your turn: three intel reports per
+                        battle; enemy unit panel stays classified until spied.
+                      </li>
+                      <li>
+                        <span className="font-semibold text-yellow-100/92">Merge</span> — 🔗 merge mode; two merges per battle; merge
+                        and spy modes cancel each other when toggled.
+                      </li>
+                      <li>
+                        <span className="font-semibold text-yellow-100/92">Tutorial</span> — First lesson completes in one move onto
+                        the goal; strike steps count a wound or a kill; two-fronts lesson counts wiping both enemies.
+                      </li>
+                      <li>
+                        <span className="font-semibold text-yellow-100/92">Header</span> — Skirmish level is no longer chosen in the
+                        top bar; use setup or 🧭. Faction and AI difficulty for skirmish remain in the header (outside tutorial).
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="w-full shrink-0 px-4 py-5 sm:px-6 sm:py-6">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-yellow-300/75">Controls &amp; input</div>
                     <h2 className="mt-2 text-xl font-bold text-yellow-100 sm:text-2xl">Keyboard &amp; mouse</h2>
                     <div className="mt-4 max-h-[min(52vh,22rem)] overflow-y-auto pr-1">
@@ -5524,7 +6262,7 @@ function CodeConq() {
               <div className="mx-auto flex w-full max-w-md flex-col gap-4">
                 <button
                   type="button"
-                  onClick={startSinglePlayerMode}
+                  onClick={() => setStartScreen("single-player-setup")}
                   className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
                 >
                   Single Player
@@ -5814,64 +6552,44 @@ function CodeConq() {
             )}
 
             {!isSetupMode &&
-              gameMode !== "custom-scenario" &&
-              gameMode !== "campaign" &&
+              gameMode === "single-player" &&
               tutorialMissionIndex === null && (
               <div className="flex flex-wrap items-center gap-2">
-                <label htmlFor="level-select" className="text-xs uppercase tracking-wide text-yellow-100">
-                  Level
+                <label htmlFor="single-player-team" className="text-xs uppercase tracking-wide text-yellow-100">
+                  Faction
                 </label>
                 <select
-                  id="level-select"
-                  value={currentLevel}
-                  onChange={(e) => setCurrentLevel(e.target.value as keyof typeof levels)}
+                  id="single-player-team"
+                  value={playerTeam}
+                  onChange={(e) => {
+                    const nextTeam = e.target.value as TeamName;
+                    restartSessionForGameplaySettings({ playerTeam: nextTeam });
+                  }}
                   className="bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-2 py-1 text-xs sm:text-sm focus:outline-none focus:border-yellow-400"
                 >
-                  {(Object.entries(LEVEL_MATCHUP_LABELS) as [keyof typeof levels, string][]).map(([levelKey, label], index) => (
-                    <option key={levelKey} value={levelKey}>
-                      {`Level ${index + 1}: ${label}`}
+                  {levelTeams.map((team) => (
+                    <option key={team} value={team}>{team}</option>
+                  ))}
+                </select>
+                <label htmlFor="single-player-ai-difficulty" className="text-xs uppercase tracking-wide text-yellow-100">
+                  AI difficulty
+                </label>
+                <select
+                  id="single-player-ai-difficulty"
+                  value={aiDifficulty}
+                  onChange={(e) => {
+                    const next = e.target.value as AiDifficulty;
+                    setAiDifficulty(next);
+                    restartSessionForGameplaySettings({ aiDifficulty: next });
+                  }}
+                  className="bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-2 py-1 text-xs sm:text-sm focus:outline-none focus:border-yellow-400"
+                >
+                  {AI_DIFFICULTY_ORDER.map((d) => (
+                    <option key={d} value={d}>
+                      {AI_DIFFICULTY_LABELS[d]}
                     </option>
                   ))}
                 </select>
-                {gameMode === "single-player" && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label htmlFor="single-player-team" className="text-xs uppercase tracking-wide text-yellow-100">
-                      Faction
-                    </label>
-                    <select
-                      id="single-player-team"
-                      value={playerTeam}
-                      onChange={(e) => {
-                        const nextTeam = e.target.value as TeamName;
-                        restartSessionForGameplaySettings({ playerTeam: nextTeam });
-                      }}
-                      className="bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-2 py-1 text-xs sm:text-sm focus:outline-none focus:border-yellow-400"
-                    >
-                      {levelTeams.map((team) => (
-                        <option key={team} value={team}>{team}</option>
-                      ))}
-                    </select>
-                    <label htmlFor="single-player-ai-difficulty" className="text-xs uppercase tracking-wide text-yellow-100">
-                      AI difficulty
-                    </label>
-                    <select
-                      id="single-player-ai-difficulty"
-                      value={aiDifficulty}
-                      onChange={(e) => {
-                        const next = e.target.value as AiDifficulty;
-                        setAiDifficulty(next);
-                        restartSessionForGameplaySettings({ aiDifficulty: next });
-                      }}
-                      className="bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-2 py-1 text-xs sm:text-sm focus:outline-none focus:border-yellow-400"
-                    >
-                      {AI_DIFFICULTY_ORDER.map((d) => (
-                        <option key={d} value={d}>
-                          {AI_DIFFICULTY_LABELS[d]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -5900,9 +6618,40 @@ function CodeConq() {
         {passiveTeams.length > 0 && (
           <div className="fixed left-3 top-28 z-[60] max-h-[min(calc(100dvh-7rem),calc(100vh-7rem))] overflow-y-auto overflow-x-hidden pb-4 pt-0.5 [-webkit-overflow-scrolling:touch] sm:left-4">
             <div className="game-ui flex flex-col items-center gap-3 rounded-r-2xl border border-yellow-600/70 bg-gray-950/90 px-2 py-3 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-sm">
-              {passiveTeams.map((team) => (
-                <FactionPassiveRailCell key={team} team={team} />
-              ))}
+              {passiveTeams.map((railTeam) => {
+                const activeRailEligible =
+                  gameStarted &&
+                  tutorialMissionIndex === null &&
+                  gameMode !== "ai-versus" &&
+                  (gameMode === "multiplayer" ||
+                    gameMode === "single-player" ||
+                    gameMode === "campaign" ||
+                    gameMode === "custom-scenario");
+                const canUseCivRail =
+                  Boolean(activeRailEligible) &&
+                  railTeam === turn &&
+                  (gameMode === "multiplayer" || railTeam === playerTeam) &&
+                  !(gameMode === "custom-scenario" && customScenarioSpectator) &&
+                  !timedPlayLoserTeam;
+                const civPrimed = civAbilityModeTeam === railTeam;
+                const civReady = isCivAbilityReady(
+                  railTeam,
+                  civOwnTurnOrdinalForAbility,
+                  civAbilityUnlockAtOwnOrdinal,
+                  round,
+                  civAbilityUnlockAtBattleRound
+                );
+                const canClickCiv = canUseCivRail && (civReady || civPrimed);
+                const activeSlot: FactionRailActiveSlot = activeRailEligible
+                  ? {
+                      show: true,
+                      canFire: canClickCiv,
+                      isPrimed: civPrimed,
+                      onFire: () => toggleCivAbilityTargeting(railTeam)
+                    }
+                  : null;
+                return <FactionPassiveRailCell key={railTeam} team={railTeam} activeSlot={activeSlot} />;
+              })}
             </div>
           </div>
         )}
@@ -5963,12 +6712,21 @@ function CodeConq() {
           )}
 
           {!isSetupMode && gameStarted && (
-            <div
-              className="pointer-events-auto text-blue-200 font-semibold bg-blue-900/70 px-2.5 py-1.5 rounded border border-blue-600 text-center backdrop-blur-sm"
-              title={`${mergeCount}/2 merges used`}
-            >
-              <span className="block text-[11px] uppercase tracking-wide">Merges</span>
-              <span className="block text-xs sm:text-sm">{mergeCount}/2</span>
+            <div className="pointer-events-auto flex flex-wrap items-stretch justify-center gap-1.5">
+              <div
+                className="text-blue-200 font-semibold bg-blue-900/70 px-2.5 py-1.5 rounded border border-blue-600 text-center backdrop-blur-sm"
+                title={`${mergeCount}/2 merges used`}
+              >
+                <span className="block text-[11px] uppercase tracking-wide">Merges</span>
+                <span className="block text-xs sm:text-sm">{mergeCount}/2</span>
+              </div>
+              <div
+                className="text-slate-100 font-semibold bg-slate-800/85 px-2.5 py-1.5 rounded border border-slate-500/70 text-center backdrop-blur-sm"
+                title={`${spyCount}/3 spy reports used`}
+              >
+                <span className="block text-[11px] uppercase tracking-wide">Spy</span>
+                <span className="block text-xs sm:text-sm">{spyCount}/3</span>
+              </div>
             </div>
           )}
 
@@ -5988,11 +6746,15 @@ function CodeConq() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-amber-300/80">
-                    {selected ? "Selected Unit" : "Focused Unit"}
+                    {isFocusedIntelObscured ? "Hostile (classified)" : selected ? "Selected Unit" : "Focused Unit"}
                   </div>
-                  <div className="truncate text-base font-semibold text-yellow-50">{focusedBattleUnit.name}</div>
-                  <div className="truncate text-xs text-amber-200/85">{focusedBattleUnit.team} · {focusedBattleUnit.role}</div>
-                  {focusedTroopTypeDisplay && focusedWeightDisplay && (
+                  <div className="truncate text-base font-semibold text-yellow-50">
+                    {isFocusedIntelObscured ? "???" : focusedBattleUnit.name}
+                  </div>
+                  <div className="truncate text-xs text-amber-200/85">
+                    {isFocusedIntelObscured ? "??? · ???" : `${focusedBattleUnit.team} · ${focusedBattleUnit.role}`}
+                  </div>
+                  {!isFocusedIntelObscured && focusedTroopTypeDisplay && focusedWeightDisplay && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       <span className="rounded-full border border-cyan-700/45 bg-cyan-950/30 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">
                         {focusedTroopTypeDisplay.icon} {focusedTroopTypeDisplay.label}
@@ -6017,35 +6779,54 @@ function CodeConq() {
                   X
                 </button>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">HP {focusedBattleUnit.hp}/{focusedBattleUnit.maxHp}</div>
-                <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">
-                          ATK {getDisplayedAttack(focusedBattleUnit, currentBattleUnits, terrainEffectMap, { round })}
-                        </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">RNG {getRangeForBattle(focusedBattleUnit)}</div>
-                <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">MOV {getMoveForBattle(focusedBattleUnit)}</div>
-              </div>
-              <div className="mt-3 rounded-xl border border-emerald-500/15 bg-emerald-950/20 px-2.5 py-2 text-xs text-emerald-100/90">
-                <span className="font-semibold text-emerald-200">Terrain:</span>{" "}
-                {TERRAIN_LABELS[focusedTerrainType ?? "plain"]}
-              </div>
-              <div className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-950/20 px-2.5 py-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/85">Signature Skills</div>
-                {focusedUnitAbilities.length > 0 ? (
-                  <div className="mt-2 space-y-1.5">
-                    {focusedUnitAbilities.map((ability) => (
-                      <div key={ability.key} className="rounded-lg border border-cyan-500/20 bg-black/20 px-2.5 py-2 text-[11px] leading-5 text-cyan-50/92">
-                        <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+              {isFocusedIntelObscured ? (
+                <div className="mt-3 rounded-xl border border-slate-500/40 bg-slate-950/50 px-2.5 py-3 text-xs leading-relaxed text-slate-100/90">
+                  Stats and abilities are hidden until you use{" "}
+                  <span className="font-semibold text-amber-200/95">Spy</span> (🕵️) on your turn —{" "}
+                  <span className="font-semibold">3 reports per battle</span>. Enemy tiles are highlighted while Spy mode is on.
+                </div>
+              ) : (
+                <>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">
+                      HP {focusedBattleUnit.hp}/{focusedBattleUnit.maxHp}
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">
+                      ATK {getDisplayedAttack(focusedBattleUnit, currentBattleUnits, terrainEffectMap, { round })}
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">
+                      RNG {getRangeForBattle(focusedBattleUnit)}
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">
+                      MOV {getMoveForBattle(focusedBattleUnit)}
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-xl border border-emerald-500/15 bg-emerald-950/20 px-2.5 py-2 text-xs text-emerald-100/90">
+                    <span className="font-semibold text-emerald-200">Terrain:</span>{" "}
+                    {TERRAIN_LABELS[focusedTerrainType ?? "plain"]}
+                  </div>
+                  <div className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-950/20 px-2.5 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/85">Signature Skills</div>
+                    {focusedUnitAbilities.length > 0 ? (
+                      <div className="mt-2 space-y-1.5">
+                        {focusedUnitAbilities.map((ability) => (
+                          <div
+                            key={ability.key}
+                            className="rounded-lg border border-cyan-500/20 bg-black/20 px-2.5 py-2 text-[11px] leading-5 text-cyan-50/92"
+                          >
+                            <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    ) : (
+                      <div className="mt-2 rounded-lg border border-white/8 bg-black/20 px-2.5 py-2 text-[11px] leading-5 text-yellow-100/72">
+                        This unit has no signature passive skill.
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="mt-2 rounded-lg border border-white/8 bg-black/20 px-2.5 py-2 text-[11px] leading-5 text-yellow-100/72">
-                    This unit has no signature passive skill.
-                  </div>
-                )}
-              </div>
-              {focusedFeedbackKinds.length > 0 && (
+                </>
+              )}
+              {!isFocusedIntelObscured && focusedFeedbackKinds.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {focusedFeedbackKinds.map((kind) => (
                     <div
@@ -6085,18 +6866,23 @@ function CodeConq() {
                   ))}
                 </div>
               )}
-              <div className="mt-3 space-y-1.5">
-                {focusedEffectNotes.slice(0, 3).map((note) => (
-                  <div key={note} className="rounded-xl border border-white/8 bg-black/25 px-2.5 py-2 text-[11px] leading-5 text-yellow-100/88">
-                    {note}
-                  </div>
-                ))}
-                {focusedEffectNotes.length === 0 && (
-                  <div className="rounded-xl border border-white/8 bg-black/25 px-2.5 py-2 text-[11px] leading-5 text-yellow-100/72">
-                    No special effects active on this unit right now.
-                  </div>
-                )}
-              </div>
+              {!isFocusedIntelObscured && (
+                <div className="mt-3 space-y-1.5">
+                  {focusedEffectNotes.slice(0, 3).map((note) => (
+                    <div
+                      key={note}
+                      className="rounded-xl border border-white/8 bg-black/25 px-2.5 py-2 text-[11px] leading-5 text-yellow-100/88"
+                    >
+                      {note}
+                    </div>
+                  ))}
+                  {focusedEffectNotes.length === 0 && (
+                    <div className="rounded-xl border border-white/8 bg-black/25 px-2.5 py-2 text-[11px] leading-5 text-yellow-100/72">
+                      No special effects active on this unit right now.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -6142,6 +6928,18 @@ function CodeConq() {
               title="Restart game"
             >
               ↺
+            </button>
+          )}
+
+          {gameMode === "single-player" && tutorialMissionIndex === null && (
+            <button
+              type="button"
+              onClick={openSinglePlayerSkirmishSetup}
+              className={`pointer-events-auto ${iconActionButtonClass} bg-violet-700 hover:bg-violet-800`}
+              aria-label="Skirmish setup — choose level"
+              title="Skirmish setup — choose level and faction"
+            >
+              🧭
             </button>
           )}
 
@@ -6258,6 +7056,8 @@ function CodeConq() {
             <button
               type="button"
               onClick={() => {
+                setSpyMode(false);
+                setCivAbilityModeTeam(null);
                 if (mergeCount < 2) {
                   setMergeMode(!mergeMode);
                   setSelectedForMerge(null);
@@ -6277,6 +7077,44 @@ function CodeConq() {
               title={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
             >
               🔗
+            </button>
+          )}
+
+          {!isSetupMode &&
+            gameStarted &&
+            (gameMode === "multiplayer" ||
+              ((gameMode === "single-player" ||
+                gameMode === "campaign" ||
+                gameMode === "custom-scenario") &&
+                turn === playerTeam &&
+                !(gameMode === "custom-scenario" && customScenarioSpectator))) && (
+            <button
+              type="button"
+              onClick={() => {
+                setMergeMode(false);
+                setCivAbilityModeTeam(null);
+                setSelectedForMerge(null);
+                setSelectedId(null);
+                if (spyCount < 3) {
+                  setSpyMode(!spyMode);
+                  if (!spyMode) {
+                    setLog((prevLog) => [
+                      `Spy mode: click an enemy troop to reveal full intel (${3 - spyCount} report${3 - spyCount === 1 ? "" : "s"} left).`,
+                      ...prevLog
+                    ]);
+                  } else {
+                    setLog((prevLog) => [`Spy mode off.`, ...prevLog]);
+                  }
+                } else {
+                  setLog((prevLog) => [`No spy reports left this battle.`, ...prevLog]);
+                }
+              }}
+              disabled={spyCount >= 3 || Boolean(timedPlayLoserTeam)}
+              className={`pointer-events-auto ${iconActionButtonClass} ${spyMode ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-600 hover:bg-slate-700"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              aria-label={spyMode ? "Cancel spy mode" : "Spy on enemy (3 per battle)"}
+              title={spyMode ? "Cancel spy mode" : "Spy on enemy — 3 reports per battle"}
+            >
+              🕵️
             </button>
           )}
 
@@ -6761,11 +7599,27 @@ function CodeConq() {
                       getCloseCombatAttackDestination(selected, u)
                   );
                 const isAttackTargetForPreview = canAttackFromRangePreview || canCloseForAttackPreview;
+                const cm = civAbilityModeTeam;
+                const civAbilityDef = cm ? CIV_ACTIVES[cm] : null;
+                const civVolleyHighlight =
+                  Boolean(cm && civAbilityDef?.targeting === "enemy_volley" && u && u.hp > 0 && u.team !== cm) &&
+                  isEnemyInCivVolleyRange(units, cm!, u!);
+                const civReinforceHighlight = Boolean(
+                  cm && civAbilityDef?.targeting === "ally_reinforce" && u && u.hp > 0 && u.team === cm
+                );
+                const civSummonTileHighlight = Boolean(
+                  cm &&
+                    civAbilityDef?.targeting === "summon_unit" &&
+                    !u &&
+                    civSummonValidTileKeys.has(`${x},${y}`)
+                );
                 const canPreviewAttackDamage =
                   gameOptions.showAttackDamagePreview &&
                   !isSetupMode &&
                   gameStarted &&
                   !mergeMode &&
+                  !spyMode &&
+                  !civAbilityModeTeam &&
                   selected &&
                   selected.team === playerTeam &&
                   turn === playerTeam &&
@@ -6915,6 +7769,10 @@ function CodeConq() {
                     ${isSetupMode && ((draggedTroop && !u) || (setupFieldDragActive && !u)) ? "drag-over" : ""}
                     ${mergeMode && u && u.team === turn && selectedForMerge && u.role === selectedForMerge.role ? "merge-highlight" : ""}
                     ${mergeMode && u && u.team === turn && selectedForMerge && u.id === selectedForMerge.id ? "merge-selected" : ""}
+                    ${spyMode && u && u.team !== turn && u.hp > 0 ? "spy-target-highlight" : ""}
+                    ${civVolleyHighlight ? "civ-volley-highlight" : ""}
+                    ${civReinforceHighlight ? "civ-reinforce-highlight" : ""}
+                    ${civSummonTileHighlight ? "civ-summon-tile-highlight" : ""}
                     ${hasHitFeedback ? "battle-feedback-hit" : ""}
                     ${hasMeleeWindupFeedback ? "battle-feedback-melee-windup" : ""}
                     ${hasMeleeHitFeedback ? "battle-feedback-melee-hit" : ""}
