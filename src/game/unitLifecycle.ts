@@ -175,6 +175,46 @@ export const applyCivilizationPassive = (unit: any) => {
   return ensureRangedAmmo(normalizedUnit);
 };
 
+/**
+ * Single-player skirmish: each faction keeps the same number of troops (the minimum count among teams on the map).
+ * Extras are dropped in stable grid order (y, x, id) so layouts stay predictable.
+ */
+export const balanceSkirmishUnitsEqualPerTeam = (units: any[]): any[] => {
+  if (!units.length) return units;
+  const byTeam = new Map<string, any[]>();
+  for (const u of units) {
+    const t = String((u as { team?: string }).team ?? "");
+    if (!t) continue;
+    if (!byTeam.has(t)) byTeam.set(t, []);
+    byTeam.get(t)!.push(u);
+  }
+  const teamKeys = [...byTeam.keys()];
+  if (teamKeys.length < 2) return units;
+  let minCount = Infinity;
+  for (const arr of byTeam.values()) minCount = Math.min(minCount, arr.length);
+  if (!Number.isFinite(minCount) || minCount <= 0) return units;
+
+  const rank = (u: any) => [Number(u.y) || 0, Number(u.x) || 0, String(u.id ?? "")];
+  const cmp = (a: any, b: any) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    for (let i = 0; i < ra.length; i++) {
+      const va = ra[i]!;
+      const vb = rb[i]!;
+      if (va < vb) return -1;
+      if (va > vb) return 1;
+    }
+    return 0;
+  };
+
+  const out: any[] = [];
+  for (const t of teamKeys) {
+    const kept = byTeam.get(t)!.slice().sort(cmp).slice(0, minCount);
+    out.push(...kept);
+  }
+  return out;
+};
+
 export const prepareUnitsForBattle = (units: any[], opts?: PrepareBattleOpts) =>
   units.map((unit) => {
     let u = applyCivilizationPassive({

@@ -112,7 +112,7 @@ export const GAME_MECHANICS_INFO = [
     icon: "⚡",
     title: "Faction ability (targeted + cooldown)",
     description:
-      "Each civilization has a **targeted** ability on the **cyan** button beside its passive on the **left rail**. Tap to **arm** it (again to cancel): **volley** factions pick **one enemy** in range of any ally (≤5 tiles); **reinforcement** factions pick **one living ally** to heal/buff; **Romans** **summon** one **Legionary** on an empty tile in range. Resolving it **ends your turn**. **Cooldown:** most factions wait **3 of your side’s turns**; **Romans** use a **20 full battle-round** cooldown (each time the turn order wraps to the first side again—see hover tooltip). Hover the cyan button for **preview motion** (flying arrows, siege stones, thrown axes, or javelins for volley factions; heal sparks for reinforce; deploy streak for summon). Not in the tutorial or **AI vs AI** watch. Log lines: **[Civilization Ability]** (cyan)."
+      "Each civilization has a **targeted** ability on the **cyan** button beside its passive on the **left rail**. Tap to **arm** it (again to cancel): **volley** factions pick **one enemy** in range of any ally (≤5 tiles)—damage uses a **fixed volley attack value** for that civ (then terrain, matchup, and mitigation as normal); **reinforcement** picks **one living ally** to restore **250 HP** (capped at that unit’s max HP) plus **flat attack** on the card where listed (no % of max HP); **Romans** **summon** one **Legionary** on an empty tile in range. Resolving it **ends your turn**. **Cooldown:** every faction uses a **full battle-round** timer (each time the turn order wraps to the first side again); values differ by civ—see the **cyan hover tooltip** and the **live table** under **Game Menu → Mechanics → Special Systems**. When a cooldown ends, the **battle log** and a short **cyan button pulse** recommend arming the skill again (human play only). Hover also shows **preview motion** (arrows, siege stones, axes, javelins; heal sparks; deploy streak). Not in the tutorial or **AI vs AI** watch. Log lines: **[Civilization Ability]** (cyan)."
   },
   {
     icon: "🧭",
@@ -156,7 +156,7 @@ export const ADDITIONAL_MECHANICS_INFO = [
     icon: "⚡",
     title: "Faction ability (left rail)",
     description:
-      "Full wording under **Core rules → Faction ability**. Map: **yellow** = passive · **cyan** = arm **volley**, **reinforcement**, or **Roman summon** · valid targets **pulse** on the grid · **amber** cyan = targeting armed · ends turn on resolve · cooldown per faction (**3 own turns** by default; **Romans** = **20 battle rounds**—see tooltip)."
+      "Full wording under **Core rules → Faction ability**. Map: **yellow** = passive · **cyan** = arm **volley** (fixed attack power per civ), **reinforcement** (**250 HP** per use, capped at max, plus attack on the card where listed), or **Roman summon** · valid targets **pulse** on the grid · **amber** cyan = targeting armed · ends turn on resolve · **cooldown = battle rounds** per faction (tooltip + **Mechanics → Special Systems** table). **Ready-again** log + pulse when the cooldown expires (human modes)."
   },
   {
     icon: "🎺",
@@ -182,7 +182,7 @@ export const ADDITIONAL_MECHANICS_INFO = [
     icon: "📜",
     title: "Battle Log",
     description:
-      "Use the scroll button on the floating toolbar to open a centered battle log modal; tap the same button again to close. Entries are color-coded (attacks, kills, moves, charges, morale, merges, spy, **civilization abilities**, time events). With Turn Banner on, the panel also shows whose turn it is and—when timed play is on—the active move clock."
+      "Use the scroll button on the floating toolbar to open a centered battle log modal; tap the same button again to close. Entries are color-coded (attacks, kills, moves, charges, morale, merges, spy, **civilization abilities**, **ability ready again** reminders, time events). With Turn Banner on, the panel also shows whose turn it is and—when timed play is on—the active move clock."
   },
   {
     icon: "📚",
@@ -369,7 +369,7 @@ export const FORMATION_BUFF_MECHANICS_INFO: ReadonlyArray<{
 ] as const;
 
 export const AI_MECHANICS_INFO = [
-  "AI-controlled factions **use civilization abilities** on cooldown when a good target exists (volley vs exposed enemies, reinforcement on injured or key troops, Roman summon toward the fight).",
+  "AI-controlled factions **use civilization abilities** on cooldown when a good target exists (volley vs exposed enemies using the same fixed volley power as players, reinforcement with the same **250 HP** restore and card attack bonuses, Roman summon toward the fight). **Human** players get a **battle-log line and cyan-button pulse** when their civ ability comes off cooldown (not tutorial / AI watch).",
   "Front-line melee units now push harder and value moves that create an immediate attack on the next turn.",
   "The AI focuses wounded enemies, exposed ranged units, siege crews, and isolated leaders more aggressively.",
   "Ranged and siege troops still prefer safer firing ground, but they now step into pressure range sooner instead of drifting too far back.",

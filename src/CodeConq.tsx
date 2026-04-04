@@ -112,26 +112,34 @@ import {
 import { SETUP_ARMY_TOKEN_BUDGET, getUnitWeightTokenCost, sumSetupTokensForTeam } from "./game/unitWeight";
 import {
   applyCivAbilityOnTarget,
+  applyCivTrapOnEntry,
+  CIV_ABILITY_COOLDOWN_OWN_TURNS,
   CIV_ACTIVES,
   CIV_VOLLEY_RANGE,
+  clearExpiredCivTraps,
   createSummonedTroopFromRole,
-  civAbilityUnlockOrdinal,
   getCivActiveCooldownSummary,
+  getCivActiveHandbookRows,
+  formatCivAbilityCooldownRemaining,
+  getCivAbilityCooldownRemaining,
   getCivActiveHowItWorks,
   getVolleyTooltipFx,
   getVolleyTooltipGlyphs,
   isCivAbilityReady,
   isEnemyInCivVolleyRange,
   isSummonReinforcementTileValid,
+  makeCivTrapForTeam,
   pickAiCivReinforceTarget,
   pickAiCivSummonTile,
-  pickAiCivVolleyTarget
+  pickAiCivVolleyTarget,
+  type CivBattleTrap
 } from "./game/civActives";
 import {
   applyAiTroopStatMultiplier,
   applyCivilizationPassive,
   CIV_PASSIVES,
   PASSIVE_ICONS,
+  balanceSkirmishUnitsEqualPerTeam,
   prepareUnitsForBattle,
   restoreUnitFromStorage,
   rerollUnits,
@@ -499,7 +507,19 @@ function computeRailTooltipPos(anchorEl: HTMLElement | null) {
 }
 
 /** Left-rail passive (yellow) and active (cyan): separate hover cards with faction-themed motion + ability-type effects. */
-function FactionPassiveRailCell({ team, activeSlot }: { team: TeamName; activeSlot?: FactionRailActiveSlot }) {
+function FactionPassiveRailCell({
+  team,
+  activeSlot,
+  civReadyNudge,
+  activeCooldownRemaining = 0
+}: {
+  team: TeamName;
+  activeSlot?: FactionRailActiveSlot;
+  /** Pulse cyan button when this faction’s ability just became available again. */
+  civReadyNudge?: boolean;
+  /** Steps until active can be armed (battle rounds or faction turns); 0 = ready. */
+  activeCooldownRemaining?: number;
+}) {
   const passive = CIV_PASSIVES[team];
   const activeAbility = CIV_ACTIVES[team];
   const passiveAnchorRef = useRef<HTMLButtonElement>(null);
@@ -636,6 +656,7 @@ function FactionPassiveRailCell({ team, activeSlot }: { team: TeamName; activeSl
     );
 
   const activeCooldownLine = getCivActiveCooldownSummary(team);
+  const activeRemainingLine = formatCivAbilityCooldownRemaining(team, activeCooldownRemaining);
   const activeHowLine = activeAbility ? getCivActiveHowItWorks(activeAbility.targeting) : "";
 
   const activeTooltip =
@@ -718,6 +739,11 @@ function FactionPassiveRailCell({ team, activeSlot }: { team: TeamName; activeSl
                 <span className="font-semibold text-cyan-200/95">Cooldown</span>{" "}
                 {activeCooldownLine.replace(/^Cooldown:\s*/i, "").trim()}
               </p>
+              {activeRemainingLine && (
+                <p className="rounded-lg border border-amber-500/35 bg-amber-950/40 px-2.5 py-1.5 font-semibold text-amber-100/95">
+                  {activeRemainingLine}
+                </p>
+              )}
               <p className="text-cyan-200/65">Hidden in tutorial and AI-vs-AI watch. Cancels merge/spy when armed.</p>
             </div>
           </div>
@@ -751,7 +777,9 @@ function FactionPassiveRailCell({ team, activeSlot }: { team: TeamName; activeSl
               activeSlot.onFire();
             }}
             disabled={!activeSlot.canFire}
-            className={`fr-rail-skill-btn fr-rail-skill-btn--active fr-rail-skill-btn--active-${activeAbility.targeting} game-ui flex h-11 w-11 shrink-0 items-center justify-center border text-lg shadow-lg transition-all duration-200 focus:outline-none focus:ring-2 ${
+            className={`fr-rail-skill-btn fr-rail-skill-btn--active fr-rail-skill-btn--active-${activeAbility.targeting} relative game-ui flex h-11 w-11 shrink-0 items-center justify-center border text-lg shadow-lg transition-all duration-200 focus:outline-none focus:ring-2 ${
+              civReadyNudge ? "fr-rail-skill-btn--civ-ready-nudge " : ""
+            }${
               activeSlot.canFire
                 ? activeSlot.isPrimed
                   ? "cc-cursor-faction-info border-amber-400/90 bg-amber-950/90 ring-1 ring-amber-400/50 hover:border-amber-300 hover:shadow-[0_0_16px_rgba(251,191,36,0.4)] focus:ring-amber-500/50"
@@ -763,13 +791,25 @@ function FactionPassiveRailCell({ team, activeSlot }: { team: TeamName; activeSl
                 ? activeSlot.isPrimed
                   ? `${activeAbility.name} — targeting (tap again to cancel)`
                   : `${activeAbility.name} — ${activeAbility.description}`
-                : `${activeAbility.name} — on cooldown or unavailable`
+                : civReadyNudge
+                  ? `${activeAbility.name} — ready again on your turn; tap when the cyan button is active.`
+                  : activeRemainingLine
+                    ? `${activeAbility.name} — ${activeRemainingLine}`
+                    : `${activeAbility.name} — on cooldown or unavailable`
             }
             title=""
             onMouseEnter={openActiveTip}
             onMouseLeave={scheduleActiveClose}
           >
             {activeAbility.icon}
+            {activeCooldownRemaining > 0 && (
+              <span
+                className="pointer-events-none absolute bottom-0.5 right-0.5 flex min-h-[1.1rem] min-w-[1.1rem] items-center justify-center rounded-md border border-amber-400/70 bg-black/90 px-0.5 font-mono text-[9px] font-bold leading-none tabular-nums text-amber-100 shadow-[0_1px_4px_rgba(0,0,0,0.6)] sm:text-[10px]"
+                aria-hidden
+              >
+                {activeCooldownRemaining > 99 ? "99+" : activeCooldownRemaining}
+              </span>
+            )}
           </button>
         )}
       </div>
@@ -835,7 +875,7 @@ function CodeConq() {
   );
   const { units, setUnits, turn, setTurn, log, setLog, round, setRound } = useBattleSession(() => ({
     units: prepareUnitsForBattle(
-      levels["Level1"],
+      balanceSkirmishUnitsEqualPerTeam(levels["Level1"]),
       buildPrepareBattleOptsForGame(null, "Level1", "Romans", "normal", ["Romans", "Barbarians"], false, [])
     ),
     turn: "Romans",
@@ -902,6 +942,11 @@ function CodeConq() {
   const [civOwnTurnOrdinalForAbility, setCivOwnTurnOrdinalForAbility] = useState<Partial<Record<TeamName, number>>>({});
   const [civAbilityUnlockAtOwnOrdinal, setCivAbilityUnlockAtOwnOrdinal] = useState<Partial<Record<TeamName, number>>>({});
   const [civAbilityUnlockAtBattleRound, setCivAbilityUnlockAtBattleRound] = useState<Partial<Record<TeamName, number>>>({});
+  const [civBattleTraps, setCivBattleTraps] = useState<CivBattleTrap[]>([]);
+  /** Brief highlight + log when a human faction’s civ ability comes off cooldown. */
+  const [civAbilityReadyNudgeTeam, setCivAbilityReadyNudgeTeam] = useState<TeamName | null>(null);
+  const civReadyPrevByTeamRef = useRef<Partial<Record<TeamName, boolean>>>({});
+  const civReadyNudgeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resetSpyState = () => {
     setSpyMode(false);
     setSpyCount(0);
@@ -910,6 +955,7 @@ function CodeConq() {
     setCivOwnTurnOrdinalForAbility({});
     setCivAbilityUnlockAtOwnOrdinal({});
     setCivAbilityUnlockAtBattleRound({});
+    setCivBattleTraps([]);
   };
   const [gridOrientation, setGridOrientation] = useState<GridOrientation>("north");
   const [isBattlefieldFullscreen, setIsBattlefieldFullscreen] = useState(false);
@@ -1133,9 +1179,14 @@ function CodeConq() {
 
     if (levels[currentLevel]) {
       const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, playerTeam);
+      const rawLevel = levels[currentLevel];
+      const useBalancedSkirmish =
+        tutorialMissionIndex === null &&
+        (gameMode === "single-player" || startScreen === "single-player-setup");
+      const toPrepare = useBalancedSkirmish ? balanceSkirmishUnitsEqualPerTeam(rawLevel) : rawLevel;
       setUnits(
         prepareUnitsForBattle(
-          levels[currentLevel],
+          toPrepare,
           buildPrepareBattleOptsForGame(
             gameMode,
             currentLevel,
@@ -1162,7 +1213,7 @@ function CodeConq() {
       setGridOrientation("north");
       setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
     }
-  }, [currentLevel]);
+  }, [currentLevel, gameMode, tutorialMissionIndex, startScreen]);
 
   useEffect(() => {
     if (!units.length) return;
@@ -1277,7 +1328,7 @@ function CodeConq() {
         Array.isArray(savedState.units)
           ? savedState.units.map(restoreUnitFromStorage).map(applyCivilizationPassive)
           : prepareUnitsForBattle(
-              levels["Level1"],
+              balanceSkirmishUnitsEqualPerTeam(levels["Level1"]),
               buildPrepareBattleOptsForGame(null, "Level1", "Romans", restoredAiDifficulty, ["Romans", "Barbarians"], false, [])
             )
       );
@@ -1312,6 +1363,19 @@ function CodeConq() {
         setCivAbilityUnlockAtOwnOrdinal(unlSaved);
         setCivAbilityUnlockAtBattleRound(parseTeamNumberRecord(savedState.civAbilityUnlockAtBattleRound));
       }
+      setCivBattleTraps(
+        Array.isArray(savedState.civBattleTraps)
+          ? (savedState.civBattleTraps as CivBattleTrap[]).filter(
+              (t) =>
+                t &&
+                typeof t.x === "number" &&
+                typeof t.y === "number" &&
+                typeof t.damage === "number" &&
+                typeof t.expiresAtRound === "number" &&
+                ALL_TEAMS.includes(t.ownerTeam as TeamName)
+            )
+          : []
+      );
       setCivAbilityModeTeam(null);
       setSelectedForMerge(savedState.selectedForMerge ? applyCivilizationPassive(restoreUnitFromStorage(savedState.selectedForMerge)) : null);
       const restoredGameMode = (savedState.gameMode ?? null) as GameMode | null;
@@ -1427,6 +1491,7 @@ function CodeConq() {
       civOwnTurnOrdinalForAbility,
       civAbilityUnlockAtOwnOrdinal,
       civAbilityUnlockAtBattleRound,
+      civBattleTraps,
       selectedForMerge: stripUnitForStorage(selectedForMerge),
       gameMode,
       startScreen,
@@ -1469,6 +1534,7 @@ function CodeConq() {
     civOwnTurnOrdinalForAbility,
     civAbilityUnlockAtOwnOrdinal,
     civAbilityUnlockAtBattleRound,
+    civBattleTraps,
     selectedForMerge,
     gameMode,
     startScreen,
@@ -1749,6 +1815,112 @@ function CodeConq() {
     if (!gameOptions.sfxEnabled) return;
     battleSfxRef.current?.play(key, options);
   };
+
+  useEffect(() => {
+    if (!gameStarted || isSetupMode || timedPlayLoserTeam || !gameMode) {
+      civReadyPrevByTeamRef.current = {};
+      if (civReadyNudgeTimeoutRef.current) {
+        clearTimeout(civReadyNudgeTimeoutRef.current);
+        civReadyNudgeTimeoutRef.current = null;
+      }
+      setCivAbilityReadyNudgeTeam(null);
+      return;
+    }
+    if (!units || units.length === 0) return;
+
+    if (gameMode === "ai-versus" || (gameMode === "custom-scenario" && customScenarioSpectator)) {
+      civReadyPrevByTeamRef.current = {};
+      return;
+    }
+
+    const aliveTeams = new Set(units.filter((u) => (u.hp ?? 0) > 0).map((u) => u.team as TeamName));
+
+    const isHumanFaction = (t: TeamName): boolean => {
+      if (gameMode === "multiplayer") return multiplayerTeams.includes(t);
+      if (gameMode === "single-player" || gameMode === "campaign") return t === playerTeam;
+      if (gameMode === "custom-scenario") return !customScenarioSpectator && t === playerTeam;
+      return false;
+    };
+
+    const snapshot: Partial<Record<TeamName, boolean>> = { ...civReadyPrevByTeamRef.current };
+    let nudged: TeamName | null = null;
+
+    for (const t of ALL_TEAMS) {
+      const def = CIV_ACTIVES[t];
+      if (!def || !aliveTeams.has(t)) {
+        snapshot[t] = false;
+        continue;
+      }
+      const nowReady = isCivAbilityReady(
+        t,
+        civOwnTurnOrdinalForAbility,
+        civAbilityUnlockAtOwnOrdinal,
+        round,
+        civAbilityUnlockAtBattleRound
+      );
+      const was = snapshot[t];
+      snapshot[t] = nowReady;
+
+      if (tutorialMissionIndex !== null) continue;
+      if (!isHumanFaction(t)) continue;
+      if (nowReady && was === false) {
+        nudged = t;
+        setLog((prev) => [
+          `${def.icon} ${t}: Civilization ability is ready again — tap the cyan skill on the left rail to arm ${def.name}.`,
+          ...prev
+        ]);
+        playBattleSfx("arrow-shot", { cooldownMs: 260, volumeMultiplier: 0.4, playbackRate: 1.12 });
+      }
+    }
+
+    civReadyPrevByTeamRef.current = snapshot;
+
+    if (nudged) {
+      if (civReadyNudgeTimeoutRef.current) clearTimeout(civReadyNudgeTimeoutRef.current);
+      setCivAbilityReadyNudgeTeam(nudged);
+      civReadyNudgeTimeoutRef.current = setTimeout(() => {
+        setCivAbilityReadyNudgeTeam(null);
+        civReadyNudgeTimeoutRef.current = null;
+      }, 5500);
+    }
+  }, [
+    gameStarted,
+    isSetupMode,
+    timedPlayLoserTeam,
+    gameMode,
+    units,
+    tutorialMissionIndex,
+    multiplayerTeams,
+    playerTeam,
+    customScenarioSpectator,
+    round,
+    civOwnTurnOrdinalForAbility,
+    civAbilityUnlockAtOwnOrdinal,
+    civAbilityUnlockAtBattleRound
+  ]);
+
+  useEffect(() => {
+    if (!gameStarted || isSetupMode) return;
+    setCivBattleTraps((prev) => clearExpiredCivTraps(prev, round));
+    setUnits((prev) => {
+      let changed = false;
+      const next = prev.map((u: any) => {
+        let o: any = u;
+        if (typeof o.civTrapAttackDebuffUntilRound === "number" && round >= o.civTrapAttackDebuffUntilRound) {
+          const { civTrapAttackDebuffPct: _a, civTrapAttackDebuffUntilRound: _b, ...rest } = o;
+          o = rest;
+          changed = true;
+        }
+        if (typeof o.civTrapVulnUntilRound === "number" && round >= o.civTrapVulnUntilRound) {
+          const { civTrapVulnPct: _c, civTrapVulnUntilRound: _d, ...rest2 } = o;
+          o = rest2;
+          changed = true;
+        }
+        return o;
+      });
+      return changed ? next : prev;
+    });
+  }, [round, gameStarted, isSetupMode]);
 
   const playTroopSelectSfx = (unit: any) => {
     if (!gameOptions.sfxEnabled) return;
@@ -2289,7 +2461,24 @@ function CodeConq() {
               x: tile.x,
               y: tile.y,
               score: 70,
-              reason: "deployed a legion reinforcement"
+              reason: "deployed a reinforcement recruit"
+            };
+          }
+        }
+      } else if (civDef.targeting === "place_trap") {
+        const tile = pickAiCivSummonTile(battleUnits, currentTeam, battlefieldSize, battlefieldSize);
+        const taken = tile ? civBattleTraps.some((t) => t.x === tile.x && t.y === tile.y) : true;
+        if (tile && !taken && regScore < 96) {
+          const allies = battleUnits.filter((u) => u.team === currentTeam && u.hp > 0).length;
+          const enemies = enemyUnits.length;
+          if (allies <= enemies + 2 || regScore < 72) {
+            return {
+              type: "civ_ability",
+              sub: "trap",
+              x: tile.x,
+              y: tile.y,
+              score: 66,
+              reason: "concealed a trap on the approach"
             };
           }
         }
@@ -2444,25 +2633,31 @@ function CodeConq() {
     const hint =
       def.targeting === "summon_unit"
         ? `Click an empty tile within ${CIV_VOLLEY_RANGE} steps of a living ally to deploy a ${def.summonRole ?? "unit"}.`
-        : def.targeting === "enemy_volley"
-          ? `Click an enemy in volley range (≤${CIV_VOLLEY_RANGE} tiles from any ally).`
-          : `Click a living ally to reinforce.`;
+        : def.targeting === "place_trap"
+          ? `Click an empty tile within ${CIV_VOLLEY_RANGE} steps of a living ally to lay a trap (enemies take damage when they move onto it).`
+          : def.targeting === "enemy_volley"
+            ? `Click an enemy in volley range (≤${CIV_VOLLEY_RANGE} tiles from any ally).`
+            : `Click a living ally to reinforce.`;
     setLog((prev) => [`${def.icon} ${def.name}: ${hint} Cancel: tap the ability button again.`, ...prev]);
   };
   const civSummonValidTileKeys = useMemo(() => {
     const cm = civAbilityModeTeam;
     if (!cm) return new Set<string>();
     const def = CIV_ACTIVES[cm];
-    if (def.targeting !== "summon_unit" || !def.summonRole) return new Set<string>();
+    const needSummon = def.targeting === "summon_unit" && def.summonRole;
+    const needTrap = def.targeting === "place_trap";
+    if (!needSummon && !needTrap) return new Set<string>();
     const sz = gameOptions.battlefieldSize;
     const keys = new Set<string>();
     for (let xi = 0; xi < sz; xi++) {
       for (let yi = 0; yi < sz; yi++) {
-        if (isSummonReinforcementTileValid(units, cm, xi, yi)) keys.add(`${xi},${yi}`);
+        if (!isSummonReinforcementTileValid(units, cm, xi, yi)) continue;
+        if (civBattleTraps.some((t) => t.x === xi && t.y === yi)) continue;
+        keys.add(`${xi},${yi}`);
       }
     }
     return keys;
-  }, [civAbilityModeTeam, units, gameOptions.battlefieldSize]);
+  }, [civAbilityModeTeam, units, gameOptions.battlefieldSize, civBattleTraps]);
   const troopReferenceStats = useMemo(() => {
     const references: Record<string, TroopReferenceStats> = {};
 
@@ -2631,9 +2826,11 @@ function CodeConq() {
 
       if (mode === "single-player" || mode === "campaign") {
         const nextPlayerTeam = getValidLevelPlayerTeam(currentLevel, pt);
+        const raw = levels[currentLevel];
+        const leveled = mode === "single-player" ? balanceSkirmishUnitsEqualPerTeam(raw) : raw;
         setUnits(
           prepareUnitsForBattle(
-            levels[currentLevel],
+            leveled,
             buildPrepareBattleOptsForGame(mode, currentLevel, nextPlayerTeam, aiD, multiplayerTeams, false, [])
           )
         );
@@ -2789,16 +2986,33 @@ function CodeConq() {
       if (aiDecision.type === "civ_ability") {
         const team = currentTeam as TeamName;
         const def = CIV_ACTIVES[team];
-        const useOrd = civOwnTurnOrdinalForAbility[team] ?? 0;
         if (aiDecision.sub === "summon" && def?.summonRole) {
           const raw = createSummonedTroopFromRole(team, def.summonRole, aiDecision.x, aiDecision.y);
           if (raw) {
             const finalized = finalizeSetupPlacedTroop(raw);
             setUnits((prev) => [...prev, finalized]);
-            const cdRounds = def.cooldownBattleRounds ?? 20;
+            const cdRounds = def.cooldownBattleRounds ?? CIV_ABILITY_COOLDOWN_OWN_TURNS;
             setCivAbilityUnlockAtBattleRound((p) => ({ ...p, [team]: round + cdRounds }));
             setLog((existingLog) => [
               `[Civilization Ability] ${def.icon} ${team} — ${def.name}! ${def.summonRole} joins the battle. Cooldown: ${cdRounds} battle rounds.`,
+              `${team} ${aiDecision.reason}.`,
+              ...existingLog
+            ]);
+            triggerCellFeedback(`${aiDecision.x},${aiDecision.y}`, "move", 2000);
+            advanceAiTurn(team);
+            return;
+          }
+          advanceAiTurn(team);
+          return;
+        }
+        if (aiDecision.sub === "trap" && def?.targeting === "place_trap") {
+          const trap = makeCivTrapForTeam(team, aiDecision.x, aiDecision.y, round);
+          if (trap) {
+            setCivBattleTraps((p) => [...p, trap]);
+            const cdRounds = def.cooldownBattleRounds ?? CIV_ABILITY_COOLDOWN_OWN_TURNS;
+            setCivAbilityUnlockAtBattleRound((p) => ({ ...p, [team]: round + cdRounds }));
+            setLog((existingLog) => [
+              `[Civilization Ability] ${def.icon} ${team} — ${def.name}! Trap concealed. Cooldown: ${cdRounds} battle rounds.`,
               `${team} ${aiDecision.reason}.`,
               ...existingLog
             ]);
@@ -2820,8 +3034,13 @@ function CodeConq() {
           return;
         }
         setUnits(res.units);
-        setCivAbilityUnlockAtOwnOrdinal((p) => ({ ...p, [team]: civAbilityUnlockOrdinal(useOrd) }));
-        setLog((existingLog) => [res.logLine, `${team} ${aiDecision.reason}.`, ...existingLog]);
+        const cdRoundsVolley = def.cooldownBattleRounds ?? CIV_ABILITY_COOLDOWN_OWN_TURNS;
+        setCivAbilityUnlockAtBattleRound((p) => ({ ...p, [team]: round + cdRoundsVolley }));
+        setLog((existingLog) => [
+          `${res.logLine} Cooldown: ${cdRoundsVolley} battle rounds.`,
+          `${team} ${aiDecision.reason}.`,
+          ...existingLog
+        ]);
         if (aiDecision.sub === "volley") {
           triggerCellFeedback(`${target.x},${target.y}`, "hit", HIT_FLASH_MS);
         } else {
@@ -2840,20 +3059,53 @@ function CodeConq() {
           return;
         }
 
-        const movedAttacker = aiDecision.moveTo ? { ...actingUnit, ...aiDecision.moveTo } : actingUnit;
-        const attackOutcome = getAttackDamage(movedAttacker, targetUnit, units, terrainEffectMap, {
+        let workingUnits = units.map((unit: any) =>
+          unit.id === actingUnit.id && aiDecision.moveTo
+            ? { ...unit, x: aiDecision.moveTo.x, y: aiDecision.moveTo.y }
+            : unit
+        );
+        let trapsWorking = civBattleTraps;
+        const trapLogsAi: string[] = [];
+        if (aiDecision.moveTo) {
+          const mover = workingUnits.find((u: any) => u.id === actingUnit.id);
+          if (mover) {
+            const tr = applyCivTrapOnEntry(trapsWorking, workingUnits, mover, aiDecision.moveTo.x, aiDecision.moveTo.y, round);
+            trapsWorking = tr.traps;
+            workingUnits = tr.units;
+            trapLogsAi.push(...tr.logLines);
+          }
+        }
+        if (trapLogsAi.length) {
+          setCivBattleTraps(trapsWorking);
+          setLog((existingLog) => [...trapLogsAi, ...existingLog]);
+        }
+        if (!workingUnits.some((u: any) => u.id === actingUnit.id && u.hp > 0)) {
+          setUnits(workingUnits);
+          advanceAiTurn(currentTeam as TeamName);
+          return;
+        }
+        const actingLive = workingUnits.find((u: any) => u.id === actingUnit.id)!;
+        const targetLive = workingUnits.find((u: any) => u.id === targetUnit.id);
+        if (!targetLive || targetLive.hp <= 0) {
+          setUnits(workingUnits);
+          advanceAiTurn(currentTeam as TeamName);
+          return;
+        }
+
+        const movedAttacker = aiDecision.moveTo ? { ...actingLive, ...aiDecision.moveTo } : actingLive;
+        const attackOutcome = getAttackDamage(movedAttacker, targetLive, workingUnits, terrainEffectMap, {
           round,
           attackerMovedThisTurn: Boolean(aiDecision.moveTo)
         });
-        const remainingAmmo = actingUnit.ammo && actingUnit.ammo > 0 ? actingUnit.ammo - 1 : actingUnit.ammo;
-        const updatedTargetHp = targetUnit.hp - attackOutcome.damage;
-        const runsOutOfAmmo = Boolean(actingUnit.ammo && actingUnit.ammo > 0 && remainingAmmo === 0);
-        const usedProjectileAttack = Boolean(actingUnit.ammo && actingUnit.ammo > 0);
+        const remainingAmmo = actingLive.ammo && actingLive.ammo > 0 ? actingLive.ammo - 1 : actingLive.ammo;
+        const updatedTargetHp = targetLive.hp - attackOutcome.damage;
+        const runsOutOfAmmo = Boolean(actingLive.ammo && actingLive.ammo > 0 && remainingAmmo === 0);
+        const usedProjectileAttack = Boolean(actingLive.ammo && actingLive.ammo > 0);
         const resolveDelayMs = getAttackResolutionDelayMs(usedProjectileAttack);
 
         aiAttackAnimatingRef.current = true;
-        setUnits((prev) =>
-          prev.map((unit: any) => {
+        setUnits(
+          workingUnits.map((unit: any) => {
             if (unit.id === actingUnit.id) {
               return {
                 ...unit,
@@ -2870,7 +3122,7 @@ function CodeConq() {
           triggerCellFeedback(`${aiDecision.moveTo.x},${aiDecision.moveTo.y}`, "move", 2000);
         }
 
-        triggerAttackFeedback(movedAttacker, targetUnit, attackOutcome, {
+        triggerAttackFeedback(movedAttacker, targetLive, attackOutcome, {
           attackerPosition: aiDecision.moveTo ?? null,
           updatedTargetHp,
           isProjectile: usedProjectileAttack,
@@ -2881,7 +3133,7 @@ function CodeConq() {
           setUnits((prev) =>
             prev
               .map((unit: any) => {
-                if (unit.id === targetUnit.id) {
+                if (unit.id === targetLive.id) {
                   return {
                     ...unit,
                     hp: updatedTargetHp
@@ -2894,34 +3146,34 @@ function CodeConq() {
 
           setLog((existingLog) => {
             const nextLog = [
-              buildAttackLogLine(movedAttacker, targetUnit, attackOutcome, {
+              buildAttackLogLine(movedAttacker, targetLive, attackOutcome, {
                 closedIn: Boolean(aiDecision.moveTo),
-                remainingAmmo: actingUnit.ammo && actingUnit.ammo > 0 ? remainingAmmo ?? 0 : undefined
+                remainingAmmo: actingLive.ammo && actingLive.ammo > 0 ? remainingAmmo ?? 0 : undefined
               }),
-              `${actingUnit.name} (${currentTeam}) ${aiDecision.reason}.`,
+              `${actingLive.name} (${currentTeam}) ${aiDecision.reason}.`,
               ...existingLog
             ];
 
             if (runsOutOfAmmo) {
-              nextLog.unshift(`${actingUnit.name} is out of ammo! Switching to melee combat.`);
+              nextLog.unshift(`${actingLive.name} is out of ammo! Switching to melee combat.`);
             }
 
             if (updatedTargetHp <= 0) {
-              nextLog.unshift(`${targetUnit.name} (${targetUnit.team}) was killed!`);
+              nextLog.unshift(`${targetLive.name} (${targetLive.team}) was killed!`);
             }
 
             return nextLog;
           });
 
           if (attackOutcome.abilityTags.includes("Charge")) {
-            setLog((existingLog) => [`${actingUnit.name} (${currentTeam}) crashed into the line with a charge!`, ...existingLog]);
+            setLog((existingLog) => [`${actingLive.name} (${currentTeam}) crashed into the line with a charge!`, ...existingLog]);
           }
 
-          if (updatedTargetHp > 0 && updatedTargetHp <= Math.ceil(targetUnit.maxHp * 0.35)) {
-            setLog((existingLog) => [`${targetUnit.name} (${targetUnit.team}) is shaken and losing morale!`, ...existingLog]);
+          if (updatedTargetHp > 0 && updatedTargetHp <= Math.ceil(targetLive.maxHp * 0.35)) {
+            setLog((existingLog) => [`${targetLive.name} (${targetLive.team}) is shaken and losing morale!`, ...existingLog]);
           }
 
-          applyAttackOutcomeFeedback(targetUnit, updatedTargetHp, 0.35);
+          applyAttackOutcomeFeedback(targetLive, updatedTargetHp, 0.35);
           advanceAiTurn(currentTeam as TeamName);
           aiAttackAnimatingRef.current = false;
         }, resolveDelayMs);
@@ -2931,16 +3183,21 @@ function CodeConq() {
         const actingUnit = units.find((unit: any) => unit.id === aiDecision.unitId);
         if (actingUnit) {
           const terrainLabel = TERRAIN_LABELS[getTerrainAt(battlefieldTerrain, aiDecision.moveTo.x, aiDecision.moveTo.y)];
-          setUnits((prev) =>
-            prev.map((unit: any) =>
-              unit.id === actingUnit.id ? { ...unit, x: aiDecision.moveTo.x, y: aiDecision.moveTo.y } : unit
-            )
+          let moved = units.map((unit: any) =>
+            unit.id === actingUnit.id ? { ...unit, x: aiDecision.moveTo.x, y: aiDecision.moveTo.y } : unit
           );
-          setLog((existingLog) => [
-            `${actingUnit.name} (${currentTeam}) ${aiDecision.reason}.`,
-            `${actingUnit.name} (${currentTeam}) moved onto ${terrainLabel}`,
-            ...existingLog
-          ]);
+          const mover = moved.find((u: any) => u.id === actingUnit.id)!;
+          const tr = applyCivTrapOnEntry(civBattleTraps, moved, mover, aiDecision.moveTo.x, aiDecision.moveTo.y, round);
+          moved = tr.units;
+          setCivBattleTraps(tr.traps);
+          const survivor = moved.find((u: any) => u.id === actingUnit.id);
+          const lines: string[] = [...tr.logLines];
+          if (survivor && survivor.hp > 0) {
+            lines.push(`${survivor.name} (${currentTeam}) ${aiDecision.reason}.`);
+            lines.push(`${survivor.name} (${currentTeam}) moved onto ${terrainLabel}`);
+          }
+          setLog((existingLog) => [...lines, ...existingLog]);
+          setUnits(moved);
           triggerCellFeedback(`${aiDecision.moveTo.x},${aiDecision.moveTo.y}`, "move", 2000);
         }
       }
@@ -2964,7 +3221,8 @@ function CodeConq() {
     battlefieldTerrain,
     civOwnTurnOrdinalForAbility,
     civAbilityUnlockAtOwnOrdinal,
-    civAbilityUnlockAtBattleRound
+    civAbilityUnlockAtBattleRound,
+    civBattleTraps
   ]);
 
   useBattlefieldViewport({
@@ -3288,27 +3546,60 @@ function CodeConq() {
     }
 
     const attackerPosition = meleeAttackDestination ? { x: meleeAttackDestination.x, y: meleeAttackDestination.y } : null;
-    const attackingUnit = attackerPosition ? { ...selected, ...attackerPosition } : selected;
-    const nextClickedHp = clicked.hp;
-    if (meleeAttackDestination) {
-      attackingUnit.x = meleeAttackDestination.x;
-      attackingUnit.y = meleeAttackDestination.y;
+
+    let workingUnits = units.map((unit: any) =>
+      unit.id === selected.id && attackerPosition ? { ...unit, ...attackerPosition } : unit
+    );
+    let trapsWorking = civBattleTraps;
+    const trapLogBatch: string[] = [];
+    if (attackerPosition) {
+      const mover = workingUnits.find((u: any) => u.id === selected.id);
+      if (mover) {
+        const tr = applyCivTrapOnEntry(trapsWorking, workingUnits, mover, attackerPosition.x, attackerPosition.y, round);
+        trapsWorking = tr.traps;
+        workingUnits = tr.units;
+        trapLogBatch.push(...tr.logLines);
+      }
+    }
+    if (trapLogBatch.length) {
+      setCivBattleTraps(trapsWorking);
+      setLog((prevLog) => [...trapLogBatch, ...prevLog]);
+    }
+    if (!workingUnits.some((u: any) => u.id === selected.id && u.hp > 0)) {
+      setUnits(workingUnits);
+      setSelectedId(null);
+      advanceTurn();
+      battleResolutionPendingRef.current = false;
+      return;
     }
 
-    const attackOutcome = getAttackDamage(attackingUnit, clicked, units, terrainEffectMap, {
+    const selectedLive = workingUnits.find((u: any) => u.id === selected.id)!;
+    const clickedLive = workingUnits.find((u: any) => u.id === clicked.id) ?? clicked;
+    if (clickedLive.hp <= 0) {
+      setUnits(workingUnits);
+      setSelectedId(null);
+      advanceTurn();
+      battleResolutionPendingRef.current = false;
+      return;
+    }
+
+    const attackingUnit = attackerPosition ? { ...selectedLive, ...attackerPosition } : selectedLive;
+    const nextClickedHp = clickedLive.hp;
+
+    const attackOutcome = getAttackDamage(attackingUnit, clickedLive, workingUnits, terrainEffectMap, {
       round,
       attackerMovedThisTurn: Boolean(attackerPosition)
     });
     const dmg = attackOutcome.damage;
     const updatedTargetHp = nextClickedHp - dmg;
-    const nextAmmo = selected.ammo && selected.ammo > 0 ? selected.ammo - 1 : selected.ammo;
-    const runsOutOfAmmo = Boolean(selected.ammo && selected.ammo > 0 && nextAmmo === 0);
-    const usedProjectileAttack = Boolean(selected.ammo && selected.ammo > 0);
+    const nextAmmo = selectedLive.ammo && selectedLive.ammo > 0 ? selectedLive.ammo - 1 : selectedLive.ammo;
+    const runsOutOfAmmo = Boolean(selectedLive.ammo && selectedLive.ammo > 0 && nextAmmo === 0);
+    const usedProjectileAttack = Boolean(selectedLive.ammo && selectedLive.ammo > 0);
     const resolveDelayMs = getAttackResolutionDelayMs(usedProjectileAttack);
 
     battleResolutionPendingRef.current = true;
-    setUnits((prev) =>
-      prev.map((unit: any) => {
+    setUnits(
+      workingUnits.map((unit: any) => {
         if (unit.id === selected.id) {
           return {
             ...unit,
@@ -3325,7 +3616,7 @@ function CodeConq() {
       triggerCellFeedback(`${meleeAttackDestination.x},${meleeAttackDestination.y}`, "move", 2000);
     }
 
-    triggerAttackFeedback(attackingUnit, clicked, attackOutcome, {
+    triggerAttackFeedback(attackingUnit, clickedLive, attackOutcome, {
       attackerPosition,
       updatedTargetHp,
       isProjectile: usedProjectileAttack,
@@ -3336,7 +3627,7 @@ function CodeConq() {
       setUnits((prev) =>
         prev
           .map((unit: any) => {
-            if (unit.id === clicked.id) {
+            if (unit.id === clickedLive.id) {
               return {
                 ...unit,
                 hp: updatedTargetHp
@@ -3349,16 +3640,16 @@ function CodeConq() {
 
       if (usedProjectileAttack) {
         setLog((prevLog) => [
-          buildAttackLogLine(attackingUnit, clicked, attackOutcome, { remainingAmmo: nextAmmo ?? 0 }),
+          buildAttackLogLine(attackingUnit, clickedLive, attackOutcome, { remainingAmmo: nextAmmo ?? 0 }),
           ...prevLog
         ]);
 
         if (runsOutOfAmmo) {
-          setLog((prevLog) => [`${selected.name} is out of ammo! Switching to melee combat at half attack.`, ...prevLog]);
+          setLog((prevLog) => [`${selectedLive.name} is out of ammo! Switching to melee combat at half attack.`, ...prevLog]);
         }
       } else {
         setLog((prevLog) => [
-          buildAttackLogLine(attackingUnit, clicked, attackOutcome, { closedIn: Boolean(meleeAttackDestination) }),
+          buildAttackLogLine(attackingUnit, clickedLive, attackOutcome, { closedIn: Boolean(meleeAttackDestination) }),
           ...prevLog
         ]);
       }
@@ -3367,15 +3658,15 @@ function CodeConq() {
         setLog((prevLog) => [`${attackingUnit.name} (${attackingUnit.team}) crashed into the line with a charge!`, ...prevLog]);
       }
 
-      if (updatedTargetHp > 0 && updatedTargetHp <= Math.ceil(clicked.maxHp * 0.35)) {
-        setLog((prevLog) => [`${clicked.name} (${clicked.team}) is shaken and losing morale!`, ...prevLog]);
+      if (updatedTargetHp > 0 && updatedTargetHp <= Math.ceil(clickedLive.maxHp * 0.35)) {
+        setLog((prevLog) => [`${clickedLive.name} (${clickedLive.team}) is shaken and losing morale!`, ...prevLog]);
       }
 
       if (updatedTargetHp <= 0) {
-        setLog((prevLog) => [`${clicked.name} (${clicked.team}) was killed!`, ...prevLog]);
+        setLog((prevLog) => [`${clickedLive.name} (${clickedLive.team}) was killed!`, ...prevLog]);
       }
 
-      applyAttackOutcomeFeedback(clicked, updatedTargetHp, 0.35);
+      applyAttackOutcomeFeedback(clickedLive, updatedTargetHp, 0.35);
       setSelectedId(null);
       advanceTurn();
       battleResolutionPendingRef.current = false;
@@ -3470,12 +3761,46 @@ function CodeConq() {
         }
         const finalized = finalizeSetupPlacedTroop(raw);
         setUnits((prev) => [...prev, finalized]);
-        const cdRounds = def.cooldownBattleRounds ?? 20;
+        const cdRounds = def.cooldownBattleRounds ?? CIV_ABILITY_COOLDOWN_OWN_TURNS;
         setCivAbilityUnlockAtBattleRound((p) => ({ ...p, [team]: round + cdRounds }));
         setCivAbilityModeTeam(null);
         setSelectedId(null);
         setLog((prev) => [
           `[Civilization Ability] ${def.icon} ${team} — ${def.name}! ${def.summonRole} joins the battle. Cooldown: ${cdRounds} battle rounds.`,
+          ...prev
+        ]);
+        advanceTurn();
+        return;
+      }
+
+      if (def.targeting === "place_trap") {
+        if (clicked) {
+          setLog((prev) => [`Lay traps on empty ground — not on ${clicked.name}.`, ...prev]);
+          return;
+        }
+        if (!isSummonReinforcementTileValid(units, team, x, y)) {
+          setLog((prev) => [
+            `Invalid tile — empty cell within ${CIV_VOLLEY_RANGE} steps of a living ally.`,
+            ...prev
+          ]);
+          return;
+        }
+        if (civBattleTraps.some((t) => t.x === x && t.y === y)) {
+          setLog((prev) => [`That tile already has a trap.`, ...prev]);
+          return;
+        }
+        const trap = makeCivTrapForTeam(team, x, y, round);
+        if (!trap) {
+          setLog((prev) => [`Could not place trap.`, ...prev]);
+          return;
+        }
+        setCivBattleTraps((p) => [...p, trap]);
+        const cdRounds = def.cooldownBattleRounds ?? CIV_ABILITY_COOLDOWN_OWN_TURNS;
+        setCivAbilityUnlockAtBattleRound((p) => ({ ...p, [team]: round + cdRounds }));
+        setCivAbilityModeTeam(null);
+        setSelectedId(null);
+        setLog((prev) => [
+          `[Civilization Ability] ${def.icon} ${team} — ${def.name}! Trap concealed. Cooldown: ${cdRounds} battle rounds.`,
           ...prev
         ]);
         advanceTurn();
@@ -3500,14 +3825,14 @@ function CodeConq() {
         setLog((prev) => [`Reinforcement — pick one of your living units.`, ...prev]);
         return;
       }
-      const useOrd = civOwnTurnOrdinalForAbility[team] ?? 0;
       const res = applyCivAbilityOnTarget(units, team, clicked, battlefieldTerrain, round);
       if (!res) return;
       setUnits(res.units);
-      setCivAbilityUnlockAtOwnOrdinal((p) => ({ ...p, [team]: civAbilityUnlockOrdinal(useOrd) }));
+      const cdRounds = def.cooldownBattleRounds ?? CIV_ABILITY_COOLDOWN_OWN_TURNS;
+      setCivAbilityUnlockAtBattleRound((p) => ({ ...p, [team]: round + cdRounds }));
       setCivAbilityModeTeam(null);
       setSelectedId(null);
-      setLog((prev) => [res.logLine, ...prev]);
+      setLog((prev) => [`${res.logLine} Cooldown: ${cdRounds} battle rounds.`, ...prev]);
       advanceTurn();
       return;
     }
@@ -3601,9 +3926,26 @@ function CodeConq() {
           setMeleeApproachPendingTargetId(null);
         }
         if (battleMoveDestinationKeys?.has(key) && !getUnit(x, y)) {
-          setUnits((prev) => prev.map((u: any) => u.id === selected.id ? { ...u, x, y } : u));
+          let moved = units.map((u: any) => (u.id === selected.id ? { ...u, x, y } : u));
+          const mover = moved.find((u: any) => u.id === selected.id)!;
+          const tr = applyCivTrapOnEntry(civBattleTraps, moved, mover, x, y, round);
+          moved = tr.units;
+          setCivBattleTraps(tr.traps);
+          if (tr.logLines.length) setLog((prevLog) => [...tr.logLines, ...prevLog]);
+          const survivor = moved.find((u: any) => u.id === selected.id);
+          if (!survivor || survivor.hp <= 0) {
+            setUnits(moved);
+            setInspectedTile(null);
+            setSelectedId(null);
+            advanceTurn();
+            return;
+          }
+          setUnits(moved);
           triggerCellFeedback(`${x},${y}`, "move", 2000);
-          setLog((prevLog) => [`${selected.name} (${selected.team}) moved onto ${TERRAIN_LABELS[getTerrainAt(battlefieldTerrain, x, y)]}`, ...prevLog]);
+          setLog((prevLog) => [
+            `${survivor.name} (${survivor.team}) moved onto ${TERRAIN_LABELS[getTerrainAt(battlefieldTerrain, x, y)]}`,
+            ...prevLog
+          ]);
           setInspectedTile(null);
           setSelectedId(null);
           advanceTurn();
@@ -3985,7 +4327,7 @@ function CodeConq() {
     setCurrentLevel("Level1");
     setUnits(
       prepareUnitsForBattle(
-        levels.Level1,
+        balanceSkirmishUnitsEqualPerTeam(levels.Level1),
         buildPrepareBattleOptsForGame(null, "Level1", "Romans", aiDifficulty, ["Romans", "Barbarians"], false, [])
       )
     );
@@ -4088,7 +4430,7 @@ function CodeConq() {
     setIsSetupMode(false);
     setUnits(
       prepareUnitsForBattle(
-        levels[levelKey],
+        balanceSkirmishUnitsEqualPerTeam(levels[levelKey]),
         buildPrepareBattleOptsForGame(
           "single-player",
           levelKey,
@@ -4237,7 +4579,7 @@ function CodeConq() {
     setCurrentLevel("Level1");
     setUnits(
       prepareUnitsForBattle(
-        levels["Level1"],
+        balanceSkirmishUnitsEqualPerTeam(levels["Level1"]),
         buildPrepareBattleOptsForGame(null, "Level1", "Romans", aiDifficulty, ["Romans", "Barbarians"], false, [])
       )
     );
@@ -4285,7 +4627,7 @@ function CodeConq() {
       setIsSetupMode(false);
       setUnits(
         rerollUnits(
-          levels[currentLevel],
+          balanceSkirmishUnitsEqualPerTeam(levels[currentLevel]),
           buildPrepareBattleOptsForGame(
             "single-player",
             currentLevel,
@@ -5204,12 +5546,40 @@ function CodeConq() {
       key: "special",
       title: "Special Systems",
       subtitle:
-        "Ammo, hybrid troops, civilization passives and left-rail faction actives, battle feedback, optional timed play (bank + move clock), terrain lock, scrollable battle log, and tutorial lesson notes.",
+        "Ammo, hybrid troops, civilization passives, left-rail actives (with a live cooldown/effect table), battle feedback, optional timed play, terrain lock, battle log, tutorial notes.",
       badge: "Expanded",
       badgeClass: "border-cyan-700/50 bg-cyan-500/10 text-cyan-100",
       tabClass: "border-cyan-700/40 bg-cyan-950/20 text-cyan-100",
       panel: (
         <div className="space-y-4">
+          <div className="rounded-2xl border border-cyan-500/45 bg-gradient-to-br from-cyan-950/35 to-black/35 px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-cyan-100">Civilization actives — live stats</div>
+              <span className="rounded-full border border-cyan-600/50 bg-black/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-200/90">
+                Synced with balance data
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-cyan-100/72">
+              Each faction uses a{" "}
+              <span className="font-semibold text-cyan-100/90">full battle-round</span> cooldown (counted when the turn order
+              returns to the first side in play). Reinforcement heals are capped at the unit&apos;s max HP. When a cooldown ends,
+              the battle log and cyan left-rail button pulse remind you the skill is ready again.
+            </p>
+            <ul className="mt-3 grid list-none gap-2 sm:grid-cols-2">
+              {getCivActiveHandbookRows().map((row) => (
+                <li
+                  key={row.team}
+                  className="rounded-xl border border-cyan-800/45 bg-black/35 px-3 py-2 text-[11px] leading-snug text-cyan-50/88 sm:text-xs"
+                >
+                  <span className="mr-1" aria-hidden>
+                    {row.icon}
+                  </span>
+                  <span className="font-semibold text-cyan-100">{row.team}</span>
+                  <span className="text-cyan-200/75"> — {row.summary}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
           <div className="grid gap-3">
             {ADDITIONAL_MECHANICS_INFO.map((mechanic) => (
               <div key={mechanic.title} className="rounded-2xl border border-cyan-700/35 bg-black/20 px-4 py-4">
@@ -5813,6 +6183,23 @@ function CodeConq() {
 
     if (startScreen === "single-player-setup") {
       const setupTeams = getLevelTeams(currentLevel);
+      const pickRandomSkirmishLevel = (): keyof typeof levels | null => {
+        const keys = sortedSkirmishLevelKeys;
+        if (keys.length === 0) return null;
+        return keys[Math.floor(Math.random() * keys.length)]!;
+      };
+      const randomizeSkirmishLevel = () => {
+        const pick = pickRandomSkirmishLevel();
+        if (!pick) return;
+        setCurrentLevel(pick);
+        const nextTeam = getValidLevelPlayerTeam(pick, playerTeam);
+        if (nextTeam !== playerTeam) setPlayerTeam(nextTeam);
+      };
+      const beginRandomSinglePlayerBattle = () => {
+        const pick = pickRandomSkirmishLevel();
+        if (!pick) return;
+        beginSinglePlayerBattle(pick, playerTeam);
+      };
       return (
         <>
           <div
@@ -5833,20 +6220,33 @@ function CodeConq() {
                 original sixteen levels.
               </p>
               <div className="mt-6 flex flex-col gap-4">
-                <label className="flex flex-col gap-1.5 text-sm text-amber-100/90">
+                <div className="flex flex-col gap-1.5 text-sm text-amber-100/90">
                   <span className="font-semibold text-amber-200/95">Level</span>
-                  <select
-                    className="rounded-lg border border-amber-800/50 bg-black/40 px-3 py-2.5 text-base text-yellow-100"
-                    value={currentLevel}
-                    onChange={(e) => setCurrentLevel(e.target.value as keyof typeof levels)}
-                  >
-                    {sortedSkirmishLevelKeys.map((key) => (
-                      <option key={key} value={key}>
-                        {key} — {LEVEL_MATCHUP_LABELS[key]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                    <label className="min-w-0 flex-1">
+                      <span className="sr-only">Skirmish map</span>
+                      <select
+                        className="h-full w-full rounded-lg border border-amber-800/50 bg-black/40 px-3 py-2.5 text-base text-yellow-100"
+                        value={currentLevel}
+                        onChange={(e) => setCurrentLevel(e.target.value as keyof typeof levels)}
+                      >
+                        {sortedSkirmishLevelKeys.map((key) => (
+                          <option key={key} value={key}>
+                            {key} — {LEVEL_MATCHUP_LABELS[key]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={randomizeSkirmishLevel}
+                      className="battle-button shrink-0 rounded-lg border border-amber-700/55 bg-amber-950/35 px-4 py-2.5 text-sm font-semibold text-amber-100 hover:bg-amber-900/45 sm:self-auto"
+                      title="Pick a random skirmish map"
+                    >
+                      Random map
+                    </button>
+                  </div>
+                </div>
                 <label className="flex flex-col gap-1.5 text-sm text-amber-100/90">
                   <span className="font-semibold text-amber-200/95">Your faction</span>
                   <select
@@ -5862,13 +6262,22 @@ function CodeConq() {
                   </select>
                 </label>
               </div>
-              <button
-                type="button"
-                onClick={() => beginSinglePlayerBattle(currentLevel, playerTeam)}
-                className="battle-button mt-8 w-full rounded-xl border border-amber-500/70 bg-amber-950/50 px-4 py-3.5 text-base font-bold text-amber-50 shadow-[0_0_24px_rgba(245,158,11,0.18)] hover:bg-amber-900/55"
-              >
-                Start battle
-              </button>
+              <div className="mt-8 flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => beginSinglePlayerBattle(currentLevel, playerTeam)}
+                  className="battle-button w-full rounded-xl border border-amber-500/70 bg-amber-950/50 px-4 py-3.5 text-base font-bold text-amber-50 shadow-[0_0_24px_rgba(245,158,11,0.18)] hover:bg-amber-900/55"
+                >
+                  Start battle
+                </button>
+                <button
+                  type="button"
+                  onClick={beginRandomSinglePlayerBattle}
+                  className="battle-button w-full rounded-xl border border-amber-800/55 bg-black/30 px-4 py-3 text-base font-semibold text-amber-100/95 hover:border-amber-600/50 hover:bg-amber-950/25"
+                >
+                  Random map & start
+                </button>
+              </div>
             </div>
             <AppVersionCorner />
           </div>
@@ -6085,10 +6494,13 @@ function CodeConq() {
                     <p className="mt-3 text-sm leading-7 text-yellow-50/85">
                       Strategos is a tactical grid war game where historical-inspired factions clash across changing terrain. Each
                       battle is shaped by troop roles, linked formation lines, civilization passives, cooldown faction
-                      abilities (volley / reinforcement on the left rail), signature abilities,
+                      abilities (volley / reinforcement / Roman summon on the left rail—reinforcement restores{" "}
+                      <span className="font-semibold text-amber-200/90">250 HP</span> per use, capped at the unit&apos;s max, plus
+                      any attack bonus on the card; battle-round cooldown per civ—with a live stat table under Mechanics →
+                      Special Systems), signature abilities,
                       and battlefield feedback that helps you read momentum in real time. Open{" "}
                       <span className="font-semibold text-amber-200/95">Game Menu → Mechanics</span> anytime for the full handbook
-                      (merge, spy, faction abilities, skirmish setup, tutorial notes, terrain, AI, and more).
+                      (merge, spy, faction abilities and cooldowns, skirmish setup, tutorial notes, terrain, AI, and more).
                     </p>
                   </div>
 
@@ -6179,15 +6591,18 @@ function CodeConq() {
                     <ul className="mt-4 list-disc space-y-2.5 pl-5 text-sm leading-7 text-yellow-50/88 marker:text-amber-500/80">
                       <li>
                         <span className="font-semibold text-yellow-100/92">Faction abilities</span> —{" "}
-                        <span className="font-semibold text-cyan-200/90">Volley</span> (enemy in range of allies),{" "}
-                        <span className="font-semibold text-emerald-200/90">reinforcement</span> (ally heal/buff), or{" "}
-                        <span className="font-semibold text-sky-200/90">Roman summon</span> (empty tile): arm with the cyan button on
-                        the <span className="font-semibold text-amber-200/90">left rail</span>, then click a valid target. Hover the
-                        cyan icon for <span className="font-semibold text-cyan-200/85">themed motion</span> (arrows, siege stones,
-                        axes, javelins by faction; heal sparks; deploy streak). Cooldown:{" "}
-                        <span className="font-semibold text-amber-200/90">3 own turns</span> for most;{" "}
-                        <span className="font-semibold text-amber-200/90">20 battle rounds</span> for Romans. Tutorial and AI vs AI
-                        watch skip it. Log:{" "}
+                        <span className="font-semibold text-cyan-200/90">Volley</span> (fixed attack power per civ, enemy in range of
+                        allies), <span className="font-semibold text-emerald-200/90">reinforcement</span> (
+                        <span className="font-semibold text-emerald-200/85">250 HP</span> per ally, capped at max, plus attack on
+                        the card where listed), or <span className="font-semibold text-sky-200/90">Roman summon</span> (empty tile):
+                        arm with the cyan
+                        button on the <span className="font-semibold text-amber-200/90">left rail</span>, then click a valid target.
+                        Hover the cyan icon for <span className="font-semibold text-cyan-200/85">themed motion</span> and the exact{" "}
+                        <span className="font-semibold text-amber-200/90">battle-round cooldown</span> for that faction. A full
+                        per-faction table (volley attack, reinforce bonuses, rounds) lives in{" "}
+                        <span className="font-semibold text-amber-200/90">Game Menu → Mechanics → Special Systems</span>. When the
+                        cooldown ends, the log and cyan button pulse remind you the skill is ready again. AI uses the same combat
+                        rules. Tutorial and AI vs AI watch skip abilities. Log:{" "}
                         <span className="font-mono text-[13px] text-cyan-200/85">[Civilization Ability]</span>.
                       </li>
                       <li>
@@ -6641,6 +7056,13 @@ function CodeConq() {
                   round,
                   civAbilityUnlockAtBattleRound
                 );
+                const civCooldownRemaining = getCivAbilityCooldownRemaining(
+                  railTeam,
+                  civOwnTurnOrdinalForAbility,
+                  civAbilityUnlockAtOwnOrdinal,
+                  round,
+                  civAbilityUnlockAtBattleRound
+                );
                 const canClickCiv = canUseCivRail && (civReady || civPrimed);
                 const activeSlot: FactionRailActiveSlot = activeRailEligible
                   ? {
@@ -6650,7 +7072,15 @@ function CodeConq() {
                       onFire: () => toggleCivAbilityTargeting(railTeam)
                     }
                   : null;
-                return <FactionPassiveRailCell key={railTeam} team={railTeam} activeSlot={activeSlot} />;
+                return (
+                  <FactionPassiveRailCell
+                    key={railTeam}
+                    team={railTeam}
+                    activeSlot={activeSlot}
+                    civReadyNudge={civAbilityReadyNudgeTeam === railTeam && civAbilityModeTeam !== railTeam}
+                    activeCooldownRemaining={civCooldownRemaining}
+                  />
+                );
               })}
             </div>
           </div>
@@ -7609,7 +8039,7 @@ function CodeConq() {
                 );
                 const civSummonTileHighlight = Boolean(
                   cm &&
-                    civAbilityDef?.targeting === "summon_unit" &&
+                    (civAbilityDef?.targeting === "summon_unit" || civAbilityDef?.targeting === "place_trap") &&
                     !u &&
                     civSummonValidTileKeys.has(`${x},${y}`)
                 );
@@ -7628,6 +8058,21 @@ function CodeConq() {
                 const percent = u ? (u.hp / u.maxHp) * 100 : 0;
                 const battleBuffStrip = u ? getBattlefieldBuffStrip(u, currentBattleUnits, battlefieldTerrain) : [];
                 const terrainType = getTerrainAt(battlefieldTerrain, x, y);
+                const trapAtCell = civBattleTraps.find((t) => t.x === x && t.y === y);
+                const showPlacedTrapMarker = Boolean(
+                  trapAtCell &&
+                    gameStarted &&
+                    !isSetupMode &&
+                    (gameMode === "ai-versus" ||
+                      (gameMode === "custom-scenario" && customScenarioSpectator) ||
+                      trapAtCell.ownerTeam === playerTeam)
+                );
+                const terrainCellTitle =
+                  showPlacedTrapMarker && trapAtCell
+                    ? `${TERRAIN_LABELS[terrainType]} · ${
+                        trapAtCell.ownerTeam === playerTeam ? "Your trap" : `${trapAtCell.ownerTeam} trap`
+                      } (${trapAtCell.damage} dmg)`
+                    : TERRAIN_LABELS[terrainType];
                 const UnitDisplayIcon = u ? getUnitDisplayIcon(u) : null;
                 const feedbackKinds = cellFeedback[key] ?? [];
                 const hasHitFeedback = feedbackKinds.includes("hit");
@@ -7773,6 +8218,7 @@ function CodeConq() {
                     ${civVolleyHighlight ? "civ-volley-highlight" : ""}
                     ${civReinforceHighlight ? "civ-reinforce-highlight" : ""}
                     ${civSummonTileHighlight ? "civ-summon-tile-highlight" : ""}
+                    ${showPlacedTrapMarker ? `civ-trap-cell-placed${reduceUiMotion ? " civ-trap-cell-placed--static" : ""}` : ""}
                     ${hasHitFeedback ? "battle-feedback-hit" : ""}
                     ${hasMeleeWindupFeedback ? "battle-feedback-melee-windup" : ""}
                     ${hasMeleeHitFeedback ? "battle-feedback-melee-hit" : ""}
@@ -7790,7 +8236,8 @@ function CodeConq() {
                     }`}
                     style={terrainStyle}
                     data-terrain={terrainType}
-                    title={TERRAIN_LABELS[terrainType]}
+                    data-placed-trap={showPlacedTrapMarker && trapAtCell ? trapAtCell.ownerTeam : undefined}
+                    title={terrainCellTitle}
                   >
                     {terrainAutotileVisual && terrainAutotileTransformStyle && useForestVideo && (
                       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>

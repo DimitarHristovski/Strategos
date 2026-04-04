@@ -743,6 +743,16 @@ export const getAttackDamage = (
   const hasTerrainModifier = terrainModifiers.attackMultiplier !== 1;
   let damage = attacker.attack;
 
+  const rRound = effectContext.round;
+  if (
+    typeof rRound === "number" &&
+    typeof attacker.civTrapAttackDebuffPct === "number" &&
+    typeof attacker.civTrapAttackDebuffUntilRound === "number" &&
+    rRound < attacker.civTrapAttackDebuffUntilRound
+  ) {
+    damage = Math.round(damage * (1 - Math.min(90, Math.max(0, attacker.civTrapAttackDebuffPct)) / 100));
+  }
+
   if (hasNoAmmoPenalty(attacker)) {
     damage = Math.round(damage * 0.5);
   }
@@ -770,6 +780,15 @@ export const getAttackDamage = (
     damage = Math.round(damage * abilityEffects.damageTakenMultiplier);
   }
 
+  if (
+    typeof rRound === "number" &&
+    typeof defender.civTrapVulnPct === "number" &&
+    typeof defender.civTrapVulnUntilRound === "number" &&
+    rRound < defender.civTrapVulnUntilRound
+  ) {
+    damage = Math.round(damage * (1 + Math.min(200, Math.max(0, defender.civTrapVulnPct)) / 100));
+  }
+
   /** HP not lost due to armor, shielding, terrain cover, formations, etc. (after rounding). */
   const mitigatedDamage = Math.max(0, damageBeforeDefenderMitigation - damage);
 
@@ -791,13 +810,23 @@ export const getDisplayedAttack = (
   unit: any,
   allUnits: any[] = [],
   terrainMap: TerrainType[][] = [],
-  _opts?: { round?: number }
+  opts?: { round?: number }
 ) => {
   if (!unit) return 0;
 
   let displayedAttack = unit.attack;
   const terrainAt = getTerrainAt(terrainMap, unit.x, unit.y);
   const terrainModifiers = getTerrainModifiers(unit, terrainAt);
+
+  const rRound = opts?.round;
+  if (
+    typeof rRound === "number" &&
+    typeof unit.civTrapAttackDebuffPct === "number" &&
+    typeof unit.civTrapAttackDebuffUntilRound === "number" &&
+    rRound < unit.civTrapAttackDebuffUntilRound
+  ) {
+    displayedAttack = Math.round(displayedAttack * (1 - Math.min(90, Math.max(0, unit.civTrapAttackDebuffPct)) / 100));
+  }
 
   if (hasNoAmmoPenalty(unit)) {
     displayedAttack = Math.round(displayedAttack * 0.5);

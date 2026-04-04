@@ -862,6 +862,74 @@
     opacity: 0.88;
 }
 
+/* Placed civ traps — visible on the owning player’s map (all traps in spectator / AI-watch) */
+.civ-trap-cell-placed {
+    position: relative;
+}
+
+.civ-trap-cell-placed::before {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-radius: 7px;
+    border: 2px dashed rgba(251, 191, 36, 0.92);
+    box-shadow:
+        inset 0 0 14px rgba(251, 191, 36, 0.22),
+        0 0 14px rgba(245, 158, 11, 0.2);
+    pointer-events: none;
+    z-index: 2;
+    animation: civ-trap-cell-pulse 2.4s ease-in-out infinite;
+}
+
+.civ-trap-cell-placed--static::before {
+    animation: none;
+    opacity: 0.98;
+}
+
+.civ-trap-cell-placed::after {
+    content: "🪤";
+    position: absolute;
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.92rem;
+    line-height: 1;
+    pointer-events: none;
+    z-index: 3;
+    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.7));
+    opacity: 0.94;
+}
+
+.terrain-cell.civ-trap-cell-placed[data-placed-trap="Gauls"]::before {
+    border-color: rgba(74, 222, 128, 0.92);
+    box-shadow:
+        inset 0 0 14px rgba(74, 222, 128, 0.2),
+        0 0 14px rgba(34, 197, 94, 0.22);
+}
+
+.terrain-cell.civ-trap-cell-placed[data-placed-trap="Dacians"]::before {
+    border-color: rgba(147, 197, 253, 0.92);
+    box-shadow:
+        inset 0 0 14px rgba(147, 197, 253, 0.18),
+        0 0 14px rgba(59, 130, 246, 0.22);
+}
+
+.terrain-cell.civ-trap-cell-placed[data-placed-trap="Thracians"]::before {
+    border-color: rgba(196, 181, 253, 0.92);
+    box-shadow:
+        inset 0 0 14px rgba(196, 181, 253, 0.18),
+        0 0 14px rgba(139, 92, 246, 0.2);
+}
+
+@keyframes civ-trap-cell-pulse {
+    0%, 100% {
+        opacity: 0.72;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
 /* —— Left rail: passive / active skill hover tooltips —— */
 @keyframes fr-tt-fade-in {
     from { opacity: 0; }
@@ -1319,6 +1387,25 @@
 
 .fr-rail-skill-btn--active:not(:disabled):hover {
     transform: scale(1.05);
+}
+
+@keyframes fr-civ-ready-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.45), inset 0 0 10px rgba(34, 211, 238, 0.1);
+    }
+    50% {
+        box-shadow: 0 0 22px 4px rgba(34, 211, 238, 0.4), inset 0 0 14px rgba(103, 232, 249, 0.18);
+    }
+}
+
+/* Cooldown ended: brief recommendation pulse on cyan civ button */
+.fr-rail-skill-btn.fr-rail-skill-btn--civ-ready-nudge {
+    animation: fr-civ-ready-glow 1.15s ease-in-out infinite;
+    z-index: 2;
+}
+
+.fr-rail-skill-btn.fr-rail-skill-btn--civ-ready-nudge:disabled {
+    opacity: 0.88 !important;
 }
 
 /* Merge target highlight */

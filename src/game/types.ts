@@ -123,12 +123,23 @@ export type SavedGameState = {
   spiedEnemyIds?: string[];
   /** @deprecated migrated away; ignored on load. */
   civActiveUsedByTeam?: Partial<Record<TeamName, boolean>>;
-  /** Per faction: how many times that side’s turn has started this battle (for ability cooldown). */
+  /** Per faction: own-turn starts counted (legacy path if a civ omits `cooldownBattleRounds`). */
   civOwnTurnOrdinalForAbility?: Partial<Record<TeamName, number>>;
-  /** Per faction: own-turn ordinal index when faction ability becomes available again. */
+  /** Per faction: own-turn unlock ordinal for civ ability (legacy cooldown path). */
   civAbilityUnlockAtOwnOrdinal?: Partial<Record<TeamName, number>>;
-  /** Per faction: battle round when ability is ready (cooldowns keyed by `cooldownBattleRounds` in civ defs). */
+  /** Per faction: battle round index when the civ ability becomes available (`round >=` this value). Matches `cooldownBattleRounds` in `CIV_ACTIVES`. */
   civAbilityUnlockAtBattleRound?: Partial<Record<TeamName, number>>;
+  /** Hidden civ traps on the field (Gauls / Dacians / Thracians). */
+  civBattleTraps?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    ownerTeam: TeamName;
+    damage: number;
+    expiresAtRound: number;
+    attackReductionPercent?: number;
+    armorReductionPercent?: number;
+  }>;
   gameMode?: GameMode | null;
   /** Hot-seat / AI vs AI roster: 2–12 unique factions. */
   multiplayerTeams?: TeamName[];

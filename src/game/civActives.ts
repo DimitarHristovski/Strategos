@@ -1,25 +1,25 @@
 import { generateTroopStats } from "../Units/troopStats";
 import { getAttackDamage, isLeaderRole } from "./battleEngine";
+import { ALL_TEAMS } from "./constants";
 import { AVAILABLE_TROOPS } from "./unitCatalog";
 import type { TeamName, TerrainType } from "./types";
 
 /** Max Manhattan distance from any living ally to a valid volley target. */
 export const CIV_VOLLEY_RANGE = 5;
 
-/** After using an ability, that faction must wait this many of its own turns before it can use again (not counting the turn you fired on). */
+/**
+ * Fallback if a civ def omits `cooldownBattleRounds`. Current data uses **battle rounds only** for every faction.
+ */
 export const CIV_ABILITY_COOLDOWN_OWN_TURNS = 10;
 
-export type CivActiveTargeting = "enemy_volley" | "ally_reinforce" | "summon_unit";
+export type CivActiveTargeting = "enemy_volley" | "ally_reinforce" | "summon_unit" | "place_trap";
 
 export type CivActiveDef = {
   name: string;
   icon: string;
   description: string;
   targeting: CivActiveTargeting;
-  /**
-   * If set, ability cooldown uses **battle rounds** (full turn-table cycles) instead of own-turn ordinals.
-   * Romans: reinforcement summon uses this (20 rounds).
-   */
+  /** Cooldown in **full battle rounds** (turn order wraps to the first side). All factions use this in current balance. */
   cooldownBattleRounds?: number;
   /** Role key from `AVAILABLE_TROOPS[team]` for `summon_unit`. */
   summonRole?: string;
@@ -32,104 +32,220 @@ export type CivActiveDef = {
   reinforceHealFlat?: number;
   /** Reinforce: flat attack added after heal. */
   reinforceAttackFlat?: number;
+  /** `place_trap`: flat HP when an enemy enters the tile (direct damage). */
+  trapDamage?: number;
+  /** `place_trap`: trap expires after this many full battle rounds if untriggered. */
+  duration?: number;
+  /** `place_trap`: debuff — victim deals less attack (%) for several rounds. */
+  attackReductionPercent?: number;
+  /** `place_trap`: debuff — victim takes more damage from attacks (%) for several rounds. */
+  armorReductionPercent?: number;
+  /** Reserved (not applied yet). */
+  trapMoveReduction?: number;
+};
+
+/** Placed civ trap (persisted in save). */
+export type CivBattleTrap = {
+  id: string;
+  x: number;
+  y: number;
+  ownerTeam: TeamName;
+  damage: number;
+  /** Remove when `battleRound > expiresAtRound`. */
+  expiresAtRound: number;
+  attackReductionPercent?: number;
+  armorReductionPercent?: number;
 };
 
 /**
- * Faction actives: volley, ally reinforce, or **summon** (Romans). Cooldown is own-turn (default) or battle rounds if set.
+ * Faction actives: volley, ally reinforce, or summon (e.g. Roman Legionary, Carthage War Elephant). Each entry uses `cooldownBattleRounds` (see `getCivActiveHandbookRows` for the handbook table).
  */
 export const CIV_ACTIVES: Record<TeamName, CivActiveDef> = {
-  Romans: {
-    name: "Legion Reinforcement",
-    icon: "🏛️",
-    description:
-      "Deploy 1 fresh Legionary: arm the ability, then click an empty tile within 5 steps of any living ally. 20 battle rounds cooldown.",
-    targeting: "summon_unit",
-    summonRole: "Legionary",
-    cooldownBattleRounds: 20
-  },
-  Barbarians: {
-    name: "Axe Volley",
-    icon: "📣",
-    description:
-      "Click an enemy in volley range (≤5 from any ally): coordinated strike—volley attack 48 (terrain and mitigation apply).",
-    targeting: "enemy_volley",
-    volleyAttackPower: 48
-  },
-  Greeks: {
-    name: "Shielded Resupply",
-    icon: "🛡️",
-    description: "Click a living ally: restore 28 HP and +8 attack.",
-    targeting: "ally_reinforce",
-    reinforceHealFlat: 28,
-    reinforceAttackFlat: 8
-  },
-  Gauls: {
-    name: "Hunter's Volley",
-    icon: "🌿",
-    description: "Click an enemy in volley range: javelin storm—volley attack 46.",
-    targeting: "enemy_volley",
-    volleyAttackPower: 46
-  },
-  Germanic: {
-    name: "Blood Feud Shot",
-    icon: "⚒️",
-    description: "Click an enemy in volley range: heavy volley—volley attack 52.",
-    targeting: "enemy_volley",
-    volleyAttackPower: 52
-  },
-  Carthage: {
-    name: "Mercenary Relief",
-    icon: "🐘",
-    description: "Click a living ally: restore 32 HP and +10 attack.",
-    targeting: "ally_reinforce",
-    reinforceHealFlat: 32,
-    reinforceAttackFlat: 10
-  },
-  Egypt: {
-    name: "Solar Blessing",
-    icon: "☀️",
-    description: "Click a living ally: restore 40 HP.",
-    targeting: "ally_reinforce",
-    reinforceHealFlat: 40
-  },
-  Thracians: {
-    name: "Highland Volley",
-    icon: "⛰️",
-    description: "Click an enemy in volley range: arrow storm—volley attack 50.",
-    targeting: "enemy_volley",
-    volleyAttackPower: 50
-  },
-  Dacians: {
-    name: "Wolfpack Aid",
-    icon: "🐺",
-    description: "Click a living ally: restore 22 HP and +12 attack.",
-    targeting: "ally_reinforce",
-    reinforceHealFlat: 22,
-    reinforceAttackFlat: 12
-  },
-  Parthians: {
-    name: "Parthian Volley",
-    icon: "🏹",
-    description: "Click an enemy in volley range: mounted archery—volley attack 51.",
-    targeting: "enemy_volley",
-    volleyAttackPower: 51
-  },
-  Seleucids: {
-    name: "Silver Bolt",
-    icon: "🏺",
-    description: "Click an enemy in volley range: bolt strike—volley attack 58.",
-    targeting: "enemy_volley",
-    volleyAttackPower: 58
-  },
-  Vikings: {
-    name: "Ship's Booster",
-    icon: "⛵",
-    description: "Click a living ally: restore 20 HP and +8 attack.",
-    targeting: "ally_reinforce",
-    reinforceHealFlat: 20,
-    reinforceAttackFlat: 8
-  }
+ // 🏛️ SUMMON (3)
+ Romans: {
+  name: "Legion Reinforcement",
+  icon: "🏛️",
+  description:
+    "Summon a Legionary on an empty tile within 5 range of any ally. Strong frontline reinforcement.",
+  targeting: "summon_unit",
+  summonRole: "Legionary",
+  cooldownBattleRounds: 30
+},
+
+Carthage: {
+  name: "Beast of the Line",
+  icon: "🐘",
+  description:
+    "Summon a War Elephant within 5 range of any ally. High HP shock unit.",
+  targeting: "summon_unit",
+  summonRole: "War Elephant",
+  cooldownBattleRounds: 40
+},
+
+Seleucids: {
+  name: "Imperial Reserves",
+  icon: "🏺",
+  description:
+    "Summon Silver Shield Infantry within 5 range of any ally. Elite defensive unit.",
+  targeting: "summon_unit",
+  summonRole: "Silver Shield Infantry",
+  cooldownBattleRounds: 35
+},
+
+// 🏹 VOLLEY (3)
+Barbarians: {
+  name: "Axe Volley",
+  icon: "📣",
+  description:
+    "Target an enemy within 5 range of any ally. Deals 50 damage (affected by terrain and defense).",
+  targeting: "enemy_volley",
+  volleyAttackPower: 50,
+  cooldownBattleRounds: 5
+},
+
+Parthians: {
+  name: "Parthian Volley",
+  icon: "🏹",
+  description:
+    "Target an enemy within 5 range. Deals 130 damage. Highly effective hit-and-run strike.",
+  targeting: "enemy_volley",
+  volleyAttackPower: 130,
+  cooldownBattleRounds: 13
+},
+
+Germanic: {
+  name: "Blood Feud Shot",
+  icon: "⚒️",
+  description:
+    "Target an enemy within 5 range. Deals 150 damage. Powerful single-target strike.",
+  targeting: "enemy_volley",
+  volleyAttackPower: 150,
+  cooldownBattleRounds: 15
+},
+
+// 💪 BUFF (3)
+Greeks: {
+  name: "Shielded Resupply",
+  icon: "🛡️",
+  description:
+    "Restore 250 HP and grant +10 attack to a selected ally.",
+  targeting: "ally_reinforce",
+  reinforceHealFlat: 250,
+  reinforceAttackFlat: 10,
+  cooldownBattleRounds: 26
+},
+
+Egypt: {
+  name: "Solar Blessing",
+  icon: "☀️",
+  description:
+    "Restore 250 HP to a selected ally. Reliable sustain ability.",
+  targeting: "ally_reinforce",
+  reinforceHealFlat: 250,
+  cooldownBattleRounds: 25
+},
+
+Vikings: {
+  name: "War Frenzy",
+  icon: "🪓",
+  description:
+    "Grant +40 attack to a selected ally for increased damage output.",
+  targeting: "ally_reinforce",
+  reinforceAttackFlat: 40,
+  cooldownBattleRounds: 20
+},
+
+Gauls: {
+  name: "Hidden Snares",
+  icon: "🌿",
+  description:
+    "Place a concealed trap on an empty tile within 5 range of any ally. The first enemy entering it takes 120 damage.",
+  targeting: "place_trap",
+  trapDamage: 120,
+  trapMoveReduction: 2,
+  duration: 1,
+  cooldownBattleRounds: 10
+},
+
+Dacians: {
+  name: "Falx Trap",
+  icon: "🐺",
+  description:
+    "Place a brutal trap on an empty tile within 5 range of any ally. The first enemy entering it takes 180 damage.",
+  targeting: "place_trap",
+  trapDamage: 180,
+  armorReductionPercent: 25,
+  duration: 2,
+  cooldownBattleRounds: 18
+},
+
+Thracians: {
+  name: "Terror Trap",
+  icon: "⛰️",
+  description:
+    "Place a fear trap on an empty tile within 5 range of any ally. The first enemy entering it takes 140 damage and suffers -20% attack.",
+  targeting: "place_trap",
+  trapDamage: 140,
+  attackReductionPercent: 20,
+  duration: 2,
+  cooldownBattleRounds: 14
+}
 };
+
+/** Rows for Mechanics → Special Systems (stays in sync with `CIV_ACTIVES`). */
+export type CivActiveHandbookRow = {
+  team: TeamName;
+  icon: string;
+  summary: string;
+  cooldownBattleRounds: number;
+};
+
+export function getCivActiveHandbookRows(): CivActiveHandbookRow[] {
+  return ALL_TEAMS.map((team) => {
+    const d = CIV_ACTIVES[team];
+    const br = d.cooldownBattleRounds ?? CIV_ABILITY_COOLDOWN_OWN_TURNS;
+    if (d.targeting === "enemy_volley") {
+      return {
+        team,
+        icon: d.icon,
+        cooldownBattleRounds: br,
+        summary: `Volley — fixed attack ${d.volleyAttackPower ?? 48} · ${br} battle rounds`
+      };
+    }
+    if (d.targeting === "ally_reinforce") {
+      const heal = d.reinforceHealFlat ?? 0;
+      const atk =
+        d.reinforceAttackFlat != null && d.reinforceAttackFlat !== 0
+          ? `, +${d.reinforceAttackFlat} attack`
+          : "";
+      return {
+        team,
+        icon: d.icon,
+        cooldownBattleRounds: br,
+        summary: `Reinforce — ${heal} HP${atk} · ${br} battle rounds`
+      };
+    }
+    if (d.targeting === "place_trap") {
+      const dmg = d.trapDamage ?? 0;
+      const bits: string[] = [];
+      if (d.attackReductionPercent) bits.push(`−${d.attackReductionPercent}% victim atk`);
+      if (d.armorReductionPercent) bits.push(`+${d.armorReductionPercent}% victim dmg taken`);
+      const extra = bits.length ? ` · ${bits.join(", ")}` : "";
+      return {
+        team,
+        icon: d.icon,
+        cooldownBattleRounds: br,
+        summary: `Trap — ${dmg} HP if stepped on${extra} · ${br} battle rounds`
+      };
+    }
+    return {
+      team,
+      icon: d.icon,
+      cooldownBattleRounds: br,
+      summary: `Summon ${d.summonRole ?? "unit"} · ${br} battle rounds`
+    };
+  });
+}
 
 function manhattan(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
@@ -150,6 +266,88 @@ export function pickVolleySpotter(units: any[], team: TeamName, target: any): an
 export function isSummonReinforcementTileValid(units: any[], team: TeamName, x: number, y: number): boolean {
   if (units.some((u) => u.hp > 0 && u.x === x && u.y === y)) return false;
   return units.some((u) => u.team === team && u.hp > 0 && manhattan(u, { x, y }) <= CIV_VOLLEY_RANGE);
+}
+
+export function clearExpiredCivTraps(traps: CivBattleTrap[], battleRound: number): CivBattleTrap[] {
+  return traps.filter((t) => battleRound <= t.expiresAtRound);
+}
+
+export function makeCivTrapForTeam(team: TeamName, x: number, y: number, placedRound: number): CivBattleTrap | null {
+  const def = CIV_ACTIVES[team];
+  if (!def || def.targeting !== "place_trap" || def.trapDamage == null || def.trapDamage <= 0) return null;
+  const dur = Math.max(1, def.duration ?? 3);
+  return {
+    id: `civ_trap_${team}_${placedRound}_${x}_${y}_${Date.now()}`,
+    x,
+    y,
+    ownerTeam: team,
+    damage: def.trapDamage,
+    expiresAtRound: placedRound + dur,
+    attackReductionPercent: def.attackReductionPercent,
+    armorReductionPercent: def.armorReductionPercent
+  };
+}
+
+/**
+ * When a unit moves onto (destX, destY), hostile traps deal direct damage once and apply optional debuffs.
+ */
+export function applyCivTrapOnEntry(
+  traps: CivBattleTrap[],
+  units: any[],
+  mover: any,
+  destX: number,
+  destY: number,
+  battleRound: number
+): { traps: CivBattleTrap[]; units: any[]; logLines: string[] } {
+  if (!mover || mover.hp <= 0) return { traps, units, logLines: [] };
+  const idx = traps.findIndex((t) => t.x === destX && t.y === destY && t.ownerTeam !== mover.team);
+  if (idx < 0) return { traps, units, logLines: [] };
+
+  const tr = traps[idx]!;
+  const def = CIV_ACTIVES[tr.ownerTeam];
+  const nextTraps = traps.filter((_, i) => i !== idx);
+  const dmg = Math.max(0, Math.round(tr.damage));
+  const debuffHorizon = 4;
+  const logLines: string[] = [];
+
+  const extras: string[] = [];
+  if (tr.attackReductionPercent) extras.push(`−${tr.attackReductionPercent}% attack (${debuffHorizon} rounds)`);
+  if (tr.armorReductionPercent) extras.push(`+${tr.armorReductionPercent}% damage taken (${debuffHorizon} rounds)`);
+  const extraStr = extras.length ? ` ${extras.join("; ")}` : "";
+
+  let killed = false;
+  const nextUnits = units
+    .map((u) => {
+      if (u.id !== mover.id) return u;
+      const hp = Math.max(0, u.hp - dmg);
+      let next: any = { ...u, hp };
+      if (hp <= 0) killed = true;
+      if (tr.attackReductionPercent && tr.attackReductionPercent > 0) {
+        next = {
+          ...next,
+          civTrapAttackDebuffPct: tr.attackReductionPercent,
+          civTrapAttackDebuffUntilRound: battleRound + debuffHorizon
+        };
+      }
+      if (tr.armorReductionPercent && tr.armorReductionPercent > 0) {
+        next = {
+          ...next,
+          civTrapVulnPct: tr.armorReductionPercent,
+          civTrapVulnUntilRound: battleRound + debuffHorizon
+        };
+      }
+      return next;
+    })
+    .filter((u) => u.hp > 0);
+
+  const title = def?.name ? `${def.icon} ${def.name}` : "Trap";
+  logLines.push(
+    `[Trap] ${title} — ${mover.name} (${mover.team}) steps on a hidden snare for ${dmg} damage.${extraStr ? ` ${extraStr}.` : ""}`
+  );
+  if (killed) {
+    logLines.push(`${mover.name} (${mover.team}) is eliminated by the trap!`);
+  }
+  return { traps: nextTraps, units: nextUnits, logLines };
 }
 
 /** Preview volley damage for AI scoring (same resolution as `applyCivAbilityOnTarget` volley). */
@@ -326,10 +524,6 @@ export function applyCivAbilityOnTarget(
   };
 }
 
-export function civAbilityUnlockOrdinal(useOrdinal: number): number {
-  return useOrdinal + 1 + CIV_ABILITY_COOLDOWN_OWN_TURNS;
-}
-
 export function isCivAbilityReady(
   team: TeamName,
   ownTurnOrdinal: Partial<Record<TeamName, number>>,
@@ -349,6 +543,37 @@ export function isCivAbilityReady(
   return o >= u;
 }
 
+/** Integer steps until the civ active can be armed again (battle rounds or own-turn ordinals, matching `isCivAbilityReady`). */
+export function getCivAbilityCooldownRemaining(
+  team: TeamName,
+  ownTurnOrdinal: Partial<Record<TeamName, number>>,
+  unlockAtOwnOrdinal: Partial<Record<TeamName, number>>,
+  battleRound: number,
+  unlockAtBattleRound: Partial<Record<TeamName, number>>
+): number {
+  const def = CIV_ACTIVES[team];
+  const br = def?.cooldownBattleRounds;
+  if (br != null && br > 0) {
+    const u = unlockAtBattleRound[team];
+    if (u == null) return 0;
+    return Math.max(0, u - battleRound);
+  }
+  const u = unlockAtOwnOrdinal[team];
+  if (u == null) return 0;
+  const o = ownTurnOrdinal[team] ?? 0;
+  return Math.max(0, u - o);
+}
+
+export function formatCivAbilityCooldownRemaining(team: TeamName, remaining: number): string | null {
+  if (remaining <= 0) return null;
+  const def = CIV_ACTIVES[team];
+  const br = def?.cooldownBattleRounds;
+  if (br != null && br > 0) {
+    return `${remaining} battle round${remaining === 1 ? "" : "s"} left`;
+  }
+  return `${remaining} faction turn${remaining === 1 ? "" : "s"} left`;
+}
+
 /** Player-facing cooldown line for tooltips and UI. */
 export function getCivActiveCooldownSummary(team: TeamName): string {
   const def = CIV_ACTIVES[team];
@@ -362,11 +587,13 @@ export function getCivActiveCooldownSummary(team: TeamName): string {
 export function getCivActiveHowItWorks(targeting: CivActiveTargeting): string {
   switch (targeting) {
     case "enemy_volley":
-      return "Tap the cyan button to arm, then click an enemy within 5 tiles of any living ally. Uses normal combat mitigation. Ends your turn.";
+      return "Tap the cyan button to arm, then click an enemy within 5 tiles of any living ally. Uses this civ’s fixed volley attack (see card), then normal terrain, matchup, and mitigation. Ends your turn.";
     case "ally_reinforce":
-      return "Tap the cyan button to arm, then click one of your living troops to heal and buff as described. Ends your turn.";
+      return "Tap the cyan button to arm, then click one of your living troops. Heal and attack bonuses follow the card (most civs restore 250 HP capped at max; some are attack-only). Ends your turn.";
     case "summon_unit":
       return "Tap the cyan button to arm, then click an empty tile within 5 tiles of a living ally to deploy one recruit. Ends your turn.";
+    case "place_trap":
+      return "Tap the cyan button to arm, then click an empty tile within 5 tiles of a living ally to lay a trap. The first enemy that moves onto it takes direct damage (and debuffs on the card, if any). Traps expire after a few battle rounds if unused. Ends your turn.";
     default:
       return "";
   }
