@@ -3,46 +3,30 @@ import { ensureRangedAmmo, getTroopMechanicType } from "./battleEngine";
 import { getUnitDisplayIcon } from "./unitCatalog";
 import type { TeamName } from "./types";
 
+/** When set, AI-listed teams get HP/attack scaled after civilization passives. */
+export type PrepareBattleOpts = {
+  aiTeams: TeamName[];
+  aiHpAttackMultiplier: number;
+};
+
+export const applyAiTroopStatMultiplier = (unit: any, multiplier: number) => {
+  if (!unit || multiplier === 1) return unit;
+  const m = multiplier;
+  const next = { ...unit };
+  next.hp = Math.max(1, Math.round((next.hp ?? 0) * m));
+  next.maxHp = Math.max(1, Math.round((next.maxHp ?? 0) * m));
+  if (typeof next.baseMaxHp === "number") {
+    next.baseMaxHp = Math.max(1, Math.round(next.baseMaxHp * m));
+  }
+  next.attack = Math.max(0, Math.round((next.attack ?? 0) * m));
+  return next;
+};
+
 export const adjustStatPercent = (value: number, percent: number) => Math.max(0, Math.round(value * (1 + percent)));
 
 export const adjustMovePercent = (value: number, percent: number) => {
   if (value <= 0) return 0;
   return Math.max(1, Math.floor(value * (1 + percent)));
-};
-
-export const isInfantryRole = (role: string) => {
-  const lowerRole = role.toLowerCase();
-  const nonInfantryKeywords = [
-    "archer",
-    "slinger",
-    "ballista",
-    "scorpion",
-    "catapult",
-    "polybolos",
-    "trebuchet",
-    "onager",
-    "bombard",
-    "cavalry",
-    "chariot",
-    "elephant",
-    "rider",
-    "horseman",
-    "lancer",
-    "equites",
-    "xystophoroi",
-    "turcopole",
-    "scout",
-    "knight",
-    "horse",
-    "camel",
-    "cataphract",
-    "king",
-    "jarl",
-    "general",
-    "marshal"
-  ];
-
-  return !nonInfantryKeywords.some((keyword) => lowerRole.includes(keyword));
 };
 
 export const stripUnitForStorage = (unit: any) => {
@@ -53,25 +37,27 @@ export const stripUnitForStorage = (unit: any) => {
 
 export const restoreUnitFromStorage = (unit: any) => {
   if (!unit) return null;
+  const role = unit.role === "Scorpion" ? "Heavy Cavalry" : unit.role;
+  const migrated = { ...unit, role };
   return {
-    ...unit,
-    Icon: getUnitDisplayIcon(unit)
+    ...migrated,
+    Icon: getUnitDisplayIcon(migrated)
   };
 };
 
 export const CIV_PASSIVES: Record<TeamName, { name: string; effect: string }> = {
   Romans: { name: "Roman Discipline", effect: "+10% hp, +10% attack" },
-  Barbarians: { name: "Barbarian Fury", effect: "+20% attack, -10% hp" },
-  Greeks: { name: "Phalanx Mastery", effect: "+1 range (infantry), -1 move (infantry)" },
-  Gauls: { name: "Swift Warriors", effect: "+1 move, -10% hp" },
+  Barbarians: { name: "Barbarian Fury", effect: "+20% attack, -10% damage taken" },
+  Greeks: { name: "Phalanx Mastery", effect: "-10% damage taken (close combat) +30% attack (close combat)" },
+  Gauls: { name: "Swift Warriors", effect: "+1 move, +10% hp" },
   Germanic: { name: "Brutal Strength", effect: "+15% attack" },
-  Carthage: { name: "Mercenary Tactics", effect: "+10% hp, +10% attack, -10% move" },
+  Carthage: { name: "Mercenary Tactics", effect: "+10% hp, +10% attack" },
   Egypt: { name: "Chariot Kingdom", effect: "+1 move (mounted), +10% attack (ranged)" },
-  Thracians: { name: "Hill Raiders", effect: "+10% attack (infantry), +1 move (ranged)" },
+  Thracians: { name: "Hill Raiders", effect: "+10% attack (close combat), +1 move (ranged)" },
   Dacians: { name: "Falx Discipline", effect: "+10% hp, +10% attack" },
   Parthians: { name: "Parthian Shot", effect: "+1 move (mounted), +10% attack (ranged)" },
-  Seleucids: { name: "Imperial Arms", effect: "+10% hp (infantry), +10% attack (siege and elephants)" },
-  Vikings: { name: "Relentless Raiders", effect: "+1 move, +10% attack, -10% hp" }
+  Seleucids: { name: "Imperial Arms", effect: "+10% hp (close combat), +10% attack (siege and mounted)" },
+  Vikings: { name: "Relentless Raiders", effect: "+1 move, +10% attack, +10% hp" }
 };
 
 export const PASSIVE_ICONS: Record<TeamName, string> = {
@@ -111,7 +97,7 @@ export const applyCivilizationPassive = (unit: any) => {
       normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.2);
       break;
     case "Greeks":
-      if (isInfantryRole(normalizedUnit.role)) {
+      if (getTroopMechanicType(normalizedUnit) === "closecombat") {
         normalizedUnit.range += 1;
         normalizedUnit.move = Math.max(0, normalizedUnit.move - 1);
       }
@@ -141,7 +127,7 @@ export const applyCivilizationPassive = (unit: any) => {
       break;
     }
     case "Thracians":
-      if (isInfantryRole(normalizedUnit.role)) {
+      if (getTroopMechanicType(normalizedUnit) === "closecombat") {
         normalizedUnit.attack = adjustStatPercent(normalizedUnit.attack, 0.1);
       }
       if (getTroopMechanicType(normalizedUnit) === "ranged") {
@@ -165,7 +151,7 @@ export const applyCivilizationPassive = (unit: any) => {
     }
     case "Seleucids": {
       const normalizedRole = String(normalizedUnit.role ?? "").toLowerCase();
-      if (isInfantryRole(normalizedUnit.role)) {
+      if (getTroopMechanicType(normalizedUnit) === "closecombat") {
         normalizedUnit.hp = adjustStatPercent(normalizedUnit.hp, 0.1);
         normalizedUnit.maxHp = adjustStatPercent(normalizedUnit.maxHp, 0.1);
       }
@@ -189,18 +175,66 @@ export const applyCivilizationPassive = (unit: any) => {
   return ensureRangedAmmo(normalizedUnit);
 };
 
-export const prepareUnitsForBattle = (units: any[]) =>
-  units.map((unit) =>
-    applyCivilizationPassive({
+/**
+ * Single-player skirmish: each faction keeps the same number of troops (the minimum count among teams on the map).
+ * Extras are dropped in stable grid order (y, x, id) so layouts stay predictable.
+ */
+export const balanceSkirmishUnitsEqualPerTeam = (units: any[]): any[] => {
+  if (!units.length) return units;
+  const byTeam = new Map<string, any[]>();
+  for (const u of units) {
+    const t = String((u as { team?: string }).team ?? "");
+    if (!t) continue;
+    if (!byTeam.has(t)) byTeam.set(t, []);
+    byTeam.get(t)!.push(u);
+  }
+  const teamKeys = [...byTeam.keys()];
+  if (teamKeys.length < 2) return units;
+  let minCount = Infinity;
+  for (const arr of byTeam.values()) minCount = Math.min(minCount, arr.length);
+  if (!Number.isFinite(minCount) || minCount <= 0) return units;
+
+  const rank = (u: any) => [Number(u.y) || 0, Number(u.x) || 0, String(u.id ?? "")];
+  const cmp = (a: any, b: any) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    for (let i = 0; i < ra.length; i++) {
+      const va = ra[i]!;
+      const vb = rb[i]!;
+      if (va < vb) return -1;
+      if (va > vb) return 1;
+    }
+    return 0;
+  };
+
+  const out: any[] = [];
+  for (const t of teamKeys) {
+    const kept = byTeam.get(t)!.slice().sort(cmp).slice(0, minCount);
+    out.push(...kept);
+  }
+  return out;
+};
+
+export const prepareUnitsForBattle = (units: any[], opts?: PrepareBattleOpts) =>
+  units.map((unit) => {
+    let u = applyCivilizationPassive({
       ...unit,
       Icon: getUnitDisplayIcon(unit)
-    })
-  );
+    });
+    if (
+      opts &&
+      opts.aiHpAttackMultiplier !== 1 &&
+      opts.aiTeams.includes(unit.team as TeamName)
+    ) {
+      u = applyAiTroopStatMultiplier(u, opts.aiHpAttackMultiplier);
+    }
+    return u;
+  });
 
-export const rerollUnitStats = (unit: any) => {
+export const rerollUnitStats = (unit: any, opts?: PrepareBattleOpts) => {
   const rerolledStats = generateTroopStats(unit.role);
 
-  return applyCivilizationPassive({
+  let u = applyCivilizationPassive({
     ...unit,
     ...rerolledStats,
     Icon: getUnitDisplayIcon(unit),
@@ -208,6 +242,14 @@ export const rerollUnitStats = (unit: any) => {
     civPassiveName: undefined,
     civPassiveEffect: undefined
   });
+  if (
+    opts &&
+    opts.aiHpAttackMultiplier !== 1 &&
+    opts.aiTeams.includes(unit.team as TeamName)
+  ) {
+    u = applyAiTroopStatMultiplier(u, opts.aiHpAttackMultiplier);
+  }
+  return u;
 };
 
-export const rerollUnits = (units: any[]) => units.map((unit) => rerollUnitStats(unit));
+export const rerollUnits = (units: any[], opts?: PrepareBattleOpts) => units.map((unit) => rerollUnitStats(unit, opts));

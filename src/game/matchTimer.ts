@@ -25,7 +25,7 @@ export function resolveTimedForfeitMessage(
   units: { team: string; hp: number }[],
   loserTeam: string,
   _gameMode: GameMode | null,
-  _multiplayerTeams: [TeamName, TeamName]
+  _multiplayerTeams: TeamName[]
 ): string {
   const alive = units.filter((u) => u.hp > 0);
   const survivors = alive.filter((u) => u.team !== loserTeam);
