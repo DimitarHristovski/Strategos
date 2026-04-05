@@ -1,4 +1,5 @@
 import { getTroopAbilities, type TroopAbilityKey } from "../Units/troopStats";
+import { BUFF_STRIP_RASTER, TROOP_ABILITY_BATTLEFIELD_RASTER } from "./abilityIcons";
 import {
   canFormationLink,
   FORMATION_PASSIVE_SUMMARY,
@@ -371,22 +372,8 @@ export const getAdjacentCommanders = (unit: any, allUnits: any[] = []) =>
 export const hasAdjacentWoundedAlly = (unit: any, allUnits: any[] = []) =>
   getAdjacentAllies(unit, allUnits).some((candidate) => candidate.hp <= Math.ceil(candidate.maxHp * 0.5));
 
-/** Shown on the battlefield when that ability’s conditions are currently met (range uses Manhattan vs unit.range). */
-export const TROOP_ABILITY_BATTLEFIELD_ICONS: Record<TroopAbilityKey, string> = {
-  brace: "🛡",
-  charge: "⚡",
-  command: "📯",
-  crush: "💥",
-  deadeye: "🎯",
-  ferocity: "🔥",
-  guarded: "✋",
-  harrier: "↯",
-  resolve: "🤝",
-  shieldWall: "🧱",
-  shock: "☠",
-  siegeMastery: "⚙",
-  skirmishStep: "👟"
-};
+/** Raster paths under `public/icons/ui/` (battlefield buff strip + ability pips). */
+export const TROOP_ABILITY_BATTLEFIELD_ICONS: Record<TroopAbilityKey, string> = TROOP_ABILITY_BATTLEFIELD_RASTER;
 
 /**
  * Abilities for this unit’s role that are “on” right now (adjacent enemies, terrain, HP thresholds, etc.).
@@ -511,7 +498,7 @@ export const getBattlefieldBuffStrip = (
     const who = adjacentLeaders.map((l) => `${l.name} (${l.team})`).join(", ");
     strip.push({
       id: "buff-leader-aura",
-      icon: "👑",
+      icon: BUFF_STRIP_RASTER.leaderAura,
       label: "Leader aura",
       tooltip: `Leader aura (+10% attack). Adjacent leader(s): ${who}.`
     });
@@ -522,7 +509,7 @@ export const getBattlefieldBuffStrip = (
     const who = adjacentCommanders.map((c) => `${c.name} (${c.role})`).join(", ");
     strip.push({
       id: "buff-command-aura",
-      icon: "🎖️",
+      icon: BUFF_STRIP_RASTER.commandAura,
       label: "Command aura",
       tooltip: `Command aura (+5% attack from adjacent commanders). From: ${who}.`
     });
@@ -545,7 +532,7 @@ export const getBattlefieldBuffStrip = (
     }
     strip.push({
       id: `buff-formation-${unit.formationLineId}`,
-      icon: "🔗",
+      icon: BUFF_STRIP_RASTER.formationLink,
       label: meta.name,
       tooltip
     });

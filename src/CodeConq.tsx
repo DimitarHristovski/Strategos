@@ -1,12 +1,13 @@
 // CodeConq - Grid Strategy Game with Highlights and Expanded Features
 // Now includes: Health Bars, Kill Counters, Special Ability Tooltips, and Custom Drag & Drop Setup
 
-import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { BattlefieldSkyLayer } from "./components/codeconq/BattlefieldSkyLayer";
 import { BattlefieldMinimap } from "./components/codeconq/BattlefieldMinimap";
 import { FormationLoadingScreen } from "./components/codeconq/FormationLoadingScreen";
+import { TroopIconMark, UiIcon } from "./components/UiIcon";
 import { useBattlefieldDayNightOverlay } from "./hooks/useBattlefieldDayNight";
 import { useBattlefieldViewport } from "./hooks/useBattlefieldViewport";
 import { useBattleSession } from "./hooks/useCodeConqController";
@@ -30,7 +31,6 @@ import {
   hasNoAmmoPenalty,
   isLeaderRole,
   rotateUnitCoordinates,
-  TROOP_MECHANIC_ICONS,
   TROOP_MECHANIC_LABELS
 } from "./game/battleEngine";
 import {
@@ -105,9 +105,7 @@ import {
   getBattlefieldUnitLabel,
   getTroopSearchKeywords,
   getTroopTypeDisplay,
-  getTroopWeightDisplay,
-  getUnitDisplayIcon,
-  ICON_MAP
+  getTroopWeightDisplay
 } from "./game/unitCatalog";
 import { SETUP_ARMY_TOKEN_BUDGET, getUnitWeightTokenCost, sumSetupTokensForTeam } from "./game/unitWeight";
 import {
@@ -134,11 +132,11 @@ import {
   pickAiCivVolleyTarget,
   type CivBattleTrap
 } from "./game/civActives";
+import { getCivActiveRailIcon, PASSIVE_RAIL_ICON, UI_ICON } from "./game/uiIcons";
 import {
   applyAiTroopStatMultiplier,
   applyCivilizationPassive,
   CIV_PASSIVES,
-  PASSIVE_ICONS,
   balanceSkirmishUnitsEqualPerTeam,
   prepareUnitsForBattle,
   restoreUnitFromStorage,
@@ -185,6 +183,29 @@ import type {
   TroopCatalogEntry,
   UnitsReferenceScope
 } from "./game/types";
+import {
+  getTroopAbilityIconSrc,
+  getTroopMechanicIconSrc,
+  HANDBOOK_ADDITIONAL_ICON_SRC,
+  HANDBOOK_FORMATION_ICON_SRC,
+  HANDBOOK_GAME_ICON_SRC,
+  HANDBOOK_SIGNATURE_ICON_SRC,
+  HANDBOOK_TERRAIN_ICON_SRC
+} from "./game/abilityIcons";
+
+function HandbookGlyph({ emoji, src, className = "h-9 w-9" }: { emoji: string; src?: string; className?: string }) {
+  if (src) return <UiIcon src={src} className={className} alt="" />;
+  return (
+    <span className="text-xl leading-none" aria-hidden>
+      {emoji}
+    </span>
+  );
+}
+
+function BattleBuffStripGlyph({ icon }: { icon: string }) {
+  if (icon.startsWith("/")) return <UiIcon src={icon} className="h-3.5 w-3.5 sm:h-4 sm:w-4" alt="" />;
+  return <span className="leading-none">{icon}</span>;
+}
 
 /** Stable when terrain combat modifiers are off — a fresh `[]` each render was resetting the AI `useEffect` timer every frame. */
 const EMPTY_TERRAIN_EFFECT_MAP: TerrainType[][] = [];
@@ -346,10 +367,6 @@ function SetupTroopPaletteCell({
     range: referenceStats.range,
     move: referenceStats.move
   });
-  const paletteIcon =
-    typeof troop.Icon === "string" && troop.Icon.length <= 2
-      ? troop.Icon
-      : ICON_MAP[troop.Icon as keyof typeof ICON_MAP] || troop.Icon || "⚔️";
   const leaderUnit = isLeaderRole(troop.role);
   const tokenCost = getUnitWeightTokenCost(troop.role);
   const canAffordPlacement =
@@ -370,9 +387,9 @@ function SetupTroopPaletteCell({
         onMouseLeave={scheduleClose}
       >
         <div className="max-h-[min(22rem,55vh)] overflow-y-auto overscroll-contain pr-0.5">
-          <div className="flex items-start gap-2 border-b border-yellow-700/35 pb-2">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-yellow-600/40 bg-black/30 text-2xl">
-              {paletteIcon}
+            <div className="flex items-start gap-2 border-b border-yellow-700/35 pb-2">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-yellow-600/40 bg-black/30">
+              <TroopIconMark unit={{ role: troop.role }} imgClassName="h-8 w-8" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[15px] font-bold leading-tight text-yellow-50">{troop.name}</div>
@@ -380,8 +397,9 @@ function SetupTroopPaletteCell({
                 <span className="rounded-full border border-yellow-700/50 bg-black/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-yellow-200/90">
                   {troop.role}
                 </span>
-                <span className="rounded-full border border-cyan-700/45 bg-cyan-950/35 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">
-                  {troopTypeDisplay.icon} {troopTypeDisplay.label}
+                <span className="inline-flex items-center gap-1 rounded-full border border-cyan-700/45 bg-cyan-950/35 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">
+                  <UiIcon src={troopTypeDisplay.iconSrc} className="h-3.5 w-3.5" alt="" />
+                  {troopTypeDisplay.label}
                 </span>
                 <span
                   className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${weightDisplay.badgeClassName}`}
@@ -428,9 +446,12 @@ function SetupTroopPaletteCell({
                 {troopAbilities.map((ability) => (
                   <li
                     key={ability.key}
-                    className="rounded-xl border border-cyan-700/30 bg-cyan-950/20 px-2.5 py-2 text-[11px] leading-relaxed text-cyan-50/95"
+                    className="flex gap-2 rounded-xl border border-cyan-700/30 bg-cyan-950/20 px-2.5 py-2 text-[11px] leading-relaxed text-cyan-50/95"
                   >
-                    <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                    <UiIcon src={getTroopAbilityIconSrc(ability.key)} className="mt-0.5 h-4 w-4 shrink-0" alt="" />
+                    <span>
+                      <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -472,7 +493,12 @@ function SetupTroopPaletteCell({
           } ${leaderUnit ? "ring-2 ring-amber-500/40 ring-offset-2 ring-offset-slate-900/80" : ""}`}
         >
           <span className="select-none leading-none" aria-hidden>
-            {paletteIcon}
+            <TroopIconMark
+              unit={{ role: troop.role }}
+              imgClassName={
+                paletteSize === "comfortable" ? "h-7 w-7 sm:h-9 sm:w-9" : "h-6 w-6 sm:h-8 sm:w-8"
+              }
+            />
           </span>
         </div>
       </div>
@@ -625,9 +651,9 @@ function FactionPassiveRailCell({
         <div className="relative max-h-[min(70vh,28rem)] overflow-y-auto overscroll-contain p-4">
           <div className="flex items-start gap-3">
             <div
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-yellow-400/65 bg-gradient-to-br from-amber-300/20 via-amber-200/10 to-transparent text-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_10px_24px_rgba(0,0,0,0.3)] ${passiveMotionClass}`}
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-yellow-400/65 bg-gradient-to-br from-amber-300/20 via-amber-200/10 to-transparent shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_10px_24px_rgba(0,0,0,0.3)] ${passiveMotionClass}`}
             >
-              {PASSIVE_ICONS[team]}
+              <UiIcon src={PASSIVE_RAIL_ICON[team]} className="h-9 w-9" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -712,9 +738,9 @@ function FactionPassiveRailCell({
         <div className="relative z-[2] max-h-[min(70vh,28rem)] overflow-y-auto overscroll-contain p-4">
           <div className="flex items-start gap-3">
             <div
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/55 bg-gradient-to-br from-cyan-400/20 via-cyan-500/10 to-transparent text-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_24px_rgba(0,0,0,0.35)] ${activeMotionClass}`}
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/55 bg-gradient-to-br from-cyan-400/20 via-cyan-500/10 to-transparent shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_24px_rgba(0,0,0,0.35)] ${activeMotionClass}`}
             >
-              {activeAbility.icon}
+              <UiIcon src={getCivActiveRailIcon(team)} className="h-9 w-9" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -766,7 +792,7 @@ function FactionPassiveRailCell({
           onMouseEnter={openPassiveTip}
           onMouseLeave={schedulePassiveClose}
         >
-          {PASSIVE_ICONS[team]}
+          <UiIcon src={PASSIVE_RAIL_ICON[team]} className="h-7 w-7" />
         </button>
         {showActiveBtn && activeAbility && activeSlot && (
           <button
@@ -801,7 +827,7 @@ function FactionPassiveRailCell({
             onMouseEnter={openActiveTip}
             onMouseLeave={scheduleActiveClose}
           >
-            {activeAbility.icon}
+            <UiIcon src={getCivActiveRailIcon(team)} className="h-7 w-7" />
             {activeCooldownRemaining > 0 && (
               <span
                 className="pointer-events-none absolute bottom-0.5 right-0.5 flex min-h-[1.1rem] min-w-[1.1rem] items-center justify-center rounded-md border border-amber-400/70 bg-black/90 px-0.5 font-mono text-[9px] font-bold leading-none tabular-nums text-amber-100 shadow-[0_1px_4px_rgba(0,0,0,0.6)] sm:text-[10px]"
@@ -4825,7 +4851,7 @@ function CodeConq() {
 
   const buildAutoDeployRoleCounts = (team: TeamName, totalUnits: number) => {
     const availableTroops = AVAILABLE_TROOPS[team];
-    const leaderTroop = availableTroops.find((troop) => troop.Icon === "👑") ?? availableTroops[0];
+    const leaderTroop = availableTroops.find((troop) => isLeaderRole(troop.role)) ?? availableTroops[0];
     const nonLeaderCatalog = availableTroops.filter((troop) => troop.role !== leaderTroop.role);
 
     const troopMechanicForCatalog = (troop: (typeof availableTroops)[number]) => {
@@ -5406,7 +5432,7 @@ function CodeConq() {
             <div key={mechanic.title} className="rounded-2xl border border-yellow-700/45 bg-gradient-to-r from-black/25 to-yellow-950/10 px-4 py-4">
               <div className="flex items-start gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-yellow-700/50 bg-black/35 text-xl">
-                  {mechanic.icon}
+                  <HandbookGlyph emoji={mechanic.icon} src={HANDBOOK_GAME_ICON_SRC[mechanic.title]} />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -5445,7 +5471,7 @@ function CodeConq() {
               <div key={ability.title} className="rounded-2xl border border-violet-700/30 bg-black/20 px-4 py-4">
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-700/35 bg-violet-950/25 text-xl">
-                    {ability.icon}
+                    <HandbookGlyph emoji={ability.icon} src={HANDBOOK_SIGNATURE_ICON_SRC[ability.title]} />
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-violet-100 sm:text-base">{ability.title}</div>
@@ -5478,7 +5504,7 @@ function CodeConq() {
               <div key={entry.title} className="rounded-2xl border border-amber-700/30 bg-amber-950/10 px-4 py-4">
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-amber-700/35 bg-black/25 text-xl">
-                    {entry.icon}
+                    <HandbookGlyph emoji={entry.icon} src={HANDBOOK_FORMATION_ICON_SRC[entry.title]} />
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-amber-100 sm:text-base">{entry.title}</div>
@@ -5571,8 +5597,8 @@ function CodeConq() {
                   key={row.team}
                   className="rounded-xl border border-cyan-800/45 bg-black/35 px-3 py-2 text-[11px] leading-snug text-cyan-50/88 sm:text-xs"
                 >
-                  <span className="mr-1" aria-hidden>
-                    {row.icon}
+                  <span className="mr-1 inline-flex align-middle" aria-hidden>
+                    <UiIcon src={getCivActiveRailIcon(row.team)} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" alt="" />
                   </span>
                   <span className="font-semibold text-cyan-100">{row.team}</span>
                   <span className="text-cyan-200/75"> — {row.summary}</span>
@@ -5585,7 +5611,7 @@ function CodeConq() {
               <div key={mechanic.title} className="rounded-2xl border border-cyan-700/35 bg-black/20 px-4 py-4">
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-700/40 bg-cyan-950/25 text-xl">
-                    {mechanic.icon}
+                    <HandbookGlyph emoji={mechanic.icon} src={HANDBOOK_ADDITIONAL_ICON_SRC[mechanic.title]} />
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-cyan-100 sm:text-base">{mechanic.title}</div>
@@ -5609,8 +5635,8 @@ function CodeConq() {
         <div className="grid gap-3 xl:grid-cols-2">
           <div className="rounded-2xl border border-cyan-700/35 bg-cyan-950/20 p-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-base font-semibold text-cyan-100">
-                <span className="mr-2 text-cyan-300">🐎🏹</span>
+              <div className="flex items-center gap-2 text-base font-semibold text-cyan-100">
+                <UiIcon src={getTroopMechanicIconSrc("hybrid")} className="h-5 w-5" alt="" />
                 Hybrid
               </div>
               <span className="rounded-full border border-cyan-700/50 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-cyan-100">
@@ -5621,11 +5647,11 @@ function CodeConq() {
               Hybrid troops count as ranged units while they still have ammo. Once they run dry, they immediately shift into close combat behavior.
             </p>
           </div>
-          {TROOP_MECHANICS_INFO.map((troopInfo) => (
+            {TROOP_MECHANICS_INFO.map((troopInfo) => (
             <div key={troopInfo.type} className="rounded-2xl border border-yellow-700/40 bg-gradient-to-br from-black/20 to-yellow-950/10 p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="font-semibold text-yellow-200">
-                  <span className="mr-2 text-cyan-300">{TROOP_MECHANIC_ICONS[troopInfo.type]}</span>
+                <div className="flex items-center gap-2 font-semibold text-yellow-200">
+                  <UiIcon src={getTroopMechanicIconSrc(troopInfo.type)} className="h-5 w-5 shrink-0" alt="" />
                   {TROOP_MECHANIC_LABELS[troopInfo.type]}
                 </div>
                 <span className="rounded-full border border-yellow-700/45 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-yellow-100">
@@ -5668,7 +5694,10 @@ function CodeConq() {
           {TERRAIN_MECHANICS_INFO.map((terrainInfo) => (
             <div key={terrainInfo.terrain} className="rounded-2xl border border-emerald-700/35 bg-black/20 p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="font-semibold text-emerald-100">{TERRAIN_LABELS[terrainInfo.terrain]}</div>
+                <div className="flex items-center gap-2 font-semibold text-emerald-100">
+                  <UiIcon src={HANDBOOK_TERRAIN_ICON_SRC[terrainInfo.terrain]} className="h-5 w-5 shrink-0" alt="" />
+                  {TERRAIN_LABELS[terrainInfo.terrain]}
+                </div>
                 <span className="rounded-full border border-emerald-700/35 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-emerald-100">
                   {terrainInfo.terrain}
                 </span>
@@ -5925,11 +5954,6 @@ function CodeConq() {
               const troopTypeDisplay = troop.troopTypeDisplay;
               const rosterWeightDisplay = getTroopWeightDisplay({ role: troop.role });
               const troopAbilities = getTroopAbilities(troop.role);
-              const troopIcon =
-                typeof troop.Icon === "string" && troop.Icon.length <= 3
-                  ? troop.Icon
-                  : ICON_MAP[troop.Icon as keyof typeof ICON_MAP] || troop.Icon || "⚔️";
-
               return (
                 <div
                   key={`${troop.team}-${troop.role}`}
@@ -5945,8 +5969,8 @@ function CodeConq() {
                   }}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-yellow-700/50 bg-black/30 text-2xl leading-none">
-                      {troopIcon}
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-yellow-700/50 bg-black/30">
+                      <TroopIconMark unit={{ role: troop.role }} imgClassName="h-8 w-8" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-yellow-200">{troop.name}</div>
@@ -5959,8 +5983,9 @@ function CodeConq() {
                         <span className="rounded-full border border-yellow-700/60 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-yellow-100">
                           {troop.role}
                         </span>
-                        <span className="rounded-full border border-cyan-700/60 bg-cyan-950/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-cyan-200">
-                          {troopTypeDisplay.icon} {troopTypeDisplay.label}
+                        <span className="inline-flex items-center gap-1 rounded-full border border-cyan-700/60 bg-cyan-950/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-cyan-200">
+                          <UiIcon src={troopTypeDisplay.iconSrc} className="h-3.5 w-3.5" alt="" />
+                          {troopTypeDisplay.label}
                         </span>
                         <span
                           className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${rosterWeightDisplay.badgeClassName}`}
@@ -5996,9 +6021,12 @@ function CodeConq() {
                         {troopAbilities.map((ability) => (
                           <div
                             key={ability.key}
-                            className="rounded-lg border border-cyan-700/35 bg-cyan-950/20 px-2.5 py-2 text-[11px] leading-relaxed text-cyan-50"
+                            className="flex gap-2 rounded-lg border border-cyan-700/35 bg-cyan-950/20 px-2.5 py-2 text-[11px] leading-relaxed text-cyan-50"
                           >
-                            <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                            <UiIcon src={getTroopAbilityIconSrc(ability.key)} className="mt-0.5 h-4 w-4 shrink-0" alt="" />
+                            <span>
+                              <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -6876,8 +6904,11 @@ function CodeConq() {
                 }
                 aria-label={`${dayNightClock.isNight ? "Night" : "Day"}, ${dayNightClock.timeLabel}`}
               >
-                <span aria-hidden className="select-none text-sm leading-none">
-                  {reduceUiMotion ? "☀️" : dayNightClock.isNight ? "🌙" : "☀️"}
+                <span aria-hidden className="inline-flex select-none items-center leading-none">
+                  <UiIcon
+                    src={reduceUiMotion ? UI_ICON.sun : dayNightClock.isNight ? UI_ICON.moon : UI_ICON.sun}
+                    className="h-4 w-4 sm:h-[1.1rem] sm:w-[1.1rem]"
+                  />
                 </span>
                 <span>{dayNightClock.timeLabel}</span>
               </span>
@@ -7168,11 +7199,8 @@ function CodeConq() {
             >
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/10 text-2xl">
-                  {(() => {
-                    const FocusedUnitIcon = getUnitDisplayIcon(focusedBattleUnit);
-                    return typeof FocusedUnitIcon === "string" ? FocusedUnitIcon : (FocusedUnitIcon ? createElement(FocusedUnitIcon) : "⚔️");
-                  })()}
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/10">
+                  <TroopIconMark unit={focusedBattleUnit} imgClassName="h-9 w-9" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-amber-300/80">
@@ -7186,8 +7214,9 @@ function CodeConq() {
                   </div>
                   {!isFocusedIntelObscured && focusedTroopTypeDisplay && focusedWeightDisplay && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
-                      <span className="rounded-full border border-cyan-700/45 bg-cyan-950/30 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">
-                        {focusedTroopTypeDisplay.icon} {focusedTroopTypeDisplay.label}
+                      <span className="inline-flex items-center gap-1 rounded-full border border-cyan-700/45 bg-cyan-950/30 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">
+                        <UiIcon src={focusedTroopTypeDisplay.iconSrc} className="h-3.5 w-3.5" alt="" />
+                        {focusedTroopTypeDisplay.label}
                       </span>
                       <span
                         className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${focusedWeightDisplay.badgeClassName}`}
@@ -7212,7 +7241,8 @@ function CodeConq() {
               {isFocusedIntelObscured ? (
                 <div className="mt-3 rounded-xl border border-slate-500/40 bg-slate-950/50 px-2.5 py-3 text-xs leading-relaxed text-slate-100/90">
                   Stats and abilities are hidden until you use{" "}
-                  <span className="font-semibold text-amber-200/95">Spy</span> (🕵️) on your turn —{" "}
+                  <span className="font-semibold text-amber-200/95">Spy</span>{" "}
+                  <UiIcon src={UI_ICON.spyHood} className="inline-block h-3.5 w-3.5 align-[-2px]" alt="" /> on your turn —{" "}
                   <span className="font-semibold">3 reports per battle</span>. Enemy tiles are highlighted while Spy mode is on.
                 </div>
               ) : (
@@ -7242,9 +7272,12 @@ function CodeConq() {
                         {focusedUnitAbilities.map((ability) => (
                           <div
                             key={ability.key}
-                            className="rounded-lg border border-cyan-500/20 bg-black/20 px-2.5 py-2 text-[11px] leading-5 text-cyan-50/92"
+                            className="flex gap-2 rounded-lg border border-cyan-500/20 bg-black/20 px-2.5 py-2 text-[11px] leading-5 text-cyan-50/92"
                           >
-                            <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                            <UiIcon src={getTroopAbilityIconSrc(ability.key)} className="mt-0.5 h-4 w-4 shrink-0" alt="" />
+                            <span>
+                              <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -7357,7 +7390,7 @@ function CodeConq() {
               aria-label="Restart game"
               title="Restart game"
             >
-              ↺
+              <UiIcon src={UI_ICON.refreshCycle} className="h-6 w-6" />
             </button>
           )}
 
@@ -7369,7 +7402,7 @@ function CodeConq() {
               aria-label="Skirmish setup — choose level"
               title="Skirmish setup — choose level and faction"
             >
-              🧭
+              <UiIcon src={UI_ICON.compass} className="h-6 w-6" />
             </button>
           )}
 
@@ -7384,7 +7417,7 @@ function CodeConq() {
               aria-expanded={isBattleLogPanelOpen}
               title={isBattleLogPanelOpen ? "Close battle log" : "Open battle log"}
             >
-              📜
+              <UiIcon src={UI_ICON.scrollSeal} className="h-6 w-6" />
             </button>
           )}
 
@@ -7396,7 +7429,7 @@ function CodeConq() {
               aria-label={`Open ${selectedTeam} troops`}
               title={`Open ${selectedTeam} troops`}
             >
-              🪖
+              <UiIcon src={UI_ICON.helmBronze} className="h-6 w-6" />
             </button>
           )}
 
@@ -7411,7 +7444,7 @@ function CodeConq() {
               aria-label="Start battle"
               title="Start battle"
             >
-              ▶
+              <UiIcon src={UI_ICON.playGold} className="h-6 w-6" />
             </button>
           )}
 
@@ -7424,7 +7457,7 @@ function CodeConq() {
                 aria-label="Auto deploy troops"
                 title="Auto deploy troops"
               >
-                ✨
+                <UiIcon src={UI_ICON.lootSack} className="h-6 w-6" />
               </button>
 
               <button
@@ -7435,7 +7468,7 @@ function CodeConq() {
                 aria-label="Start custom game"
                 title="Start custom game"
               >
-                ▶
+                <UiIcon src={UI_ICON.playGold} className="h-6 w-6" />
               </button>
 
               <button
@@ -7460,7 +7493,7 @@ function CodeConq() {
                 aria-label={gameMode === "ai-versus" ? "Start AI vs AI battle" : "Start multiplayer game"}
                 title={gameMode === "ai-versus" ? "Start AI vs AI battle" : "Start multiplayer game"}
               >
-                ▶
+                <UiIcon src={UI_ICON.playGold} className="h-6 w-6" />
               </button>
 
               <button
@@ -7506,7 +7539,7 @@ function CodeConq() {
               aria-label={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
               title={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
             >
-              🔗
+              <UiIcon src={UI_ICON.crossedSwords} className="h-6 w-6" />
             </button>
           )}
 
@@ -7544,7 +7577,7 @@ function CodeConq() {
               aria-label={spyMode ? "Cancel spy mode" : "Spy on enemy (3 per battle)"}
               title={spyMode ? "Cancel spy mode" : "Spy on enemy — 3 reports per battle"}
             >
-              🕵️
+              <UiIcon src={UI_ICON.spyHood} className="h-6 w-6" />
             </button>
           )}
 
@@ -7555,7 +7588,7 @@ function CodeConq() {
             aria-label="Regenerate terrain"
             title="Regenerate terrain"
           >
-            🗺
+            <UiIcon src={UI_ICON.swordInStone} className="h-6 w-6" />
           </button>
         </div>
       </div>
@@ -8073,7 +8106,6 @@ function CodeConq() {
                         trapAtCell.ownerTeam === playerTeam ? "Your trap" : `${trapAtCell.ownerTeam} trap`
                       } (${trapAtCell.damage} dmg)`
                     : TERRAIN_LABELS[terrainType];
-                const UnitDisplayIcon = u ? getUnitDisplayIcon(u) : null;
                 const feedbackKinds = cellFeedback[key] ?? [];
                 const hasHitFeedback = feedbackKinds.includes("hit");
                 const hasMeleeWindupFeedback = feedbackKinds.includes("meleeWindup");
@@ -8475,8 +8507,8 @@ function CodeConq() {
                           className="battle-unit-layout-root relative z-30 flex h-full w-full min-w-0 flex-col items-center justify-center will-change-transform [transform:translateZ(0)]"
                         >
                           {/* Unit Icon */}
-                          <div className="text-2xl mb-0.5 drop-shadow-md">
-                            {typeof UnitDisplayIcon === "string" ? UnitDisplayIcon : (UnitDisplayIcon ? createElement(UnitDisplayIcon) : "⚔️")}
+                          <div className="mb-0.5 drop-shadow-md">
+                            <TroopIconMark unit={u} imgClassName="h-7 w-7 sm:h-8 sm:w-8" />
                           </div>
 
                           {/* Unit Name */}
@@ -8487,8 +8519,17 @@ function CodeConq() {
                           {/* Health + Range State */}
                           <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-white/95">
                             <span>{u.hp} HP</span>
-                            {u.ammo && u.ammo > 0 && <span className="text-cyan-300">| 🏹{u.ammo}</span>}
-                            {hasNoAmmoPenalty(u) && <span className="text-red-300">| ⚔️</span>}
+                            {u.ammo && u.ammo > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-cyan-300">
+                                | <UiIcon src={UI_ICON.statAmmo} className="h-3 w-3" alt="" />
+                                {u.ammo}
+                              </span>
+                            )}
+                            {hasNoAmmoPenalty(u) && (
+                              <span className="inline-flex items-center gap-0.5 text-red-300">
+                                | <UiIcon src={UI_ICON.crossedSwords} className="h-3 w-3" alt="" />
+                              </span>
+                            )}
                           </div>
 
                           {/* Health Bar */}
@@ -8500,8 +8541,16 @@ function CodeConq() {
                           </div>
 
                           {/* Movement and Attack Indicators */}
-                          {isMove && <div className="text-green-400 text-lg motion-safe:animate-bounce">🚶‍♂️</div>}
-                          {isAttack && <div className="text-red-400 text-lg motion-safe:animate-pulse">⚔️</div>}
+                          {isMove && (
+                            <div className="text-green-400 motion-safe:animate-bounce">
+                              <UiIcon src={UI_ICON.statMove} className="h-5 w-5" alt="" />
+                            </div>
+                          )}
+                          {isAttack && (
+                            <div className="motion-safe:animate-pulse">
+                              <UiIcon src={UI_ICON.crossedSwords} className="h-5 w-5" alt="" />
+                            </div>
+                          )}
                           {battleBuffStrip.length > 0 && (
                             <div
                               className="pointer-events-auto absolute right-0 top-0 z-[35] flex flex-col items-end gap-0.5 overflow-visible pr-0.5 pt-0.5"
@@ -8517,10 +8566,10 @@ function CodeConq() {
                                   aria-label={item.tooltip}
                                 >
                                   <span
-                                    className="cursor-help text-[10px] leading-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)] sm:text-[11px]"
+                                    className="inline-flex cursor-help items-center justify-center leading-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]"
                                     aria-hidden
                                   >
-                                    {item.icon}
+                                    <BattleBuffStripGlyph icon={item.icon} />
                                   </span>
                                   <span
                                     role="tooltip"
@@ -8670,61 +8719,82 @@ function CodeConq() {
 
                 <div className="space-y-3 text-sm sm:text-base text-yellow-200">
                   <div className="flex items-center gap-3">
-                    {(() => {
-                      const InspectedUnitIcon = getUnitDisplayIcon(inspectedUnit);
-                      return (
-                    <div className="text-3xl">
-                      {typeof InspectedUnitIcon === "string" ? InspectedUnitIcon : (InspectedUnitIcon ? createElement(InspectedUnitIcon) : "⚔️")}
+                    <div className="flex shrink-0 items-center justify-center">
+                      <TroopIconMark unit={inspectedUnit} imgClassName="h-14 w-14 sm:h-16 sm:w-16" />
                     </div>
-                      );
-                    })()}
                     <div>
                       <div className="text-lg font-bold text-yellow-100">{inspectedUnit.name}</div>
                       <div className="text-xs sm:text-sm text-yellow-300">{inspectedUnit.role}</div>
                     </div>
                   </div>
 
-                  <p><span className="text-sky-300">🏴</span> Team: {inspectedUnit.team}</p>
-                  <p>
-                    <span className="text-red-400">❤️</span> HP: {inspectedUnit.hp}/{inspectedUnit.maxHp}
-                    {inspectedUnit.baseMaxHp && inspectedUnit.baseMaxHp !== inspectedUnit.maxHp ? ` (base ${inspectedUnit.baseMaxHp})` : ""}
+                  <p className="flex items-start gap-2">
+                    <UiIcon src={UI_ICON.statTeam} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                    <span>Team: {inspectedUnit.team}</span>
                   </p>
-                  <p>
-                    <span className="text-orange-400">⚔️</span> Attack: {inspectedEffectiveAttack}
-                    {inspectedEffectiveAttack !== inspectedUnit.attack ? ` (base ${inspectedUnit.attack})` : ""}
+                  <p className="flex items-start gap-2">
+                    <UiIcon src={UI_ICON.statHp} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                    <span>
+                      HP: {inspectedUnit.hp}/{inspectedUnit.maxHp}
+                      {inspectedUnit.baseMaxHp && inspectedUnit.baseMaxHp !== inspectedUnit.maxHp ? ` (base ${inspectedUnit.baseMaxHp})` : ""}
+                    </span>
                   </p>
-                  <p>
-                    <span className="text-blue-400">🎯</span> Range: {inspectedEffectiveRange}
-                    {inspectedEffectiveRange !== inspectedUnit.range ? ` (base ${inspectedUnit.range})` : ""}
+                  <p className="flex items-start gap-2">
+                    <UiIcon src={UI_ICON.statAttack} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                    <span>
+                      Attack: {inspectedEffectiveAttack}
+                      {inspectedEffectiveAttack !== inspectedUnit.attack ? ` (base ${inspectedUnit.attack})` : ""}
+                    </span>
                   </p>
-                  <p>
-            <span className="text-green-400">🚶‍♂️</span> Move: {getMoveForBattle(inspectedUnit)}
-            {getMoveForBattle(inspectedUnit) !== inspectedUnit.move ? ` (base ${inspectedUnit.move})` : ""}
-          </p>
-                  <p>
-                    <span className="text-cyan-300">{getTroopTypeDisplay(inspectedUnit).icon}</span>{" "}
-                    Troop Type: {getTroopTypeDisplay(inspectedUnit).label}
+                  <p className="flex items-start gap-2">
+                    <UiIcon src={UI_ICON.statRange} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                    <span>
+                      Range: {inspectedEffectiveRange}
+                      {inspectedEffectiveRange !== inspectedUnit.range ? ` (base ${inspectedUnit.range})` : ""}
+                    </span>
+                  </p>
+                  <p className="flex items-start gap-2">
+                    <UiIcon src={UI_ICON.statMove} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                    <span>
+                      Move: {getMoveForBattle(inspectedUnit)}
+                      {getMoveForBattle(inspectedUnit) !== inspectedUnit.move ? ` (base ${inspectedUnit.move})` : ""}
+                    </span>
+                  </p>
+                  <p className="flex items-start gap-2">
+                    <UiIcon src={getTroopTypeDisplay(inspectedUnit).iconSrc} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                    <span>Troop Type: {getTroopTypeDisplay(inspectedUnit).label}</span>
                   </p>
                   {inspectedWeightDisplay && (
-                    <p>
-                      <span className="text-fuchsia-300">⚖️</span> Line weight:{" "}
-                      <span
-                        className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${inspectedWeightDisplay.badgeClassName}`}
-                        title={inspectedWeightDisplay.summary}
-                      >
-                        {inspectedWeightDisplay.label}
+                    <p className="flex items-start gap-2">
+                      <UiIcon src={UI_ICON.statWeight} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                      <span>
+                        Line weight:{" "}
+                        <span
+                          className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${inspectedWeightDisplay.badgeClassName}`}
+                          title={inspectedWeightDisplay.summary}
+                        >
+                          {inspectedWeightDisplay.label}
+                        </span>
+                        <span className="block mt-1 text-xs text-yellow-100/75 leading-snug">{inspectedWeightDisplay.summary}</span>
                       </span>
-                      <span className="block mt-1 text-xs text-yellow-100/75 leading-snug">{inspectedWeightDisplay.summary}</span>
                     </p>
                   )}
-                  <p><span className="text-lime-300">🗺️</span> Terrain: <strong>{TERRAIN_LABELS[inspectedTerrainType ?? "plain"]}</strong></p>
+                  <p className="flex items-start gap-2">
+                    <UiIcon src={UI_ICON.statTerrain} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                    <span>
+                      Terrain: <strong>{TERRAIN_LABELS[inspectedTerrainType ?? "plain"]}</strong>
+                    </span>
+                  </p>
                   <div className="rounded-lg border border-cyan-700 bg-black/20 px-3 py-2">
                     <div className="text-cyan-300 text-sm font-semibold mb-1">Signature Skills</div>
                     {inspectedUnitAbilities.length > 0 ? (
                       <div className="space-y-1.5">
                         {inspectedUnitAbilities.map((ability) => (
-                          <p key={ability.key} className="text-xs text-yellow-100 leading-relaxed">
-                            <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                          <p key={ability.key} className="flex gap-2 text-xs text-yellow-100 leading-relaxed">
+                            <UiIcon src={getTroopAbilityIconSrc(ability.key)} className="mt-0.5 h-4 w-4 shrink-0" alt="" />
+                            <span>
+                              <span className="font-semibold text-cyan-200">{ability.name}:</span> {ability.description}
+                            </span>
                           </p>
                         ))}
                       </div>
@@ -8746,10 +8816,18 @@ function CodeConq() {
                     </div>
                   )}
                   {inspectedUnit.ammo && inspectedUnit.ammo > 0 && (
-                    <p><span className="text-cyan-400">🏹</span> Shots: {inspectedUnit.ammo}</p>
+                    <p className="flex items-start gap-2">
+                      <UiIcon src={UI_ICON.statAmmo} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                      <span>Shots: {inspectedUnit.ammo}</span>
+                    </p>
                   )}
                   {hasNoAmmoPenalty(inspectedUnit) && (
-                    <p><span className="text-red-400">⚔️</span> <strong>No shots left - fights in close combat at half attack</strong></p>
+                    <p className="flex items-start gap-2">
+                      <UiIcon src={UI_ICON.crossedSwords} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                      <span>
+                        <strong>No shots left - fights in close combat at half attack</strong>
+                      </span>
+                    </p>
                   )}
                 </div>
 
@@ -8782,11 +8860,17 @@ function CodeConq() {
                 </div>
 
                 <div className="space-y-3 text-sm sm:text-base text-yellow-200">
-                  <p>
-                    <span className="text-lime-300">🗺️</span> Terrain: <strong>{TERRAIN_LABELS[inspectedTileTerrainType]}</strong>
+                  <p className="flex items-start gap-2">
+                    <UiIcon src={UI_ICON.statTerrain} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                    <span>
+                      Terrain: <strong>{TERRAIN_LABELS[inspectedTileTerrainType]}</strong>
+                    </span>
                   </p>
-                  <p>
-                    <span className="text-sky-300">📍</span> Tile: {inspectedTile.x + 1}, {inspectedTile.y + 1}
+                  <p className="flex items-start gap-2">
+                    <UiIcon src={UI_ICON.statTile} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                    <span>
+                      Tile: {inspectedTile.x + 1}, {inspectedTile.y + 1}
+                    </span>
                   </p>
                   <p className="text-yellow-100 leading-relaxed">{inspectedTileInfo.summary}</p>
                   {!gameOptions.terrainEffectsEnabled && (
@@ -8823,8 +8907,8 @@ function CodeConq() {
                   <h2 id="battle-log-dialog-title" className="truncate text-lg font-bold tracking-tight text-amber-100 sm:text-2xl">
                     Battle log
                   </h2>
-                  <p className="mt-0.5 text-[10px] text-amber-200/65 sm:text-xs">
-                    Tap 📜 again to close
+                  <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-amber-200/65 sm:text-xs">
+                    Tap <UiIcon src={UI_ICON.scrollSeal} className="h-3.5 w-3.5 sm:h-4 sm:w-4" alt="" /> again to close
                     {gameOptions.timedPlayEnabled && gameStarted
                       ? ` · Timed play: ${TURN_ACTION_BUDGET_MS / 1000}s move clock + total bank`
                       : ""}
@@ -8977,9 +9061,7 @@ function CodeConq() {
                       htmlFor="unit-panel-custom-ai-difficulty"
                       className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-cyan-200/95"
                     >
-                      <span className="text-sm" aria-hidden>
-                        ⚔️
-                      </span>
+                      <UiIcon src={UI_ICON.crossedSwords} className="h-4 w-4 shrink-0" alt="" />
                       Enemy AI strength
                     </label>
                     <p className="mt-0.5 text-[9px] leading-snug text-cyan-100/55">HP and attack scaling for AI factions</p>
@@ -9005,9 +9087,7 @@ function CodeConq() {
                       htmlFor="unit-panel-your-team"
                       className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-amber-200/95"
                     >
-                      <span className="text-sm" aria-hidden>
-                        🎖️
-                      </span>
+                      <UiIcon src={UI_ICON.statTeam} className="h-4 w-4 shrink-0" alt="" />
                       Your faction
                     </label>
                     <p className="mt-0.5 text-[9px] leading-snug text-amber-100/55">You command this side in battle</p>
@@ -9100,8 +9180,8 @@ function CodeConq() {
                               : "border-yellow-900/50 bg-black/40 hover:border-amber-600/45 hover:bg-black/55"
                           }`}
                         >
-                          <span className="text-xl leading-none sm:text-2xl" aria-hidden>
-                            {PASSIVE_ICONS[team]}
+                          <span className="inline-flex leading-none sm:text-2xl" aria-hidden>
+                            <UiIcon src={PASSIVE_RAIL_ICON[team]} className="h-7 w-7 sm:h-8 sm:w-8" />
                           </span>
                           <span className="mt-1 w-full truncate text-[8px] font-bold uppercase leading-tight tracking-wide text-yellow-50/95 sm:text-[9px]">
                             {team}
@@ -9153,8 +9233,8 @@ function CodeConq() {
                               : "border-yellow-800/55 bg-black/35 hover:border-amber-500/50 hover:bg-black/45"
                           }`}
                         >
-                          <span className="text-base leading-none sm:text-lg" aria-hidden>
-                            {PASSIVE_ICONS[team]}
+                          <span className="inline-flex leading-none sm:text-lg" aria-hidden>
+                            <UiIcon src={PASSIVE_RAIL_ICON[team]} className="h-6 w-6 sm:h-7 sm:w-7" />
                           </span>
                           <span className="mt-0.5 w-full truncate px-0.5 text-[7px] font-bold uppercase leading-tight tracking-tight text-yellow-100/88 sm:text-[8px]">
                             {team}
@@ -9232,8 +9312,8 @@ function CodeConq() {
                         className="flex items-center justify-between gap-2 rounded-lg border border-yellow-900/30 bg-black/30 px-2.5 py-1.5 tabular-nums"
                       >
                         <span className="flex min-w-0 items-center gap-2 truncate">
-                          <span className="text-base leading-none" aria-hidden>
-                            {PASSIVE_ICONS[team]}
+                          <span className="inline-flex leading-none" aria-hidden>
+                            <UiIcon src={PASSIVE_RAIL_ICON[team]} className="h-5 w-5" />
                           </span>
                           <span className="truncate font-medium text-yellow-50/95">{team}</span>
                         </span>
