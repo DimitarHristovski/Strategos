@@ -203,8 +203,8 @@ function HandbookGlyph({ emoji, src, className = "h-9 w-9" }: { emoji: string; s
 }
 
 function BattleBuffStripGlyph({ icon }: { icon: string }) {
-  if (icon.startsWith("/")) return <UiIcon src={icon} className="h-3.5 w-3.5 sm:h-4 sm:w-4" alt="" />;
-  return <span className="leading-none">{icon}</span>;
+  if (icon.startsWith("/")) return <UiIcon src={icon} className="h-2.5 w-2.5 sm:h-4 sm:w-4" alt="" />;
+  return <span className="max-sm:text-[10px] sm:leading-none">{icon}</span>;
 }
 
 /** Stable when terrain combat modifiers are off — a fresh `[]` each render was resetting the AI `useEffect` timer every frame. */
@@ -537,7 +537,8 @@ function FactionPassiveRailCell({
   team,
   activeSlot,
   civReadyNudge,
-  activeCooldownRemaining = 0
+  activeCooldownRemaining = 0,
+  compact = false
 }: {
   team: TeamName;
   activeSlot?: FactionRailActiveSlot;
@@ -545,6 +546,8 @@ function FactionPassiveRailCell({
   civReadyNudge?: boolean;
   /** Steps until active can be armed (battle rounds or faction turns); 0 = ready. */
   activeCooldownRemaining?: number;
+  /** Smaller hit targets for the phone header strip. */
+  compact?: boolean;
 }) {
   const passive = CIV_PASSIVES[team];
   const activeAbility = CIV_ACTIVES[team];
@@ -780,19 +783,27 @@ function FactionPassiveRailCell({
 
   const showActiveBtn = Boolean(activeSlot?.show && activeAbility);
 
+  const btnPassive = compact
+    ? "h-7 w-7 focus:ring-1"
+    : "h-11 w-11 focus:ring-2";
+  const btnActive = compact ? "h-7 w-7 focus:ring-1" : "h-11 w-11 focus:ring-2";
+  const iconPassive = compact ? "h-3.5 w-3.5" : "h-7 w-7";
+  const iconActive = compact ? "h-3.5 w-3.5" : "h-7 w-7";
+
   return (
     <>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className={`flex shrink-0 items-center ${compact ? "gap-px" : "gap-1"}`}>
         <button
           type="button"
           ref={passiveAnchorRef}
-          className={`fr-rail-skill-btn fr-rail-skill-btn--passive fr-rail-skill-btn--${team} cc-cursor-faction-info game-ui flex h-11 w-11 shrink-0 items-center justify-center border border-yellow-600 bg-gray-950 text-lg shadow-lg transition-all duration-200 hover:border-yellow-400 hover:shadow-[0_0_18px_rgba(251,191,36,0.35)] focus:border-yellow-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40`}
+          className={`fr-rail-skill-btn fr-rail-skill-btn--passive fr-rail-skill-btn--${team} cc-cursor-faction-info game-ui flex shrink-0 items-center justify-center border border-yellow-600 bg-gray-950 text-lg shadow-lg transition-all duration-200 hover:border-yellow-400 hover:shadow-[0_0_18px_rgba(251,191,36,0.35)] focus:border-yellow-400 focus:outline-none focus:ring-amber-500/40 ${btnPassive}`}
           aria-label={`${team} passive: ${passive.name}. ${passive.effect}`}
           title=""
           onMouseEnter={openPassiveTip}
           onMouseLeave={schedulePassiveClose}
+          onClick={() => openPassiveTip()}
         >
-          <UiIcon src={PASSIVE_RAIL_ICON[team]} className="h-7 w-7" />
+          <UiIcon src={PASSIVE_RAIL_ICON[team]} className={iconPassive} />
         </button>
         {showActiveBtn && activeAbility && activeSlot && (
           <button
@@ -803,7 +814,7 @@ function FactionPassiveRailCell({
               activeSlot.onFire();
             }}
             disabled={!activeSlot.canFire}
-            className={`fr-rail-skill-btn fr-rail-skill-btn--active fr-rail-skill-btn--active-${activeAbility.targeting} relative game-ui flex h-11 w-11 shrink-0 items-center justify-center border text-lg shadow-lg transition-all duration-200 focus:outline-none focus:ring-2 ${
+            className={`fr-rail-skill-btn fr-rail-skill-btn--active fr-rail-skill-btn--active-${activeAbility.targeting} relative game-ui flex shrink-0 items-center justify-center border text-lg shadow-lg transition-all duration-200 focus:outline-none ${
               civReadyNudge ? "fr-rail-skill-btn--civ-ready-nudge " : ""
             }${
               activeSlot.canFire
@@ -811,7 +822,7 @@ function FactionPassiveRailCell({
                   ? "cc-cursor-faction-info border-amber-400/90 bg-amber-950/90 ring-1 ring-amber-400/50 hover:border-amber-300 hover:shadow-[0_0_16px_rgba(251,191,36,0.4)] focus:ring-amber-500/50"
                   : "cc-cursor-faction-info border-cyan-400/80 bg-cyan-950/80 hover:border-cyan-300 hover:bg-cyan-900/90 hover:shadow-[0_0_18px_rgba(34,211,238,0.35)] focus:border-cyan-300 focus:ring-cyan-500/40"
                 : "cursor-not-allowed border-cyan-800/50 bg-gray-950/90 text-cyan-200/50 opacity-70 focus:ring-cyan-900/30"
-            } disabled:cursor-not-allowed disabled:opacity-55`}
+            } disabled:cursor-not-allowed disabled:opacity-55 ${btnActive}`}
             aria-label={
               activeSlot.canFire
                 ? activeSlot.isPrimed
@@ -827,10 +838,14 @@ function FactionPassiveRailCell({
             onMouseEnter={openActiveTip}
             onMouseLeave={scheduleActiveClose}
           >
-            <UiIcon src={getCivActiveRailIcon(team)} className="h-7 w-7" />
+            <UiIcon src={getCivActiveRailIcon(team)} className={iconActive} />
             {activeCooldownRemaining > 0 && (
               <span
-                className="pointer-events-none absolute bottom-0.5 right-0.5 flex min-h-[1.1rem] min-w-[1.1rem] items-center justify-center rounded-md border border-amber-400/70 bg-black/90 px-0.5 font-mono text-[9px] font-bold leading-none tabular-nums text-amber-100 shadow-[0_1px_4px_rgba(0,0,0,0.6)] sm:text-[10px]"
+                className={`pointer-events-none absolute flex items-center justify-center rounded border border-amber-400/70 bg-black/90 font-mono font-bold leading-none tabular-nums text-amber-100 shadow-[0_1px_4px_rgba(0,0,0,0.6)] ${
+                  compact
+                    ? "bottom-px right-px min-h-[0.65rem] min-w-[0.65rem] px-px text-[6px]"
+                    : "bottom-0.5 right-0.5 min-h-[1.1rem] min-w-[1.1rem] px-0.5 text-[9px] sm:text-[10px]"
+                }`}
                 aria-hidden
               >
                 {activeCooldownRemaining > 99 ? "99+" : activeCooldownRemaining}
@@ -991,6 +1006,9 @@ function CodeConq() {
   const battlefieldCellRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const battlefieldPanCleanupRef = useRef<(() => void) | null>(null);
   const skipNextGridClickRef = useRef(false);
+  /** Touch/pen taps often never synthesize `click` when the map scrolls; we handle pointerup + suppress the delayed click. */
+  const gridCellPointerDownRef = useRef(new Map<number, { sx: number; sy: number; gx: number; gy: number }>());
+  const suppressGridClickFromPointerTapRef = useRef(false);
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
   const battleSfxRef = useRef<ReturnType<typeof createBattleSfxController> | null>(null);
   const attackSfxRef = useRef<ReturnType<typeof createAttackSfxController> | null>(null);
@@ -2631,7 +2649,8 @@ function CodeConq() {
   })();
   const passiveTeams = (isSetupMode ? setupTeamsInPlay : aliveBattleTeams).filter((team, index, arr) => arr.indexOf(team) === index);
   const setupTeams: TeamName[] = isDualTeamBattle ? [...multiplayerTeams] : [...ALL_TEAMS];
-  const iconActionButtonClass = "battle-button flex h-10 w-10 items-center justify-center p-0 text-lg font-semibold";
+  const iconActionButtonClass =
+    "battle-button flex h-5 w-5 shrink-0 items-center justify-center p-0 text-xs font-semibold sm:h-10 sm:w-10 sm:text-lg";
   const toggleCivAbilityTargeting = (team: TeamName) => {
     if (timedPlayLoserTeam) return;
     if (tutorialMissionIndex !== null) return;
@@ -6837,13 +6856,15 @@ function CodeConq() {
 
   return (
     <div
-      className="cc-game-cursors flex w-full max-w-full min-w-0 flex-col items-center overflow-x-hidden min-h-screen min-h-[100dvh]"
+      className="cc-game-cursors flex w-full max-w-full min-w-0 flex-col items-center overflow-x-hidden min-h-screen min-h-[100dvh] max-sm:h-[100dvh] max-sm:min-h-0 max-sm:items-stretch"
       style={appBackgroundStyle}
     >
       <div
         ref={battlefieldRef}
         className={`fullscreen-battlefield-shell flex w-full max-w-full min-w-0 flex-col ${
-          isBattlefieldFullscreen ? "bf-fs-root min-h-0 flex-1 justify-start" : "items-center"
+          isBattlefieldFullscreen
+            ? "bf-fs-root min-h-0 flex-1 justify-start"
+            : "items-center max-sm:min-h-0 max-sm:flex-1 max-sm:items-stretch max-sm:w-full"
         }`}
       >
       {tutorialMissionIndex !== null &&
@@ -6890,13 +6911,13 @@ function CodeConq() {
           </div>
         )}
       {/* Top Header */}
-      <div className="sticky top-0 z-30 w-full shrink-0">
-        <div className="game-ui w-full rounded-none border-x-0 px-2 sm:px-3 py-2 flex flex-wrap items-center gap-2 justify-between relative">
+      <div className="sticky top-0 z-30 w-full shrink-0 pt-[env(safe-area-inset-top,0px)]">
+        <div className="game-ui w-full rounded-none border-x-0 px-1.5 py-1 sm:px-3 sm:py-2 flex flex-wrap items-center gap-1.5 sm:gap-2 justify-between relative">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-yellow-200 drop-shadow-lg">Strategos</h1>
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <h1 className="text-xs font-bold text-yellow-200 drop-shadow-lg sm:text-lg">Strategos</h1>
               <span
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-600/60 bg-black/30 px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold tabular-nums text-amber-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                className="inline-flex items-center gap-1 rounded-full border border-amber-600/60 bg-black/30 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-amber-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:gap-1.5 sm:px-2 sm:text-[11px]"
                 title={
                   reduceUiMotion
                     ? "Time of day (cycle paused — reduced motion)"
@@ -6907,23 +6928,43 @@ function CodeConq() {
                 <span aria-hidden className="inline-flex select-none items-center leading-none">
                   <UiIcon
                     src={reduceUiMotion ? UI_ICON.sun : dayNightClock.isNight ? UI_ICON.moon : UI_ICON.sun}
-                    className="h-4 w-4 sm:h-[1.1rem] sm:w-[1.1rem]"
+                    className="h-3.5 w-3.5 sm:h-[1.1rem] sm:w-[1.1rem]"
                   />
                 </span>
                 <span>{dayNightClock.timeLabel}</span>
               </span>
-              <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-2 py-0.5 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide text-yellow-100">
+              <span className="max-w-[min(100%,11rem)] truncate rounded-full border border-yellow-700 bg-black bg-opacity-20 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-yellow-100 sm:max-w-none sm:px-2 sm:text-[10px]">
                 {tutorialMissionIndex !== null
                   ? "Tutorial"
                   : gameMode === "campaign"
                     ? "Campaign"
                     : gameMode === "multiplayer"
-                      ? `PvP hot-seat · ${multiplayerTeams.length} factions`
+                      ? (
+                          <>
+                            <span className="sm:hidden">PvP · {multiplayerTeams.length}f</span>
+                            <span className="hidden sm:inline">{`PvP hot-seat · ${multiplayerTeams.length} factions`}</span>
+                          </>
+                        )
                       : gameMode === "ai-versus"
-                        ? `AI vs AI · ${multiplayerTeams.length} factions`
+                        ? (
+                            <>
+                              <span className="sm:hidden">AI · {multiplayerTeams.length}f</span>
+                              <span className="hidden sm:inline">{`AI vs AI · ${multiplayerTeams.length} factions`}</span>
+                            </>
+                          )
                         : gameMode === "custom-scenario"
-                          ? "Custom scenario"
-                          : "Player vs AI"}
+                          ? (
+                              <>
+                                <span className="sm:hidden">Custom</span>
+                                <span className="hidden sm:inline">Custom scenario</span>
+                              </>
+                            )
+                          : (
+                              <>
+                                <span className="sm:hidden">vs AI</span>
+                                <span className="hidden sm:inline">Player vs AI</span>
+                              </>
+                            )}
               </span>
             </div>
             {(gameMode === "multiplayer" || gameMode === "ai-versus") && isSetupMode && !gameStarted && (
@@ -6940,12 +6981,17 @@ function CodeConq() {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-yellow-200 text-xs sm:text-sm font-semibold">
-            {!isSetupMode && <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-3 py-1">Round {round}</span>}
+          <div className="flex flex-wrap items-center gap-1 text-yellow-200 text-[9px] font-semibold sm:gap-2 sm:text-sm">
+            {!isSetupMode && (
+              <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-2 py-0.5 sm:px-3 sm:py-1">
+                <span className="sm:hidden">R{round}</span>
+                <span className="hidden sm:inline">Round {round}</span>
+              </span>
+            )}
 
             {!isSetupMode && gameStarted && gameOptions.timedPlayEnabled && timedPlayTeamKeys.length > 0 && !timedPlayLoserTeam && (
               <span
-                className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-amber-700/50 bg-black/20 px-1.5 py-1"
+                className="hidden max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-amber-700/50 bg-black/20 px-1.5 py-1 sm:inline-flex"
                 title={`Timed play: ${TURN_ACTION_BUDGET_MS / 1000}s move clock + ${getPerTeamTimeBudgetMinutes(battlefieldSize)} min per faction`}
               >
                 <span
@@ -7000,8 +7046,11 @@ function CodeConq() {
             {!isSetupMode &&
               gameMode === "single-player" &&
               tutorialMissionIndex === null && (
-              <div className="flex flex-wrap items-center gap-2">
-                <label htmlFor="single-player-team" className="text-xs uppercase tracking-wide text-yellow-100">
+              <div className="hidden max-w-full flex-wrap items-center gap-1.5 sm:flex sm:gap-2">
+                <label
+                  htmlFor="single-player-team"
+                  className="text-[9px] uppercase tracking-wide text-yellow-100 sm:text-xs"
+                >
                   Faction
                 </label>
                 <select
@@ -7011,14 +7060,18 @@ function CodeConq() {
                     const nextTeam = e.target.value as TeamName;
                     restartSessionForGameplaySettings({ playerTeam: nextTeam });
                   }}
-                  className="bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-2 py-1 text-xs sm:text-sm focus:outline-none focus:border-yellow-400"
+                  className="max-w-[9rem] rounded border border-yellow-600 bg-gray-800 px-1 py-0.5 text-[10px] text-yellow-200 focus:border-yellow-400 focus:outline-none sm:max-w-none sm:px-2 sm:py-1 sm:text-sm"
                 >
                   {levelTeams.map((team) => (
                     <option key={team} value={team}>{team}</option>
                   ))}
                 </select>
-                <label htmlFor="single-player-ai-difficulty" className="text-xs uppercase tracking-wide text-yellow-100">
-                  AI difficulty
+                <label
+                  htmlFor="single-player-ai-difficulty"
+                  className="text-[9px] uppercase tracking-wide text-yellow-100 sm:text-xs"
+                >
+                  AI
+                  <span className="hidden sm:inline"> difficulty</span>
                 </label>
                 <select
                   id="single-player-ai-difficulty"
@@ -7028,7 +7081,7 @@ function CodeConq() {
                     setAiDifficulty(next);
                     restartSessionForGameplaySettings({ aiDifficulty: next });
                   }}
-                  className="bg-gray-800 text-yellow-200 border border-yellow-600 rounded px-2 py-1 text-xs sm:text-sm focus:outline-none focus:border-yellow-400"
+                  className="max-w-[7rem] rounded border border-yellow-600 bg-gray-800 px-1 py-0.5 text-[10px] text-yellow-200 focus:border-yellow-400 focus:outline-none sm:max-w-none sm:px-2 sm:py-1 sm:text-sm"
                 >
                   {AI_DIFFICULTY_ORDER.map((d) => (
                     <option key={d} value={d}>
@@ -7040,15 +7093,353 @@ function CodeConq() {
             )}
           </div>
 
-          <div>
+          <div className="shrink-0">
             <button
+              type="button"
               onClick={() => setIsGameMenuOpen((open) => !open)}
-              className="battle-button px-3 py-1.5 text-xs sm:text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+              className="battle-button px-2 py-1 text-[10px] font-semibold bg-gray-700 hover:bg-gray-800 sm:px-3 sm:py-1.5 sm:text-sm"
+              aria-label="Game menu"
             >
-              Game Menu
+              <span className="sm:hidden">Menu</span>
+              <span className="hidden sm:inline">Game Menu</span>
             </button>
           </div>
         </div>
+
+        {/* Small screens: faction passives + battle actions as a single scrollable icon row */}
+        <div className="game-ui relative z-[31] w-full rounded-none border-x-0 border-t border-yellow-800/30 bg-black/40 px-1 py-0.5 sm:hidden">
+          <div className="pointer-events-auto flex items-center gap-0.5 overflow-x-auto overflow-y-hidden pb-0.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {passiveTeams.length > 0 &&
+              passiveTeams.map((railTeam) => {
+                const activeRailEligible =
+                  gameStarted &&
+                  tutorialMissionIndex === null &&
+                  gameMode !== "ai-versus" &&
+                  (gameMode === "multiplayer" ||
+                    gameMode === "single-player" ||
+                    gameMode === "campaign" ||
+                    gameMode === "custom-scenario");
+                const canUseCivRail =
+                  Boolean(activeRailEligible) &&
+                  railTeam === turn &&
+                  (gameMode === "multiplayer" || railTeam === playerTeam) &&
+                  !(gameMode === "custom-scenario" && customScenarioSpectator) &&
+                  !timedPlayLoserTeam;
+                const civPrimed = civAbilityModeTeam === railTeam;
+                const civReady = isCivAbilityReady(
+                  railTeam,
+                  civOwnTurnOrdinalForAbility,
+                  civAbilityUnlockAtOwnOrdinal,
+                  round,
+                  civAbilityUnlockAtBattleRound
+                );
+                const civCooldownRemaining = getCivAbilityCooldownRemaining(
+                  railTeam,
+                  civOwnTurnOrdinalForAbility,
+                  civAbilityUnlockAtOwnOrdinal,
+                  round,
+                  civAbilityUnlockAtBattleRound
+                );
+                const canClickCiv = canUseCivRail && (civReady || civPrimed);
+                const activeSlot: FactionRailActiveSlot = activeRailEligible
+                  ? {
+                      show: true,
+                      canFire: canClickCiv,
+                      isPrimed: civPrimed,
+                      onFire: () => toggleCivAbilityTargeting(railTeam)
+                    }
+                  : null;
+                return (
+                  <FactionPassiveRailCell
+                    key={`phone-rail-${railTeam}`}
+                    team={railTeam}
+                    activeSlot={activeSlot}
+                    civReadyNudge={civAbilityReadyNudgeTeam === railTeam && civAbilityModeTeam !== railTeam}
+                    activeCooldownRemaining={civCooldownRemaining}
+                    compact
+                  />
+                );
+              })}
+            {!isSetupMode && gameStarted && gameOptions.timedPlayEnabled && timedPlayTeamKeys.length > 0 && !timedPlayLoserTeam && (
+              <span
+                className="inline-flex shrink-0 items-center gap-0.5 rounded border border-amber-600/60 bg-amber-950/50 px-1 py-0.5 font-mono text-[8px] font-bold tabular-nums text-amber-100"
+                title={`Timed play · ${turn} · ${turnActionSecsLeft}s / ${TURN_ACTION_BUDGET_MS / 1000}s`}
+              >
+                <span aria-hidden>⏲</span>
+                {turnActionSecsLeft}s
+              </span>
+            )}
+            {canRotateTroops && (
+              <div className="flex shrink-0 items-center gap-px rounded-md border border-yellow-700/60 bg-gray-900/85 p-px">
+                {GRID_ORIENTATIONS.map((orientation) => (
+                  <button
+                    key={`phone-rot-${orientation}`}
+                    type="button"
+                    onClick={() => rotateTroopsTo(orientation)}
+                    title={`Face ${orientation}`}
+                    aria-label={`Face ${orientation}`}
+                    className={`rounded px-1 py-0.5 text-[8px] font-bold uppercase ${
+                      gridOrientation === orientation ? "bg-yellow-500 text-gray-900" : "text-yellow-100"
+                    }`}
+                  >
+                    {orientation.charAt(0)}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(!isSetupMode || isDualTeamBattle || gameMode === "custom-scenario") && (
+              <button
+                type="button"
+                onClick={toggleBattlefieldFullscreen}
+                className={`${iconActionButtonClass} shrink-0 bg-indigo-600 hover:bg-indigo-700`}
+                aria-label={isBattlefieldFullscreen ? "Exit fullscreen battlefield" : "Enter fullscreen battlefield"}
+                title={isBattlefieldFullscreen ? "Exit fullscreen" : "Fullscreen map"}
+              >
+                <span className="text-xs leading-none">{isBattlefieldFullscreen ? "🗗" : "🗖"}</span>
+              </button>
+            )}
+            {gameMode && (
+              <button
+                type="button"
+                onClick={restartCurrentGame}
+                className={`${iconActionButtonClass} shrink-0 bg-red-700 hover:bg-red-800`}
+                aria-label="Restart game"
+                title="Restart"
+              >
+                <UiIcon src={UI_ICON.refreshCycle} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+              </button>
+            )}
+            {gameMode === "single-player" && tutorialMissionIndex === null && (
+              <button
+                type="button"
+                onClick={openSinglePlayerSkirmishSetup}
+                className={`${iconActionButtonClass} shrink-0 bg-violet-700 hover:bg-violet-800`}
+                aria-label="Skirmish setup"
+                title="Skirmish"
+              >
+                <UiIcon src={UI_ICON.compass} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+              </button>
+            )}
+            {!isSetupMode && (gameOptions.showTurnBanner || gameOptions.showBattleLog) && (
+              <button
+                type="button"
+                onClick={() => setIsBattleLogPanelOpen((open) => !open)}
+                className={`${iconActionButtonClass} shrink-0 bg-amber-700 hover:bg-amber-800 ${
+                  isBattleLogPanelOpen ? "ring-1 ring-amber-300 ring-offset-1 ring-offset-gray-900" : ""
+                }`}
+                aria-label={isBattleLogPanelOpen ? "Close battle log" : "Open battle log"}
+                aria-expanded={isBattleLogPanelOpen}
+                title="Battle log"
+              >
+                <UiIcon src={UI_ICON.scrollSeal} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+              </button>
+            )}
+            {isSetupMode && (
+              <button
+                type="button"
+                onClick={() => setIsUnitPanelOpen(true)}
+                className={`${iconActionButtonClass} shrink-0 bg-purple-700 hover:bg-purple-800`}
+                aria-label={`Open ${selectedTeam} troops`}
+                title="Roster"
+              >
+                <UiIcon src={UI_ICON.helmBronze} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+              </button>
+            )}
+            {(gameMode === "single-player" ||
+              (gameMode === "campaign" && !campaignPreBattleBriefingOpen)) &&
+              !isSetupMode &&
+              !gameStarted && (
+                <button
+                  type="button"
+                  onClick={startSinglePlayerBattle}
+                  className={`${iconActionButtonClass} shrink-0 bg-green-600 hover:bg-green-700`}
+                  aria-label="Start battle"
+                  title="Start"
+                >
+                  <UiIcon src={UI_ICON.playGold} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+                </button>
+              )}
+            {gameMode === "custom-scenario" && isSetupMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={autoDeployCustomBattle}
+                  className={`${iconActionButtonClass} shrink-0 bg-blue-600 hover:bg-blue-700`}
+                  aria-label="Auto deploy"
+                  title="Auto deploy"
+                >
+                  <UiIcon src={UI_ICON.lootSack} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+                </button>
+                <button
+                  type="button"
+                  onClick={startCustomGame}
+                  disabled={customUnits.length === 0}
+                  className={`${iconActionButtonClass} shrink-0 bg-green-600 hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50`}
+                  aria-label="Start custom game"
+                  title="Start"
+                >
+                  <UiIcon src={UI_ICON.playGold} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+                </button>
+                <button
+                  type="button"
+                  onClick={resetCustomSetup}
+                  className={`${iconActionButtonClass} shrink-0 bg-red-600 hover:bg-red-700`}
+                  aria-label="Reset setup"
+                  title="Reset"
+                >
+                  <span className="text-xs">🗑</span>
+                </button>
+              </>
+            )}
+            {isDualTeamBattle && isSetupMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={startMultiplayerGame}
+                  disabled={customUnits.length === 0}
+                  className={`${iconActionButtonClass} shrink-0 bg-green-600 hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50`}
+                  aria-label={gameMode === "ai-versus" ? "Start AI vs AI" : "Start multiplayer"}
+                  title="Start"
+                >
+                  <UiIcon src={UI_ICON.playGold} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+                </button>
+                <button
+                  type="button"
+                  onClick={resetCustomSetup}
+                  className={`${iconActionButtonClass} shrink-0 bg-red-600 hover:bg-red-700`}
+                  aria-label="Reset setup"
+                  title="Reset"
+                >
+                  <span className="text-xs">🗑</span>
+                </button>
+              </>
+            )}
+            {!isSetupMode &&
+              gameStarted &&
+              (gameMode === "multiplayer" ||
+                ((gameMode === "single-player" ||
+                  gameMode === "campaign" ||
+                  gameMode === "custom-scenario") &&
+                  turn === playerTeam &&
+                  !(gameMode === "custom-scenario" && customScenarioSpectator))) && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpyMode(false);
+                      setCivAbilityModeTeam(null);
+                      if (mergeCount < 2) {
+                        setMergeMode(!mergeMode);
+                        setSelectedForMerge(null);
+                        setSelectedId(null);
+                        if (!mergeMode) {
+                          setLog((prevLog) => [
+                            `Merge mode activated! All teams can now merge their troops. Click on two adjacent troops of the same role to merge them. (${2 - mergeCount} merges remaining)`,
+                            ...prevLog
+                          ]);
+                        } else {
+                          setLog((prevLog) => [`Merge mode deactivated.`, ...prevLog]);
+                        }
+                      } else {
+                        setLog((prevLog) => [`No more merges allowed this game!`, ...prevLog]);
+                      }
+                    }}
+                    disabled={mergeCount >= 2 || Boolean(timedPlayLoserTeam)}
+                    className={`relative ${iconActionButtonClass} shrink-0 ${mergeMode ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"} disabled:cursor-not-allowed disabled:opacity-50`}
+                    aria-label={mergeMode ? "Cancel merge mode" : "Merge mode"}
+                    title={`Merge (${mergeCount}/2)`}
+                  >
+                    <UiIcon src={UI_ICON.crossedSwords} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+                    <span className="pointer-events-none absolute -right-0.5 -top-0.5 min-w-[0.85rem] rounded-full bg-black/90 px-0.5 text-[6px] font-bold leading-tight text-amber-100">
+                      {mergeCount}/2
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMergeMode(false);
+                      setCivAbilityModeTeam(null);
+                      setSelectedForMerge(null);
+                      setSelectedId(null);
+                      if (spyCount < 3) {
+                        setSpyMode(!spyMode);
+                        if (!spyMode) {
+                          setLog((prevLog) => [
+                            `Spy mode: click an enemy troop to reveal full intel (${3 - spyCount} report${3 - spyCount === 1 ? "" : "s"} left).`,
+                            ...prevLog
+                          ]);
+                        } else {
+                          setLog((prevLog) => [`Spy mode off.`, ...prevLog]);
+                        }
+                      } else {
+                        setLog((prevLog) => [`No spy reports left this battle.`, ...prevLog]);
+                      }
+                    }}
+                    disabled={spyCount >= 3 || Boolean(timedPlayLoserTeam)}
+                    className={`relative ${iconActionButtonClass} shrink-0 ${spyMode ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-600 hover:bg-slate-700"} disabled:cursor-not-allowed disabled:opacity-50`}
+                    aria-label={spyMode ? "Cancel spy mode" : "Spy mode"}
+                    title={`Spy (${spyCount}/3)`}
+                  >
+                    <UiIcon src={UI_ICON.spyHood} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+                    <span className="pointer-events-none absolute -right-0.5 -top-0.5 min-w-[0.85rem] rounded-full bg-black/90 px-0.5 text-[6px] font-bold leading-tight text-amber-100">
+                      {spyCount}/3
+                    </span>
+                  </button>
+                </>
+              )}
+            <button
+              type="button"
+              onClick={regenerateTerrain}
+              className={`${iconActionButtonClass} shrink-0 bg-emerald-700 hover:bg-emerald-800`}
+              aria-label="Regenerate terrain"
+              title="New terrain"
+            >
+              <UiIcon src={UI_ICON.swordInStone} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+            </button>
+          </div>
+        </div>
+
+        {!isSetupMode && gameMode === "single-player" && tutorialMissionIndex === null && (
+          <div className="game-ui flex flex-wrap items-center justify-center gap-1 border-t border-yellow-800/25 bg-black/30 px-1 py-1 sm:hidden">
+            <label htmlFor="single-player-team-phone" className="sr-only">
+              Faction
+            </label>
+            <select
+              id="single-player-team-phone"
+              value={playerTeam}
+              onChange={(e) => {
+                const nextTeam = e.target.value as TeamName;
+                restartSessionForGameplaySettings({ playerTeam: nextTeam });
+              }}
+              className="max-w-[42%] flex-1 rounded border border-yellow-600 bg-gray-800 py-0.5 pl-1 pr-0 text-[9px] text-yellow-200 focus:border-yellow-400 focus:outline-none"
+            >
+              {levelTeams.map((team) => (
+                <option key={team} value={team}>
+                  {team}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="single-player-ai-difficulty-phone" className="sr-only">
+              AI difficulty
+            </label>
+            <select
+              id="single-player-ai-difficulty-phone"
+              value={aiDifficulty}
+              onChange={(e) => {
+                const next = e.target.value as AiDifficulty;
+                setAiDifficulty(next);
+                restartSessionForGameplaySettings({ aiDifficulty: next });
+              }}
+              className="max-w-[42%] flex-1 rounded border border-yellow-600 bg-gray-800 py-0.5 pl-1 pr-0 text-[9px] text-yellow-200 focus:border-yellow-400 focus:outline-none"
+            >
+              {AI_DIFFICULTY_ORDER.map((d) => (
+                <option key={d} value={d}>
+                  {AI_DIFFICULTY_LABELS[d]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {battleOutcomeBanner && (
           <div
@@ -7062,7 +7453,7 @@ function CodeConq() {
         )}
 
         {passiveTeams.length > 0 && (
-          <div className="fixed left-3 top-28 z-[60] max-h-[min(calc(100dvh-7rem),calc(100vh-7rem))] overflow-y-auto overflow-x-hidden pb-4 pt-0.5 [-webkit-overflow-scrolling:touch] sm:left-4">
+          <div className="hidden sm:fixed sm:left-4 sm:top-28 z-[60] max-h-[min(calc(100dvh-7rem),calc(100vh-7rem))] overflow-y-auto overflow-x-hidden pb-4 pt-0.5 [-webkit-overflow-scrolling:touch]">
             <div className="game-ui flex flex-col items-center gap-3 rounded-r-2xl border border-yellow-600/70 bg-gray-950/90 px-2 py-3 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-sm">
               {passiveTeams.map((railTeam) => {
                 const activeRailEligible =
@@ -7117,7 +7508,8 @@ function CodeConq() {
           </div>
         )}
 
-        <div className="pointer-events-none fixed right-3 top-28 z-20 flex max-h-[calc(100vh-8rem)] flex-col items-end gap-2 sm:right-4">
+        <div className="pointer-events-none fixed right-2 top-[4.5rem] z-20 flex max-h-[calc(100dvh-5.75rem)] flex-col items-end gap-1.5 sm:right-4 sm:top-28 sm:max-h-[calc(100vh-8rem)] sm:gap-2">
+          <div className="pointer-events-auto flex max-h-[calc(100dvh-5.75rem)] flex-col items-end gap-1.5 overflow-y-auto max-sm:hidden sm:max-h-[calc(100vh-8rem)] sm:gap-2">
           {isBattlefieldFullscreen && !isSetupMode && gameStarted && gameOptions.timedPlayEnabled && timedPlayTeamKeys.length > 0 && !timedPlayLoserTeam && (
             <div
               className="pointer-events-auto flex max-w-[min(92vw,16rem)] flex-col gap-1.5 rounded-lg border border-amber-600/70 bg-gray-900/85 px-2.5 py-1.5 text-[10px] font-semibold backdrop-blur-sm sm:text-[11px]"
@@ -7190,11 +7582,13 @@ function CodeConq() {
               </div>
             </div>
           )}
+          </div>
 
+          {/* Phone: stats live on tiles + Troop Details modal (second tap); hide floating Selected/Focused strip */}
           {!isSetupMode && focusedBattleUnit && (
             <div
-              className={`game-ui pointer-events-auto absolute right-0 w-[18rem] rounded-2xl border border-amber-700/70 bg-black/20 p-3 text-left text-yellow-100 shadow-[0_12px_35px_rgba(0,0,0,0.35)] backdrop-blur-sm ${
-                isBattlefieldFullscreen ? "top-[4.75rem]" : "top-[3.4rem]"
+              className={`game-ui pointer-events-auto z-[70] hidden w-full sm:absolute sm:right-0 sm:block sm:w-[18rem] sm:max-h-none sm:overflow-visible rounded-2xl border border-amber-700/70 bg-black/20 p-3 text-left text-yellow-100 shadow-[0_12px_35px_rgba(0,0,0,0.35)] backdrop-blur-sm ${
+                isBattlefieldFullscreen ? "sm:top-[4.75rem]" : "sm:top-[3.4rem]"
               }`}
             >
               <div className="mb-2 flex items-start justify-between gap-3">
@@ -7349,6 +7743,7 @@ function CodeConq() {
             </div>
           )}
 
+          <div className="pointer-events-auto flex max-h-[calc(100dvh-5.75rem)] flex-col items-end gap-1.5 overflow-y-auto max-sm:hidden sm:max-h-[calc(100vh-8rem)] sm:gap-2">
           {canRotateTroops && (
             <div className="pointer-events-auto flex flex-col items-center gap-1 rounded-2xl border border-yellow-700 bg-gray-900/80 px-1.5 py-1.5 backdrop-blur-sm">
               {GRID_ORIENTATIONS.map((orientation) => (
@@ -7390,7 +7785,7 @@ function CodeConq() {
               aria-label="Restart game"
               title="Restart game"
             >
-              <UiIcon src={UI_ICON.refreshCycle} className="h-6 w-6" />
+              <UiIcon src={UI_ICON.refreshCycle} className="h-4 w-4 sm:h-6 sm:w-6" />
             </button>
           )}
 
@@ -7402,7 +7797,7 @@ function CodeConq() {
               aria-label="Skirmish setup — choose level"
               title="Skirmish setup — choose level and faction"
             >
-              <UiIcon src={UI_ICON.compass} className="h-6 w-6" />
+              <UiIcon src={UI_ICON.compass} className="h-4 w-4 sm:h-6 sm:w-6" />
             </button>
           )}
 
@@ -7417,7 +7812,7 @@ function CodeConq() {
               aria-expanded={isBattleLogPanelOpen}
               title={isBattleLogPanelOpen ? "Close battle log" : "Open battle log"}
             >
-              <UiIcon src={UI_ICON.scrollSeal} className="h-6 w-6" />
+              <UiIcon src={UI_ICON.scrollSeal} className="h-4 w-4 sm:h-6 sm:w-6" />
             </button>
           )}
 
@@ -7429,7 +7824,7 @@ function CodeConq() {
               aria-label={`Open ${selectedTeam} troops`}
               title={`Open ${selectedTeam} troops`}
             >
-              <UiIcon src={UI_ICON.helmBronze} className="h-6 w-6" />
+              <UiIcon src={UI_ICON.helmBronze} className="h-4 w-4 sm:h-6 sm:w-6" />
             </button>
           )}
 
@@ -7444,7 +7839,7 @@ function CodeConq() {
               aria-label="Start battle"
               title="Start battle"
             >
-              <UiIcon src={UI_ICON.playGold} className="h-6 w-6" />
+              <UiIcon src={UI_ICON.playGold} className="h-4 w-4 sm:h-6 sm:w-6" />
             </button>
           )}
 
@@ -7457,7 +7852,7 @@ function CodeConq() {
                 aria-label="Auto deploy troops"
                 title="Auto deploy troops"
               >
-                <UiIcon src={UI_ICON.lootSack} className="h-6 w-6" />
+                <UiIcon src={UI_ICON.lootSack} className="h-4 w-4 sm:h-6 sm:w-6" />
               </button>
 
               <button
@@ -7468,7 +7863,7 @@ function CodeConq() {
                 aria-label="Start custom game"
                 title="Start custom game"
               >
-                <UiIcon src={UI_ICON.playGold} className="h-6 w-6" />
+                <UiIcon src={UI_ICON.playGold} className="h-4 w-4 sm:h-6 sm:w-6" />
               </button>
 
               <button
@@ -7493,7 +7888,7 @@ function CodeConq() {
                 aria-label={gameMode === "ai-versus" ? "Start AI vs AI battle" : "Start multiplayer game"}
                 title={gameMode === "ai-versus" ? "Start AI vs AI battle" : "Start multiplayer game"}
               >
-                <UiIcon src={UI_ICON.playGold} className="h-6 w-6" />
+                <UiIcon src={UI_ICON.playGold} className="h-4 w-4 sm:h-6 sm:w-6" />
               </button>
 
               <button
@@ -7539,7 +7934,7 @@ function CodeConq() {
               aria-label={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
               title={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
             >
-              <UiIcon src={UI_ICON.crossedSwords} className="h-6 w-6" />
+              <UiIcon src={UI_ICON.crossedSwords} className="h-4 w-4 sm:h-6 sm:w-6" />
             </button>
           )}
 
@@ -7577,7 +7972,7 @@ function CodeConq() {
               aria-label={spyMode ? "Cancel spy mode" : "Spy on enemy (3 per battle)"}
               title={spyMode ? "Cancel spy mode" : "Spy on enemy — 3 reports per battle"}
             >
-              <UiIcon src={UI_ICON.spyHood} className="h-6 w-6" />
+              <UiIcon src={UI_ICON.spyHood} className="h-4 w-4 sm:h-6 sm:w-6" />
             </button>
           )}
 
@@ -7588,8 +7983,9 @@ function CodeConq() {
             aria-label="Regenerate terrain"
             title="Regenerate terrain"
           >
-            <UiIcon src={UI_ICON.swordInStone} className="h-6 w-6" />
+            <UiIcon src={UI_ICON.swordInStone} className="h-4 w-4 sm:h-6 sm:w-6" />
           </button>
+          </div>
         </div>
       </div>
 
@@ -7866,7 +8262,7 @@ function CodeConq() {
       )}
 
       <div
-        className={`flex w-full min-w-0 max-w-full justify-center ${
+        className={`flex w-full min-w-0 max-w-full justify-center max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col max-sm:justify-start ${
           isBattlefieldFullscreen ? "bf-main-stage min-h-0 flex-1 flex-col overflow-hidden justify-center pt-2" : ""
         }`}
       >
@@ -7938,17 +8334,17 @@ function CodeConq() {
         )}
         
         <div
-          className={`battlefield-container relative mx-auto flex w-full min-w-0 max-w-full justify-center ${
+          className={`battlefield-container relative mx-auto flex w-full min-w-0 max-w-full justify-center max-sm:mt-0 max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col max-sm:items-stretch ${
             isBattlefieldFullscreen
               ? "bf-fs-battlefield min-h-0 flex-1 flex-col overflow-hidden items-center justify-center"
-              : "mt-7 sm:mt-9 items-center"
+              : "mt-2 sm:mt-9 items-center"
           }`}
           style={battlefieldMotionCssVars as CSSProperties}
           data-battle-motion={reduceUiMotion ? "reduced" : "normal"}
         >
           <div
             className={
-              `relative mx-auto min-w-0 max-w-full ${
+              `relative mx-auto min-w-0 max-w-full max-sm:flex max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col ${
                 useEightByEightViewport
                   ? "battlefield-shell-8x8"
                   : useFullscreenBoundedBattlefield
@@ -7957,7 +8353,7 @@ function CodeConq() {
               }`
             }
           >
-            <div className="relative mx-auto min-w-0 w-full max-w-full">
+            <div className="relative mx-auto min-w-0 w-full max-w-full max-sm:flex max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col">
                 {showGridNavigation && (
                   <>
                     <div
@@ -8003,14 +8399,14 @@ function CodeConq() {
                   </>
                 )}
                 <div
-                  className={`flex w-full min-w-0 max-w-full items-start justify-center ${
+                  className={`flex w-full min-w-0 max-w-full items-start justify-center max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col ${
                     useFullscreenBoundedBattlefield ? "bf-battlefield-inner min-h-0 flex-1 flex-col" : ""
                   }`}
                 >
                   <div
                     ref={battlefieldViewportRef}
                     className={[
-                      "min-w-0 max-w-full battlefield-scroll-viewport",
+                      "min-w-0 max-w-full battlefield-scroll-viewport bf-phone-scroll-fill",
                       useEightByEightViewport
                         ? "battlefield-scroll-viewport-8x8"
                         : useFullscreenBoundedBattlefield
@@ -8023,15 +8419,17 @@ function CodeConq() {
                       .join(" ")}
                     onPointerDownCapture={handleViewportPointerDown}
                   >
-                    <div className="mx-auto w-max max-w-none">
+                    <div className="bf-phone-grid-clip mx-auto w-max max-w-none max-sm:w-full max-sm:min-w-0">
+                    <div className="bf-phone-board-size w-full">
                     <div
                       ref={battlefieldGridRef}
-                      className="battlefield-grid grid mx-auto gap-0 rounded-lg"
+                      className="battlefield-grid bf-phone-grid-fr grid mx-auto gap-0 rounded-lg"
                       style={{
                         width: "max-content",
                         gridTemplateColumns: `repeat(${battlefieldSize}, auto)`,
-                        gridTemplateRows: `repeat(${battlefieldSize}, auto)`
-                      }}
+                        gridTemplateRows: `repeat(${battlefieldSize}, auto)`,
+                        ["--bf-n" as string]: String(battlefieldSize)
+                      } as React.CSSProperties}
                     >
                 <div
                   ref={dayNightOverlayRef}
@@ -8196,7 +8594,44 @@ function CodeConq() {
                     ref={(node) => {
                       battlefieldCellRefs.current[key] = node;
                     }}
-                    onClick={() => handleClick(x, y)}
+                    onPointerDown={(e) => {
+                      if (e.pointerType === "mouse") return;
+                      gridCellPointerDownRef.current.set(e.pointerId, {
+                        sx: e.clientX,
+                        sy: e.clientY,
+                        gx: x,
+                        gy: y
+                      });
+                    }}
+                    onPointerUp={(e) => {
+                      if (e.pointerType === "mouse") return;
+                      const rec = gridCellPointerDownRef.current.get(e.pointerId);
+                      gridCellPointerDownRef.current.delete(e.pointerId);
+                      if (!rec || rec.gx !== x || rec.gy !== y) return;
+                      const dx = e.clientX - rec.sx;
+                      const dy = e.clientY - rec.sy;
+                      if (dx * dx + dy * dy > 22 * 22) return;
+                      if (skipNextGridClickRef.current) {
+                        skipNextGridClickRef.current = false;
+                        return;
+                      }
+                      e.preventDefault();
+                      suppressGridClickFromPointerTapRef.current = true;
+                      handleClick(x, y);
+                      window.setTimeout(() => {
+                        suppressGridClickFromPointerTapRef.current = false;
+                      }, 450);
+                    }}
+                    onPointerCancel={(e) => {
+                      gridCellPointerDownRef.current.delete(e.pointerId);
+                    }}
+                    onClick={() => {
+                      if (suppressGridClickFromPointerTapRef.current) {
+                        suppressGridClickFromPointerTapRef.current = false;
+                        return;
+                      }
+                      handleClick(x, y);
+                    }}
                     onMouseEnter={() => {
                       if (!canPreviewAttackDamage || !u || !selected) return;
                       const outcome = getAttackDamage(selected, u, units, terrainEffectMap, {
@@ -8237,7 +8672,11 @@ function CodeConq() {
                       setupFieldDragUnitIdRef.current = null;
                       setSetupFieldDragActive(false);
                     }}
-                    className={`${isBattlefieldFullscreen ? "w-[76px] h-[84px] sm:w-[84px] sm:h-[100px]" : "w-[84px] h-[100px] sm:w-[100px] sm:h-[116px]"} terrain-cell ${u ? "terrain-cell--has-unit" : ""}${reduceUiMotion || terrainAutotileVisual || useForestVideo || usePlainVideo || useHillVideo || useRiverVideo || useDesertVideo ? "" : " terrain-cell--living"} flex flex-col items-center justify-center text-xs sm:text-sm transition-all duration-300 relative
+                    className={`min-h-0 min-w-0 max-sm:h-full max-sm:w-full ${
+                      isBattlefieldFullscreen
+                        ? "sm:h-[84px] sm:w-[76px] xl:h-[100px] xl:w-[84px]"
+                        : "sm:h-[100px] sm:w-[84px] xl:h-[116px] xl:w-[100px]"
+                    } terrain-cell ${u ? "terrain-cell--has-unit" : ""}${reduceUiMotion || terrainAutotileVisual || useForestVideo || usePlainVideo || useHillVideo || useRiverVideo || useDesertVideo ? "" : " terrain-cell--living"} flex flex-col items-center justify-center text-[8px] transition-all duration-300 max-sm:leading-tight sm:text-xs xl:text-sm relative
                     ${isSelected ? "unit-selected" : ""}
                     ${isMove ? "movement-highlight" : ""}
                     ${isMeleeApproach ? "melee-approach-highlight" : ""}
@@ -8507,33 +8946,33 @@ function CodeConq() {
                           className="battle-unit-layout-root relative z-30 flex h-full w-full min-w-0 flex-col items-center justify-center will-change-transform [transform:translateZ(0)]"
                         >
                           {/* Unit Icon */}
-                          <div className="mb-0.5 drop-shadow-md">
-                            <TroopIconMark unit={u} imgClassName="h-7 w-7 sm:h-8 sm:w-8" />
+                          <div className="mb-0 drop-shadow-md sm:mb-0.5">
+                            <TroopIconMark unit={u} imgClassName="h-[1.35rem] w-[1.35rem] sm:h-8 sm:w-8" />
                           </div>
 
                           {/* Unit Name */}
-                          <div className="rounded-full bg-black/35 px-2 py-0.5 text-[10px] text-center font-semibold text-yellow-100 leading-tight shadow-sm">
+                          <div className="rounded-full bg-black/35 px-1 py-px text-[7px] text-center font-semibold text-yellow-100 leading-tight shadow-sm max-sm:max-w-[98%] max-sm:truncate sm:px-2 sm:py-0.5 sm:text-[10px]">
                             {getBattlefieldUnitLabel(u)}
                           </div>
 
                           {/* Health + Range State */}
-                          <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-white/95">
+                          <div className="mt-0.5 flex max-w-full flex-wrap items-center justify-center gap-0.5 text-[7px] font-bold text-white/95 sm:mt-1 sm:gap-1 sm:text-[10px]">
                             <span>{u.hp} HP</span>
                             {u.ammo && u.ammo > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-cyan-300">
-                                | <UiIcon src={UI_ICON.statAmmo} className="h-3 w-3" alt="" />
+                              <span className="inline-flex items-center gap-px text-cyan-300 sm:gap-0.5">
+                                | <UiIcon src={UI_ICON.statAmmo} className="h-2 w-2 sm:h-3 sm:w-3" alt="" />
                                 {u.ammo}
                               </span>
                             )}
                             {hasNoAmmoPenalty(u) && (
-                              <span className="inline-flex items-center gap-0.5 text-red-300">
-                                | <UiIcon src={UI_ICON.crossedSwords} className="h-3 w-3" alt="" />
+                              <span className="inline-flex items-center gap-px text-red-300 sm:gap-0.5">
+                                | <UiIcon src={UI_ICON.crossedSwords} className="h-2 w-2 sm:h-3 sm:w-3" alt="" />
                               </span>
                             )}
                           </div>
 
                           {/* Health Bar */}
-                          <div className="w-full bg-gray-800 rounded-full h-1 mt-1 border border-gray-600">
+                          <div className="mt-0.5 h-0.5 w-full rounded-full border border-gray-600 bg-gray-800 sm:mt-1 sm:h-1">
                             <div
                               className="health-bar rounded-full h-full"
                               style={{ width: `${percent}%` }}
@@ -8543,12 +8982,12 @@ function CodeConq() {
                           {/* Movement and Attack Indicators */}
                           {isMove && (
                             <div className="text-green-400 motion-safe:animate-bounce">
-                              <UiIcon src={UI_ICON.statMove} className="h-5 w-5" alt="" />
+                              <UiIcon src={UI_ICON.statMove} className="h-3.5 w-3.5 sm:h-5 sm:w-5" alt="" />
                             </div>
                           )}
                           {isAttack && (
                             <div className="motion-safe:animate-pulse">
-                              <UiIcon src={UI_ICON.crossedSwords} className="h-5 w-5" alt="" />
+                              <UiIcon src={UI_ICON.crossedSwords} className="h-3.5 w-3.5 sm:h-5 sm:w-5" alt="" />
                             </div>
                           )}
                           {battleBuffStrip.length > 0 && (
@@ -8590,11 +9029,11 @@ function CodeConq() {
                         aria-hidden
                       >
                         <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-amber-200/95">Preview</span>
-                        <span className="text-base font-black tabular-nums text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] sm:text-lg">
+                        <span className="text-sm font-black tabular-nums text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] max-sm:text-xs sm:text-lg">
                           −{attackPreviewHover.damage}
                         </span>
                         {attackPreviewHover.mitigated > 0 && (
-                          <span className="text-sm font-black tabular-nums text-emerald-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.85)] sm:text-base">
+                          <span className="text-xs font-black tabular-nums text-emerald-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.85)] max-sm:text-[10px] sm:text-base">
                             −{attackPreviewHover.mitigated} blocked
                           </span>
                         )}
@@ -8609,7 +9048,7 @@ function CodeConq() {
                             className="battle-damage-mitigated pointer-events-none absolute bottom-11 left-1/2 z-[45] flex flex-col items-center gap-0.5 sm:bottom-12"
                             aria-hidden
                           >
-                            <span className="text-sm font-black tabular-nums text-emerald-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] sm:text-base md:text-lg">
+                            <span className="text-xs font-black tabular-nums text-emerald-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] max-sm:text-[11px] sm:text-base md:text-lg">
                               −{d.value}
                             </span>
                             <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-200/95">
@@ -8619,7 +9058,7 @@ function CodeConq() {
                         ) : (
                           <div
                             key={d.id}
-                            className="battle-damage-popup pointer-events-none absolute bottom-0.5 left-1/2 z-[46] -translate-x-1/2 text-base font-black tabular-nums text-red-500 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] sm:text-lg md:text-xl"
+                            className="battle-damage-popup pointer-events-none absolute bottom-0.5 left-1/2 z-[46] -translate-x-1/2 text-sm font-black tabular-nums text-red-500 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] max-sm:text-xs sm:text-lg md:text-xl"
                             aria-hidden
                           >
                             −{d.value}
@@ -8701,6 +9140,7 @@ function CodeConq() {
                 </div>
             </div>
           </div>
+        </div>
         </div>
 
         {inspectedUnit && (
