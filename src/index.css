@@ -611,6 +611,7 @@
 .terrain-cell {
     border: 1px solid rgba(61, 77, 31, 0.75);
     position: relative;
+    touch-action: manipulation;
     /* visible so shared layout moves aren’t clipped mid-flight (was popping tile-to-tile) */
     overflow: visible;
     z-index: 1;
@@ -2576,14 +2577,16 @@
 }
 
 .battlefield-shell-8x8 {
-    width: min(calc(100dvw - 1rem), calc((10 * 84px) + (10 * 0.25rem) + 3rem));
+    /* Match 8× grid cell width on phones (62px tiles + scrollport padding). */
+    width: min(calc(100dvw - 0.5rem), calc(8 * 62px + 2.5rem));
     max-width: 100%;
 }
 
 .battlefield-scroll-viewport-8x8 {
     width: 100%;
-    height: calc((8 * 100px) + (8 * 0.25rem) + 3rem);
-    max-height: min(72dvh, calc(100dvh - 12rem));
+    height: calc((8 * 72px) + 2.5rem);
+    /* Tighter chrome budget: compact header on small screens */
+    max-height: min(64dvh, calc(100dvh - 7.25rem));
     user-select: none;
 }
 
@@ -2596,6 +2599,128 @@
         width: 100%;
         height: calc((8 * 116px) + (8 * 0.25rem) + 3rem);
         max-height: min(76dvh, calc(100dvh - 13rem));
+    }
+}
+
+/* Phones: fill space below header, fit entire grid without horizontal pan (fluid 1fr tracks). */
+@media (max-width: 639px) {
+    .battlefield-shell-8x8 {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .battlefield-scroll-viewport-8x8 {
+        height: auto !important;
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none !important;
+    }
+
+    .battlefield-scroll-viewport.bf-phone-scroll-fill {
+        flex: 1 1 auto;
+        min-height: min(40dvh, 22rem);
+        max-height: none;
+        height: auto;
+        overflow-x: hidden;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        padding: 2px;
+        touch-action: pan-y;
+    }
+
+    /* Normal play: flex chain supplies height — don’t reserve a huge min-height */
+    .battlefield-shell-8x8 .battlefield-scroll-viewport.bf-phone-scroll-fill {
+        min-height: 0 !important;
+        flex: 1 1 auto;
+    }
+
+    .bf-phone-grid-clip {
+        flex: 1 1 auto;
+        min-height: 0;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+    }
+
+    /* Stretch clip vertically so the board container gets a real height for sizing */
+    .battlefield-shell-8x8 .bf-phone-grid-clip {
+        align-items: stretch;
+    }
+
+    .bf-phone-board-size {
+        min-width: 0;
+    }
+
+    /*
+     * Flex child fills clip; container-type: size gives cqw/cqh for the largest grid that fits
+     * (cell aspect 62×72). Inline width:max-content on the grid is overridden with !important below.
+     */
+    .battlefield-shell-8x8 .bf-phone-board-size {
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        max-height: none;
+        aspect-ratio: unset;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Large fullscreen maps: keep intrinsic scroll layout; don’t lock the board box */
+    .battlefield-shell-fullscreen-large .bf-phone-board-size {
+        display: contents;
+        flex: none;
+        width: auto;
+        height: auto;
+        max-height: none;
+        aspect-ratio: unset;
+    }
+
+    .battlefield-shell-fullscreen-large .bf-phone-grid-clip {
+        align-items: center;
+    }
+
+    .battlefield-grid.bf-phone-grid-fr {
+        min-width: 0;
+        min-height: 0;
+        grid-template-columns: repeat(var(--bf-n, 8), minmax(0, 1fr)) !important;
+        grid-template-rows: repeat(var(--bf-n, 8), minmax(0, 1fr)) !important;
+    }
+
+    .battlefield-shell-8x8 .battlefield-grid.bf-phone-grid-fr {
+        /* Beat inline width:max-content — largest board that fits width + remaining viewport height */
+        width: min(100%, calc((100dvh - 9.25rem) * 62 / 72), calc(100dvw - 6px)) !important;
+        height: auto !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        aspect-ratio: 62 / 72;
+        border-width: 2px;
+        /* Grid lines: one cell per repeat (--bf-n set inline on the grid) */
+        background-size:
+            calc(100% / var(--bf-n, 8)) calc(100% / var(--bf-n, 8)),
+            calc(100% / var(--bf-n, 8)) calc(100% / var(--bf-n, 8));
+    }
+
+    .battlefield-shell-8x8 .terrain-cell {
+        border-width: 0.5px;
+    }
+
+    .fullscreen-battlefield-shell.bf-fs-root:fullscreen .battlefield-scroll-viewport-fullscreen-large.bf-fs-viewport,
+    .fullscreen-battlefield-shell.bf-fs-root:-webkit-full-screen .battlefield-scroll-viewport-fullscreen-large.bf-fs-viewport {
+        overflow-x: hidden;
+    }
+}
+
+@media (min-width: 640px) {
+    .bf-phone-board-size {
+        display: contents;
     }
 }
 
