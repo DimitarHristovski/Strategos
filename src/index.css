@@ -768,13 +768,15 @@
 }
 
 .merge-highlight::after {
-    content: '🔗';
+    content: '';
     position: absolute;
     top: 50%;
     left: 50%;
+    width: 1.65rem;
+    height: 1.65rem;
     transform: translate(-50%, -50%);
-    font-size: 1.5rem;
-    text-shadow: 0 0 10px rgba(147,112,219,0.8);
+    background: url('/icons/ui/ui-crossed-swords.png') center / contain no-repeat;
+    filter: drop-shadow(0 0 8px rgba(147, 112, 219, 0.75));
     pointer-events: none;
 }
 
@@ -788,15 +790,17 @@
 }
 
 .spy-target-highlight::after {
-    content: '🕵️';
+    content: '';
     position: absolute;
     top: 50%;
     left: 50%;
+    width: 1.35rem;
+    height: 1.35rem;
     transform: translate(-50%, -50%);
-    font-size: 1.25rem;
-    text-shadow: 0 0 10px rgba(251, 191, 36, 0.85);
+    background: url('/icons/ui/ui-spy-hood.png') center / contain no-repeat;
+    filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.85));
     pointer-events: none;
-    opacity: 0.92;
+    opacity: 0.95;
 }
 
 /* Faction ability — volley (enemy) targets */
@@ -809,15 +813,17 @@
 }
 
 .civ-volley-highlight::after {
-    content: '🏹';
+    content: '';
     position: absolute;
     top: 50%;
     left: 50%;
+    width: 1.35rem;
+    height: 1.35rem;
     transform: translate(-50%, -50%);
-    font-size: 1.2rem;
-    text-shadow: 0 0 10px rgba(248, 113, 113, 0.85);
+    background: url('/icons/ui/ability-archery-target.png') center / contain no-repeat;
+    filter: drop-shadow(0 0 8px rgba(248, 113, 113, 0.85));
     pointer-events: none;
-    opacity: 0.9;
+    opacity: 0.92;
 }
 
 /* Faction ability — reinforcement (ally) targets */
@@ -830,15 +836,17 @@
 }
 
 .civ-reinforce-highlight::after {
-    content: '➕';
+    content: '';
     position: absolute;
     top: 50%;
     left: 50%;
+    width: 1.3rem;
+    height: 1.3rem;
     transform: translate(-50%, -50%);
-    font-size: 1.15rem;
-    text-shadow: 0 0 10px rgba(74, 222, 128, 0.85);
+    background: url('/icons/ui/ui-plus-gold.png') center / contain no-repeat;
+    filter: drop-shadow(0 0 8px rgba(74, 222, 128, 0.85));
     pointer-events: none;
-    opacity: 0.9;
+    opacity: 0.92;
 }
 
 /* Faction summon — valid empty deployment tiles */
@@ -851,15 +859,17 @@
 }
 
 .civ-summon-tile-highlight::after {
-    content: '🏛️';
+    content: '';
     position: absolute;
     top: 50%;
     left: 50%;
+    width: 1.28rem;
+    height: 1.28rem;
     transform: translate(-50%, -50%);
-    font-size: 1.1rem;
-    text-shadow: 0 0 10px rgba(147, 197, 253, 0.9);
+    background: url('/icons/ui/ui-play-gold.png') center / contain no-repeat;
+    filter: drop-shadow(0 0 8px rgba(147, 197, 253, 0.88));
     pointer-events: none;
-    opacity: 0.88;
+    opacity: 0.9;
 }
 
 /* Placed civ traps — visible on the owning player’s map (all traps in spectator / AI-watch) */
@@ -887,17 +897,18 @@
 }
 
 .civ-trap-cell-placed::after {
-    content: "🪤";
+    content: "";
     position: absolute;
-    bottom: 5px;
+    bottom: 4px;
     left: 50%;
+    width: 1.15rem;
+    height: 1.15rem;
     transform: translateX(-50%);
-    font-size: 0.92rem;
-    line-height: 1;
+    background: url('/icons/ui/trap-pressure-plate.png') center / contain no-repeat;
     pointer-events: none;
     z-index: 3;
-    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.7));
-    opacity: 0.94;
+    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.65));
+    opacity: 0.96;
 }
 
 .terrain-cell.civ-trap-cell-placed[data-placed-trap="Gauls"]::before {
