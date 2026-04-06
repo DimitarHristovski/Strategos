@@ -227,6 +227,10 @@ export function getTroopRasterIconSrc(
   const rl = role.toLowerCase();
 
   if (isLeaderRole(role)) return troopRaster("ui-crown-gold.png");
+  const mechanic = getTroopMechanicType(ctx);
+  if (mechanic === "closecombat") {
+    return getUnitWeight(role) === "elite" ? troopEliteCloseCombatRaster() : troopRaster("ui-crossed-swords.png");
+  }
   if (rl.includes("war drummer")) return troopRaster("unit-war-drummer.png");
   if (rl.includes("war horn")) return troopRaster("ui-war-horn.png");
 
@@ -244,19 +248,10 @@ export function getTroopRasterIconSrc(
     return troopRaster("unit-camel-archer.png");
   }
 
-  if (/berserk|ulfhednar/i.test(role)) return troopRaster("ability-fire-rage.png");
-  if (/praetorian|royal guard|shield bearer/.test(rl)) return troopRaster("ability-shield-ornate.png");
-
   if (/catapult|ballista|onager|polybolos|trebuchet|bombard/.test(rl)) return troopRaster("ui-catapult.png");
-
-  const mechanic = getTroopMechanicType(ctx);
   if (mechanic === "sieged") return troopRaster("ui-catapult.png");
   if (mechanic === "ranged") return troopRaster("ui-bow-arrow.png");
   if (mechanic === "mounted") return troopArmoredCavalryRaster(rl);
-  if (mechanic === "closecombat") {
-    if (getUnitWeight(role) === "elite") return troopEliteCloseCombatRaster();
-    return troopRaster("ui-crossed-swords.png");
-  }
   return getTroopMechanicIconSrc(mechanic);
 }
 
