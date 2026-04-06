@@ -203,7 +203,32 @@ export const TROOP_MECHANIC_ADVANTAGE_MULTIPLIER = 1.1;
 
 export const isLeaderRole = (role: string) => {
   const normalizedRole = String(role ?? "").toLowerCase();
-  return ["king", "jarl", "general", "leader", "marshal", "pharaoh"].some((keyword) => normalizedRole.includes(keyword));
+  return ["king", "jarl", "general", "leader", "marshal", "pharaoh", "chief"].some((keyword) =>
+    normalizedRole.includes(keyword)
+  );
+};
+
+/** Leaders on a team in deployment / battle lists (King, Pharaoh, Jarl, …). */
+export const countLeadersForTeam = (units: any[], team: string) =>
+  units.filter((u) => u && u.team === team && isLeaderRole(String(u.role ?? ""))).length;
+
+/**
+ * Custom setup must include exactly one leader per faction that has troops.
+ * Returns an error message or null if valid.
+ */
+export const getSetupLineupLeaderError = (units: any[]): string | null => {
+  if (!Array.isArray(units) || units.length === 0) return null;
+  const teams = [...new Set(units.map((u) => u?.team).filter(Boolean))] as string[];
+  for (const team of teams) {
+    const n = countLeadersForTeam(units, team);
+    if (n === 0) {
+      return `${team}: each army must include its King (ruler) in the lineup.`;
+    }
+    if (n > 1) {
+      return `${team}: only one King (leader) is allowed per army.`;
+    }
+  }
+  return null;
 };
 
 /** Orthogonally adjacent friendly units with a leader-type role (king, pharaoh, …). */

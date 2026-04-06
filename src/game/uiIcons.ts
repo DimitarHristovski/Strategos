@@ -4,7 +4,7 @@ import type { TeamName } from "./types";
 /** Vite `public/` root — raster UI in `public/icons/ui/` (see `docs/MEDIEVAL_UI_ICONS.md`, `docs/FANTASY_UI_ICONS.md`). */
 export const UI_ICON_BASE = "/icons/ui";
 
-const u = (name: string) => `${UI_ICON_BASE}/${name}`;
+const u = (name: string) => `${UI_ICON_BASE}/${encodeURIComponent(name)}`;
 
 export const UI_ICON = {
   refreshCycle: u("ui-refresh-cycle.png"),
@@ -13,8 +13,11 @@ export const UI_ICON = {
   volleyTarget: u("ability-archery-target.png"),
   scrollSeal: u("ui-scroll-seal.png"),
   helmBronze: u("ui-helm-bronze.png"),
-  /** Merge / melee combat toolbar */
   crossedSwords: u("ui-crossed-swords.png"),
+  /** Elite line-weight close combat (matches `getTroopRasterIconSrc` for elite melee). */
+  eliteCloseCombat: u("Golden swords in radiant cross formation_r2_c5.png"),
+  /** Merge mode toolbar */
+  mergeKnights: u("Armored knights merging into power_r2_c2.png"),
   chainHook: u("trap-chain-hook.png"),
   helmSkullHorns: u("ui-helm-skull-horns.png"),
   swordInStone: u("ui-sword-in-stone.png"),
@@ -40,6 +43,7 @@ export const UI_ICON = {
   /** Troop details / stat rows */
   statTeam: u("ui-banner-heraldry.png"),
   statHp: u("ui-helm-bronze.png"),
+  /** Generic attack row fallback only — troop panels should use `getTroopRasterIconSrc(unit)` for role-accurate art. */
   statAttack: u("ui-crossed-swords.png"),
   statRange: u("ability-archery-target.png"),
   statMove: u("ability-haste-boot.png"),

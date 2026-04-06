@@ -194,7 +194,11 @@ const isHybridMountedRangedUnit = (unit: any) => {
 };
 
 const TROOP_RASTER_BASE = "/icons/ui";
-const troopRaster = (file: string) => `${TROOP_RASTER_BASE}/${file}`;
+const troopRaster = (file: string) => `${TROOP_RASTER_BASE}/${encodeURIComponent(file)}`;
+
+/** Elite-tier melee portrait (distinct from generic crossed swords). */
+const troopEliteCloseCombatRaster = () =>
+  troopRaster("Golden swords in radiant cross formation_r2_c5.png");
 
 const troopArmoredElephantRaster = () => troopRaster("unit-armored-war-elephant.png");
 
@@ -214,7 +218,7 @@ export function getTroopRasterIconSrc(
   unit: { role?: string; ammo?: number; range?: number; move?: number } | null | undefined
 ): string {
   const role = String(unit?.role ?? "");
-  if (!role) return troopRaster("ui-crossed-swords.png");
+  if (!role) return troopRaster("ui-compass.png");
   const stats = generateTroopStats(role);
   const ammo = unit?.ammo ?? stats.ammo;
   const range = unit?.range ?? stats.range;
@@ -249,7 +253,11 @@ export function getTroopRasterIconSrc(
   if (mechanic === "sieged") return troopRaster("ui-catapult.png");
   if (mechanic === "ranged") return troopRaster("ui-bow-arrow.png");
   if (mechanic === "mounted") return troopArmoredCavalryRaster(rl);
-  return troopRaster("ui-crossed-swords.png");
+  if (mechanic === "closecombat") {
+    if (getUnitWeight(role) === "elite") return troopEliteCloseCombatRaster();
+    return troopRaster("ui-crossed-swords.png");
+  }
+  return getTroopMechanicIconSrc(mechanic);
 }
 
 /** Line weight (Light / Medium / Heavy / Elite / Unique) — separate from troop type (melee, mounted, ranged, siege). */
@@ -299,7 +307,7 @@ export const getTroopTypeDisplay = (unit: any) => {
 
   return {
     icon: TROOP_MECHANIC_ICONS[troopType],
-    iconSrc: getTroopMechanicIconSrc(troopType),
+    iconSrc: getTroopRasterIconSrc(unit),
     label: TROOP_MECHANIC_LABELS[troopType],
     type: troopType
   } as const;
