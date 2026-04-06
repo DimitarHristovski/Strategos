@@ -1,5 +1,6 @@
 import { generateTroopStats } from "../Units/troopStats";
-import { ensureRangedAmmo, getTroopMechanicType } from "./battleEngine";
+import { ensureRangedAmmo, getTroopMechanicType, isLeaderRole } from "./battleEngine";
+import { pickRandomLeaderDisplayName } from "./leaderNames";
 import { getUnitDisplayIcon } from "./unitCatalog";
 import type { TeamName } from "./types";
 
@@ -221,6 +222,10 @@ export const prepareUnitsForBattle = (units: any[], opts?: PrepareBattleOpts) =>
       ...unit,
       Icon: getUnitDisplayIcon(unit)
     });
+    if (isLeaderRole(String(u.role ?? ""))) {
+      const rulerName = pickRandomLeaderDisplayName(String(u.role ?? ""));
+      if (rulerName) u = { ...u, name: rulerName };
+    }
     if (
       opts &&
       opts.aiHpAttackMultiplier !== 1 &&
