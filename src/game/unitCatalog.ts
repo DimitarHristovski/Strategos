@@ -226,7 +226,7 @@ export function getTroopRasterIconSrc(
   const ctx = { role, ammo, range, move };
   const rl = role.toLowerCase();
 
-  if (isLeaderRole(role)) return troopRaster("ui-crown-gold.png");
+  if (getUnitWeight(role) === "unique") return troopRaster("ui-crown-gold.png");
   const mechanic = getTroopMechanicType(ctx);
   if (mechanic === "closecombat") {
     return getUnitWeight(role) === "elite" ? troopEliteCloseCombatRaster() : troopRaster("ui-crossed-swords.png");
