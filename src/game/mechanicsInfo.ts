@@ -100,7 +100,7 @@ export const GAME_MECHANICS_INFO = [
     icon: "🧬",
     title: "Merge (2 per battle)",
     description:
-      "On your turn, use the 🔗 toolbar button to enter merge mode (single-player, campaign, custom scenario, hot-seat, or AI vs AI). Click two orthogonally adjacent friendly units of the same role to combine them. **Two merges per battle** (HUD counter). Merge mode and Spy mode cancel each other."
+      "On your turn, use the **merge** toolbar button (armored knights icon) to enter merge mode (single-player, campaign, custom scenario, hot-seat, or AI vs AI). Click two orthogonally adjacent friendly units of the same role to combine them. **Two merges per battle** (HUD counter). Merge mode and Spy mode cancel each other."
   },
   {
     icon: "🕵️",
@@ -112,7 +112,7 @@ export const GAME_MECHANICS_INFO = [
     icon: "⚡",
     title: "Faction ability (targeted + cooldown)",
     description:
-      "Each civilization has a **targeted** ability on the **cyan** button beside its passive on the **left rail**. Tap to **arm** it (again to cancel): **volley** factions pick **one enemy** in range of any ally (≤5 tiles)—damage uses a **fixed volley attack value** for that civ (then terrain, matchup, and mitigation as normal); **reinforcement** picks **one living ally** to restore **250 HP** (capped at that unit’s max HP) plus **flat attack** on the card where listed (no % of max HP); **Romans** **summon** one **Legionary** on an empty tile in range. Resolving it **ends your turn**. **Cooldown:** every faction uses a **full battle-round** timer (each time the turn order wraps to the first side again); values differ by civ—see the **cyan hover tooltip** and the **live table** under **Game Menu → Mechanics → Special Systems**. When a cooldown ends, the **battle log** and a short **cyan button pulse** recommend arming the skill again (human play only). Hover also shows **preview motion** (arrows, siege stones, axes, javelins; heal sparks; deploy streak). Not in the tutorial or **AI vs AI** watch. Log lines: **[Civilization Ability]** (cyan)."
+      "Each civilization has a **targeted** ability on the **cyan** button beside its passive in the **header** (or top icon strip on phone). Tap to **arm** it (again to cancel): **volley** factions pick **one enemy** in range of any ally (≤5 tiles)—damage uses a **fixed volley attack value** for that civ (then terrain, matchup, and mitigation as normal); **reinforcement** picks **one living ally** to restore **250 HP** (capped at that unit’s max HP) plus **flat attack** on the card where listed (no % of max HP); **Romans** **summon** one **Legionary** on an empty tile in range. Resolving it **ends your turn**. **Cooldown:** every faction uses a **full battle-round** timer (each time the turn order wraps to the first side again); values differ by civ—see the **cyan hover tooltip** and the **live table** under **Game Menu → Mechanics → Special Systems**. When a cooldown ends, the **battle log** and a short **cyan button pulse** recommend arming the skill again (human play only). Hover also shows **preview motion** (arrows, siege stones, axes, javelins; heal sparks; deploy streak). Not in the tutorial or **AI vs AI** watch. Log lines: **[Civilization Ability]** (cyan)."
   },
   {
     icon: "🧭",
@@ -136,6 +136,12 @@ export const ADDITIONAL_MECHANICS_INFO = [
       "Every role is tagged Light, Medium, Heavy, Elite, or Unique (faction rulers only) for roster balance and the unit reference. This is separate from troop type (melee, mounted, ranged, siege): weight describes typical durability and cost tier, not how the unit attacks. Search the roster by light, medium, heavy, elite, or unique."
   },
   {
+    icon: "✨",
+    title: "Elite melee portrait",
+    description:
+      "Units that are both **Elite** line weight and **close combat** use the **golden crossed-swords** portrait on the field, in deployment, and in unit details. Other melee weights keep the steel crossed-swords look; kings and special roles keep their own art."
+  },
+  {
     icon: "🐎🏹",
     title: "Hybrid Troops",
     description: "Mounted-ranged units are shown as Hybrid in the UI. While they still have ammo, they fight as ranged attackers and keep their two-icon identity."
@@ -150,11 +156,11 @@ export const ADDITIONAL_MECHANICS_INFO = [
     icon: "🏴",
     title: "Civilization Passives",
     description:
-      "Each faction applies a **passive bonus before battle starts** (movement, health, range, or attack depending on the civ). **Yellow-bordered icons** on the **left rail** are the in-battle reference—hover for the full tooltip (passive aura + icon motion). The **cyan** button is the **cooldown-based targeted** ability (see **Faction ability** in core rules); its hover tooltip adds **faction-themed motion** (volley projectiles, reinforcement sparks, Roman deploy drop)."
+      "Each faction applies a **passive bonus before battle starts** (movement, health, range, or attack depending on the civ). **Yellow-bordered icons** in the **header** (tablet/desktop) or top strip (phone) are the in-battle reference—hover for the full tooltip (passive aura + icon motion). The **cyan** button is the **cooldown-based targeted** ability (see **Faction ability** in core rules); its hover tooltip adds **faction-themed motion** (volley projectiles, reinforcement sparks, Roman deploy drop)."
   },
   {
     icon: "⚡",
-    title: "Faction ability (left rail)",
+    title: "Faction ability (header)",
     description:
       "Full wording under **Core rules → Faction ability**. Map: **yellow** = passive · **cyan** = arm **volley** (fixed attack power per civ), **reinforcement** (**250 HP** per use, capped at max, plus attack on the card where listed), or **Roman summon** · valid targets **pulse** on the grid · **amber** cyan = targeting armed · ends turn on resolve · **cooldown = battle rounds** per faction (tooltip + **Mechanics → Special Systems** table). **Ready-again** log + pulse when the cooldown expires (human modes)."
   },

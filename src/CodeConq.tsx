@@ -27,6 +27,7 @@ import {
   getOrientationRotationSteps,
   getTerrainModifiers,
   getTroopMechanicType,
+  getSetupLineupLeaderError,
   getUnitEffectNotes,
   hasNoAmmoPenalty,
   isLeaderRole,
@@ -103,6 +104,7 @@ import { generateTerrainMap, getEnabledTerrainTypes, getTerrainAt, isValidTerrai
 import {
   AVAILABLE_TROOPS,
   getBattlefieldUnitLabel,
+  getTroopRasterIconSrc,
   getTroopSearchKeywords,
   getTroopTypeDisplay,
   getTroopWeightDisplay
@@ -524,12 +526,9 @@ function computeRailTooltipPos(anchorEl: HTMLElement | null) {
   const vw = window.innerWidth;
   const cardW = Math.min(21 * 16, vw - 24);
   const gap = 10;
-  let left = r.right + gap;
-  if (left + cardW > vw - 12) {
-    left = r.left - gap - cardW;
-  }
+  let left = r.left + r.width / 2 - cardW / 2;
   left = Math.max(10, Math.min(left, vw - cardW - 10));
-  return { left, top: r.top + r.height / 2 };
+  return { left, top: r.bottom + gap };
 }
 
 /** Left-rail passive (yellow) and active (cyan): separate hover cards with faction-themed motion + ability-type effects. */
@@ -538,7 +537,8 @@ function FactionPassiveRailCell({
   activeSlot,
   civReadyNudge,
   activeCooldownRemaining = 0,
-  compact = false
+  compact = false,
+  large = false
 }: {
   team: TeamName;
   activeSlot?: FactionRailActiveSlot;
@@ -548,6 +548,8 @@ function FactionPassiveRailCell({
   activeCooldownRemaining?: number;
   /** Smaller hit targets for the phone header strip. */
   compact?: boolean;
+  /** Larger buttons/icons (e.g. desktop header center). Ignored when `compact` is true. */
+  large?: boolean;
 }) {
   const passive = CIV_PASSIVES[team];
   const activeAbility = CIV_ACTIVES[team];
@@ -642,7 +644,7 @@ function FactionPassiveRailCell({
     createPortal(
       <div
         role="tooltip"
-        className="fr-rail-tt fr-rail-tt--passive pointer-events-auto fixed z-[280] w-[min(21rem,calc(100vw-1.5rem))] -translate-y-1/2 overflow-hidden rounded-[22px] border border-yellow-500/80 bg-slate-950/95 text-left shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-amber-200/10 backdrop-blur-md"
+        className="fr-rail-tt fr-rail-tt--passive pointer-events-auto fixed z-[280] w-[min(21rem,calc(100vw-1.5rem))] overflow-hidden rounded-[22px] border border-yellow-500/80 bg-slate-950/95 text-left shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-amber-200/10 backdrop-blur-md"
         style={{ left: passiveTipPos.left, top: passiveTipPos.top }}
         data-team={team}
         onMouseEnter={openPassiveTip}
@@ -694,7 +696,7 @@ function FactionPassiveRailCell({
     createPortal(
       <div
         role="tooltip"
-        className="fr-rail-tt fr-rail-tt--active pointer-events-auto fixed z-[280] w-[min(21rem,calc(100vw-1.5rem))] -translate-y-1/2 overflow-hidden rounded-[22px] border border-cyan-500/75 bg-slate-950/95 text-left shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-cyan-200/15 backdrop-blur-md"
+        className="fr-rail-tt fr-rail-tt--active pointer-events-auto fixed z-[280] w-[min(21rem,calc(100vw-1.5rem))] overflow-hidden rounded-[22px] border border-cyan-500/75 bg-slate-950/95 text-left shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-cyan-200/15 backdrop-blur-md"
         style={{ left: activeTipPos.left, top: activeTipPos.top }}
         data-team={team}
         data-targeting={activeAbility.targeting}
@@ -785,14 +787,20 @@ function FactionPassiveRailCell({
 
   const btnPassive = compact
     ? "h-7 w-7 focus:ring-1"
-    : "h-11 w-11 focus:ring-2";
-  const btnActive = compact ? "h-7 w-7 focus:ring-1" : "h-11 w-11 focus:ring-2";
-  const iconPassive = compact ? "h-3.5 w-3.5" : "h-7 w-7";
-  const iconActive = compact ? "h-3.5 w-3.5" : "h-7 w-7";
+    : large
+      ? "h-12 w-12 sm:h-14 sm:w-14 focus:ring-2"
+      : "h-11 w-11 focus:ring-2";
+  const btnActive = compact
+    ? "h-7 w-7 focus:ring-1"
+    : large
+      ? "h-12 w-12 sm:h-14 sm:w-14 focus:ring-2"
+      : "h-11 w-11 focus:ring-2";
+  const iconPassive = compact ? "h-3.5 w-3.5" : large ? "h-8 w-8 sm:h-9 sm:w-9" : "h-7 w-7";
+  const iconActive = compact ? "h-3.5 w-3.5" : large ? "h-8 w-8 sm:h-9 sm:w-9" : "h-7 w-7";
 
   return (
     <>
-      <div className={`flex shrink-0 items-center ${compact ? "gap-px" : "gap-1"}`}>
+      <div className={`flex shrink-0 items-center ${compact ? "gap-px" : large ? "gap-1.5" : "gap-1"}`}>
         <button
           type="button"
           ref={passiveAnchorRef}
@@ -844,7 +852,9 @@ function FactionPassiveRailCell({
                 className={`pointer-events-none absolute flex items-center justify-center rounded border border-amber-400/70 bg-black/90 font-mono font-bold leading-none tabular-nums text-amber-100 shadow-[0_1px_4px_rgba(0,0,0,0.6)] ${
                   compact
                     ? "bottom-px right-px min-h-[0.65rem] min-w-[0.65rem] px-px text-[6px]"
-                    : "bottom-0.5 right-0.5 min-h-[1.1rem] min-w-[1.1rem] px-0.5 text-[9px] sm:text-[10px]"
+                    : large
+                      ? "bottom-0.5 right-0.5 min-h-[1.2rem] min-w-[1.2rem] px-0.5 text-[10px] sm:bottom-1 sm:right-1 sm:min-h-[1.35rem] sm:min-w-[1.35rem] sm:text-[11px]"
+                      : "bottom-0.5 right-0.5 min-h-[1.1rem] min-w-[1.1rem] px-0.5 text-[9px] sm:text-[10px]"
                 }`}
                 aria-hidden
               >
@@ -1910,7 +1920,7 @@ function CodeConq() {
       if (nowReady && was === false) {
         nudged = t;
         setLog((prev) => [
-          `${def.icon} ${t}: Civilization ability is ready again — tap the cyan skill on the left rail to arm ${def.name}.`,
+          `${def.icon} ${t}: Civilization ability is ready again — tap the cyan skill in the header to arm ${def.name}.`,
           ...prev
         ]);
         playBattleSfx("arrow-shot", { cooldownMs: 260, volumeMultiplier: 0.4, playbackRate: 1.12 });
@@ -4072,6 +4082,10 @@ function CodeConq() {
           ]);
           return;
         }
+        if (isLeaderRole(draggedTroop.role) && customUnits.some((u) => u.team === selectedTeam && isLeaderRole(u.role))) {
+          setLog((prev) => [`Only one King per army — your ruler is already deployed.`, ...prev]);
+          return;
+        }
         if (teamCount < 16) {
           const stats = generateTroopStats(draggedTroop.role);
           const newTroop = {
@@ -4093,6 +4107,16 @@ function CodeConq() {
       // Select existing unit for removal
       const existingUnit = getUnit(x, y);
       if (existingUnit) {
+        if (isLeaderRole(existingUnit.role)) {
+          const team = existingUnit.team as TeamName;
+          const otherLeadersOnTeam = customUnits.filter(
+            (u) => u.id !== existingUnit.id && u.team === team && isLeaderRole(u.role)
+          ).length;
+          if (otherLeadersOnTeam === 0) {
+            setLog((prev) => [`You cannot remove your King — every army must keep its ruler on the field.`, ...prev]);
+            return;
+          }
+        }
         setCustomUnits(prev => prev.filter(u => u.id !== existingUnit.id));
       } else {
         setInspectedUnitId(null);
@@ -4122,6 +4146,10 @@ function CodeConq() {
             `Army token limit (${SETUP_ARMY_TOKEN_BUDGET}): cannot place ${draggedTroop.role} (${placeCost} tokens).`,
             ...prev
           ]);
+          return;
+        }
+        if (isLeaderRole(draggedTroop.role) && customUnits.some((u) => u.team === selectedTeam && isLeaderRole(u.role))) {
+          setLog((prev) => [`Only one King per army — your ruler is already deployed.`, ...prev]);
           return;
         }
         if (teamCount < 16) {
@@ -4177,6 +4205,16 @@ function CodeConq() {
       // Drop on a unit with no field-drag payload: remove that unit (legacy setup gesture)
       const existingUnit = getUnit(x, y);
       if (existingUnit) {
+        if (isLeaderRole(existingUnit.role)) {
+          const team = existingUnit.team as TeamName;
+          const otherLeadersOnTeam = customUnits.filter(
+            (u) => u.id !== existingUnit.id && u.team === team && isLeaderRole(u.role)
+          ).length;
+          if (otherLeadersOnTeam === 0) {
+            setLog((prev) => [`You cannot remove your King — every army must keep its ruler on the field.`, ...prev]);
+            return;
+          }
+        }
         setCustomUnits((prev) => prev.filter((u) => u.id !== existingUnit.id));
       }
     } else if (!isSetupMode && mergeMode) {
@@ -4264,6 +4302,12 @@ function CodeConq() {
         ]);
         return;
       }
+    }
+
+    const lineupErr = getSetupLineupLeaderError(customUnits);
+    if (lineupErr) {
+      setLog((prev) => [lineupErr, ...prev]);
+      return;
     }
 
     setIsSetupMode(false);
@@ -4516,6 +4560,12 @@ function CodeConq() {
         ]);
         return;
       }
+    }
+
+    const lineupErrMp = getSetupLineupLeaderError(customUnits);
+    if (lineupErrMp) {
+      setLog((prev) => [lineupErrMp, ...prev]);
+      return;
     }
 
     setIsSetupMode(false);
@@ -5591,7 +5641,7 @@ function CodeConq() {
       key: "special",
       title: "Special Systems",
       subtitle:
-        "Ammo, hybrid troops, civilization passives, left-rail actives (with a live cooldown/effect table), battle feedback, optional timed play, terrain lock, battle log, tutorial notes.",
+        "Ammo, hybrid troops, civilization passives, header actives (with a live cooldown/effect table), battle feedback, optional timed play, terrain lock, battle log, tutorial notes.",
       badge: "Expanded",
       badgeClass: "border-cyan-700/50 bg-cyan-500/10 text-cyan-100",
       tabClass: "border-cyan-700/40 bg-cyan-950/20 text-cyan-100",
@@ -5608,7 +5658,7 @@ function CodeConq() {
               Each faction uses a{" "}
               <span className="font-semibold text-cyan-100/90">full battle-round</span> cooldown (counted when the turn order
               returns to the first side in play). Reinforcement heals are capped at the unit&apos;s max HP. When a cooldown ends,
-              the battle log and cyan left-rail button pulse remind you the skill is ready again.
+              the battle log and cyan header button pulse remind you the skill is ready again.
             </p>
             <ul className="mt-3 grid list-none gap-2 sm:grid-cols-2">
               {getCivActiveHandbookRows().map((row) => (
@@ -5671,6 +5721,11 @@ function CodeConq() {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 font-semibold text-yellow-200">
                   <UiIcon src={getTroopMechanicIconSrc(troopInfo.type)} className="h-5 w-5 shrink-0" alt="" />
+                  {troopInfo.type === "closecombat" && (
+                    <span title="Elite line weight (golden portrait in-game)">
+                      <UiIcon src={UI_ICON.eliteCloseCombat} className="h-5 w-5 shrink-0 opacity-95" alt="" />
+                    </span>
+                  )}
                   {TROOP_MECHANIC_LABELS[troopInfo.type]}
                 </div>
                 <span className="rounded-full border border-yellow-700/45 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-yellow-100">
@@ -5678,6 +5733,14 @@ function CodeConq() {
                 </span>
               </div>
               <p className="mt-2 text-sm leading-relaxed text-yellow-100/80">{troopInfo.summary}</p>
+              {troopInfo.type === "closecombat" && (
+                <p className="mt-2 flex items-start gap-2 text-[11px] leading-snug text-amber-100/88">
+                  <UiIcon src={UI_ICON.eliteCloseCombat} className="mt-0.5 h-4 w-4 shrink-0" alt="" />
+                  <span>
+                    <span className="font-semibold text-amber-200/95">Elite</span> line weight uses the golden crossed-swords portrait on the field, in the roster, and in unit details (standard melee keeps the steel icon).
+                  </span>
+                </p>
+              )}
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-emerald-700/25 bg-emerald-950/10 px-3 py-2.5">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-200">Strengths</div>
@@ -5750,7 +5813,7 @@ function CodeConq() {
             <div className="max-w-2xl">
               <h3 className="text-2xl font-bold text-yellow-100 sm:text-3xl">Mechanics at a Glance</h3>
               <p className="mt-2 text-sm leading-relaxed text-yellow-100/80 sm:text-[15px]">
-                Use this handbook to read the battle flow quickly: core rules (merge, spy, faction ability on the left rail,
+                Use this handbook to read the battle flow quickly: core rules (merge, spy, faction ability in the header,
                 skirmish setup), signature abilities and formation lines,
                 special systems (ammo, timers, log), AI doctrine, combat roles, and the terrain atlas. Tabs below switch
                 sections—Core rules, Signature Abilities, Formations (per-line buffs), then Special Systems, AI, Roles, Terrain.
@@ -6541,7 +6604,7 @@ function CodeConq() {
                     <p className="mt-3 text-sm leading-7 text-yellow-50/85">
                       Strategos is a tactical grid war game where historical-inspired factions clash across changing terrain. Each
                       battle is shaped by troop roles, linked formation lines, civilization passives, cooldown faction
-                      abilities (volley / reinforcement / Roman summon on the left rail—reinforcement restores{" "}
+                      abilities (volley / reinforcement / Roman summon in the header—reinforcement restores{" "}
                       <span className="font-semibold text-amber-200/90">250 HP</span> per use, capped at the unit&apos;s max, plus
                       any attack bonus on the card; battle-round cooldown per civ—with a live stat table under Mechanics →
                       Special Systems), signature abilities,
@@ -6643,7 +6706,7 @@ function CodeConq() {
                         <span className="font-semibold text-emerald-200/85">250 HP</span> per ally, capped at max, plus attack on
                         the card where listed), or <span className="font-semibold text-sky-200/90">Roman summon</span> (empty tile):
                         arm with the cyan
-                        button on the <span className="font-semibold text-amber-200/90">left rail</span>, then click a valid target.
+                        button in the <span className="font-semibold text-amber-200/90">header</span>, then click a valid target.
                         Hover the cyan icon for <span className="font-semibold text-cyan-200/85">themed motion</span> and the exact{" "}
                         <span className="font-semibold text-amber-200/90">battle-round cooldown</span> for that faction. A full
                         per-faction table (volley attack, reinforce bonuses, rounds) lives in{" "}
@@ -6662,8 +6725,8 @@ function CodeConq() {
                         battle; enemy unit panel stays classified until spied.
                       </li>
                       <li>
-                        <span className="font-semibold text-yellow-100/92">Merge</span> — 🔗 merge mode; two merges per battle; merge
-                        and spy modes cancel each other when toggled.
+                        <span className="font-semibold text-yellow-100/92">Merge</span> — armored-knights toolbar button; two merges per
+                        battle; merge and spy modes cancel each other when toggled.
                       </li>
                       <li>
                         <span className="font-semibold text-yellow-100/92">Tutorial</span> — First lesson completes in one move onto
@@ -6982,6 +7045,60 @@ function CodeConq() {
           </div>
 
           <div className="flex flex-wrap items-center gap-1 text-yellow-200 text-[9px] font-semibold sm:gap-2 sm:text-sm">
+            {passiveTeams.length > 0 && (
+              <div className="hidden items-center gap-2 sm:flex sm:gap-2.5">
+                {passiveTeams.map((railTeam) => {
+                  const activeRailEligible =
+                    gameStarted &&
+                    tutorialMissionIndex === null &&
+                    gameMode !== "ai-versus" &&
+                    (gameMode === "multiplayer" ||
+                      gameMode === "single-player" ||
+                      gameMode === "campaign" ||
+                      gameMode === "custom-scenario");
+                  const canUseCivRail =
+                    Boolean(activeRailEligible) &&
+                    railTeam === turn &&
+                    (gameMode === "multiplayer" || railTeam === playerTeam) &&
+                    !(gameMode === "custom-scenario" && customScenarioSpectator) &&
+                    !timedPlayLoserTeam;
+                  const civPrimed = civAbilityModeTeam === railTeam;
+                  const civReady = isCivAbilityReady(
+                    railTeam,
+                    civOwnTurnOrdinalForAbility,
+                    civAbilityUnlockAtOwnOrdinal,
+                    round,
+                    civAbilityUnlockAtBattleRound
+                  );
+                  const civCooldownRemaining = getCivAbilityCooldownRemaining(
+                    railTeam,
+                    civOwnTurnOrdinalForAbility,
+                    civAbilityUnlockAtOwnOrdinal,
+                    round,
+                    civAbilityUnlockAtBattleRound
+                  );
+                  const canClickCiv = canUseCivRail && (civReady || civPrimed);
+                  const activeSlot: FactionRailActiveSlot = activeRailEligible
+                    ? {
+                        show: true,
+                        canFire: canClickCiv,
+                        isPrimed: civPrimed,
+                        onFire: () => toggleCivAbilityTargeting(railTeam)
+                      }
+                    : null;
+                  return (
+                    <FactionPassiveRailCell
+                      key={`header-center-rail-${railTeam}`}
+                      team={railTeam}
+                      activeSlot={activeSlot}
+                      civReadyNudge={civAbilityReadyNudgeTeam === railTeam && civAbilityModeTeam !== railTeam}
+                      activeCooldownRemaining={civCooldownRemaining}
+                      large
+                    />
+                  );
+                })}
+              </div>
+            )}
             {!isSetupMode && (
               <span className="rounded-full border border-yellow-700 bg-black bg-opacity-20 px-2 py-0.5 sm:px-3 sm:py-1">
                 <span className="sm:hidden">R{round}</span>
@@ -7273,7 +7390,7 @@ function CodeConq() {
                 <button
                   type="button"
                   onClick={startCustomGame}
-                  disabled={customUnits.length === 0}
+                  disabled={customUnits.length === 0 || Boolean(getSetupLineupLeaderError(customUnits))}
                   className={`${iconActionButtonClass} shrink-0 bg-green-600 hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50`}
                   aria-label="Start custom game"
                   title="Start"
@@ -7296,7 +7413,7 @@ function CodeConq() {
                 <button
                   type="button"
                   onClick={startMultiplayerGame}
-                  disabled={customUnits.length === 0}
+                  disabled={customUnits.length === 0 || Boolean(getSetupLineupLeaderError(customUnits))}
                   className={`${iconActionButtonClass} shrink-0 bg-green-600 hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50`}
                   aria-label={gameMode === "ai-versus" ? "Start AI vs AI" : "Start multiplayer"}
                   title="Start"
@@ -7349,7 +7466,7 @@ function CodeConq() {
                     aria-label={mergeMode ? "Cancel merge mode" : "Merge mode"}
                     title={`Merge (${mergeCount}/2)`}
                   >
-                    <UiIcon src={UI_ICON.crossedSwords} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+                    <UiIcon src={UI_ICON.mergeKnights} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
                     <span className="pointer-events-none absolute -right-0.5 -top-0.5 min-w-[0.85rem] rounded-full bg-black/90 px-0.5 text-[6px] font-bold leading-tight text-amber-100">
                       {mergeCount}/2
                     </span>
@@ -7449,62 +7566,6 @@ function CodeConq() {
           >
             <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-200/85">Battle over</div>
             <div className="mt-0.5 text-sm font-bold leading-snug text-emerald-50 sm:text-base">{battleOutcomeBanner}</div>
-          </div>
-        )}
-
-        {passiveTeams.length > 0 && (
-          <div className="hidden sm:fixed sm:left-4 sm:top-28 z-[60] max-h-[min(calc(100dvh-7rem),calc(100vh-7rem))] overflow-y-auto overflow-x-hidden pb-4 pt-0.5 [-webkit-overflow-scrolling:touch]">
-            <div className="game-ui flex flex-col items-center gap-3 rounded-r-2xl border border-yellow-600/70 bg-gray-950/90 px-2 py-3 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-sm">
-              {passiveTeams.map((railTeam) => {
-                const activeRailEligible =
-                  gameStarted &&
-                  tutorialMissionIndex === null &&
-                  gameMode !== "ai-versus" &&
-                  (gameMode === "multiplayer" ||
-                    gameMode === "single-player" ||
-                    gameMode === "campaign" ||
-                    gameMode === "custom-scenario");
-                const canUseCivRail =
-                  Boolean(activeRailEligible) &&
-                  railTeam === turn &&
-                  (gameMode === "multiplayer" || railTeam === playerTeam) &&
-                  !(gameMode === "custom-scenario" && customScenarioSpectator) &&
-                  !timedPlayLoserTeam;
-                const civPrimed = civAbilityModeTeam === railTeam;
-                const civReady = isCivAbilityReady(
-                  railTeam,
-                  civOwnTurnOrdinalForAbility,
-                  civAbilityUnlockAtOwnOrdinal,
-                  round,
-                  civAbilityUnlockAtBattleRound
-                );
-                const civCooldownRemaining = getCivAbilityCooldownRemaining(
-                  railTeam,
-                  civOwnTurnOrdinalForAbility,
-                  civAbilityUnlockAtOwnOrdinal,
-                  round,
-                  civAbilityUnlockAtBattleRound
-                );
-                const canClickCiv = canUseCivRail && (civReady || civPrimed);
-                const activeSlot: FactionRailActiveSlot = activeRailEligible
-                  ? {
-                      show: true,
-                      canFire: canClickCiv,
-                      isPrimed: civPrimed,
-                      onFire: () => toggleCivAbilityTargeting(railTeam)
-                    }
-                  : null;
-                return (
-                  <FactionPassiveRailCell
-                    key={railTeam}
-                    team={railTeam}
-                    activeSlot={activeSlot}
-                    civReadyNudge={civAbilityReadyNudgeTeam === railTeam && civAbilityModeTeam !== railTeam}
-                    activeCooldownRemaining={civCooldownRemaining}
-                  />
-                );
-              })}
-            </div>
           </div>
         )}
 
@@ -7858,7 +7919,7 @@ function CodeConq() {
               <button
                 type="button"
                 onClick={startCustomGame}
-                disabled={customUnits.length === 0}
+                disabled={customUnits.length === 0 || Boolean(getSetupLineupLeaderError(customUnits))}
                 className={`pointer-events-auto ${iconActionButtonClass} bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed`}
                 aria-label="Start custom game"
                 title="Start custom game"
@@ -7883,7 +7944,7 @@ function CodeConq() {
               <button
                 type="button"
                 onClick={startMultiplayerGame}
-                disabled={customUnits.length === 0}
+                disabled={customUnits.length === 0 || Boolean(getSetupLineupLeaderError(customUnits))}
                 className={`pointer-events-auto ${iconActionButtonClass} bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed`}
                 aria-label={gameMode === "ai-versus" ? "Start AI vs AI battle" : "Start multiplayer game"}
                 title={gameMode === "ai-versus" ? "Start AI vs AI battle" : "Start multiplayer game"}
@@ -7934,7 +7995,7 @@ function CodeConq() {
               aria-label={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
               title={mergeMode ? "Cancel merge mode" : "Enable merge mode"}
             >
-              <UiIcon src={UI_ICON.crossedSwords} className="h-4 w-4 sm:h-6 sm:w-6" />
+              <UiIcon src={UI_ICON.mergeKnights} className="h-4 w-4 sm:h-6 sm:w-6" />
             </button>
           )}
 
@@ -8966,7 +9027,7 @@ function CodeConq() {
                             )}
                             {hasNoAmmoPenalty(u) && (
                               <span className="inline-flex items-center gap-px text-red-300 sm:gap-0.5">
-                                | <UiIcon src={UI_ICON.crossedSwords} className="h-2 w-2 sm:h-3 sm:w-3" alt="" />
+                                | <UiIcon src={getTroopRasterIconSrc(u)} className="h-2 w-2 sm:h-3 sm:w-3" alt="" />
                               </span>
                             )}
                           </div>
@@ -8987,7 +9048,7 @@ function CodeConq() {
                           )}
                           {isAttack && (
                             <div className="motion-safe:animate-pulse">
-                              <UiIcon src={UI_ICON.crossedSwords} className="h-3.5 w-3.5 sm:h-5 sm:w-5" alt="" />
+                              <UiIcon src={getTroopRasterIconSrc(u)} className="h-3.5 w-3.5 sm:h-5 sm:w-5" alt="" />
                             </div>
                           )}
                           {battleBuffStrip.length > 0 && (
@@ -9145,10 +9206,10 @@ function CodeConq() {
 
         {inspectedUnit && (
           <div className="fixed inset-0 z-40 bg-black/65 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
-            <div className="w-full max-w-lg mx-auto mt-8 sm:mt-12 mb-6">
-              <div className="game-ui p-4 sm:p-6 relative">
-                <div className="flex items-center justify-between gap-4 mb-4">
-                  <h2 className="text-2xl sm:text-3xl font-bold text-yellow-200">Troop Details</h2>
+            <div className="mx-auto mb-6 mt-6 w-full max-w-4xl sm:mt-10">
+              <div className="game-ui relative overflow-hidden p-4 sm:p-8">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-yellow-800/35 pb-4">
+                  <h2 className="text-xl font-bold text-yellow-200 sm:text-2xl">Troop Details</h2>
                   <button
                     onClick={() => setInspectedUnitId(null)}
                     className="battle-button px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
@@ -9157,17 +9218,25 @@ function CodeConq() {
                   </button>
                 </div>
 
-                <div className="space-y-3 text-sm sm:text-base text-yellow-200">
-                  <div className="flex items-center gap-3">
-                    <div className="flex shrink-0 items-center justify-center">
-                      <TroopIconMark unit={inspectedUnit} imgClassName="h-14 w-14 sm:h-16 sm:w-16" />
+                <div className="flex flex-col gap-8 text-sm text-yellow-200 sm:flex-row sm:items-stretch sm:gap-0 sm:text-base">
+                  {/* Portrait ~30% width on larger screens */}
+                  <aside className="flex w-full shrink-0 flex-col items-center sm:basis-[30%] sm:max-w-[30%] sm:border-r sm:border-yellow-800/30 sm:pr-8">
+                    <div className="relative flex aspect-square w-full max-w-[min(100%,16rem)] items-center justify-center rounded-2xl border border-amber-600/50 bg-gradient-to-br from-amber-950/45 via-gray-950/70 to-black/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_40px_rgba(0,0,0,0.45)] sm:max-w-none">
+                      <TroopIconMark
+                        unit={inspectedUnit}
+                        imgClassName="h-full w-full max-h-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
+                      />
                     </div>
-                    <div>
-                      <div className="text-lg font-bold text-yellow-100">{inspectedUnit.name}</div>
-                      <div className="text-xs sm:text-sm text-yellow-300">{inspectedUnit.role}</div>
+                    <div className="mt-4 w-full text-center sm:mt-5">
+                      <div className="text-lg font-bold leading-tight text-yellow-50 sm:text-xl">{inspectedUnit.name}</div>
+                      <div className="mt-1 text-xs font-medium uppercase tracking-wide text-amber-200/90 sm:text-sm">
+                        {inspectedUnit.role}
+                      </div>
                     </div>
-                  </div>
+                  </aside>
 
+                  {/* Stats ~70% */}
+                  <div className="min-w-0 flex-1 space-y-3 sm:pl-2">
                   <p className="flex items-start gap-2">
                     <UiIcon src={UI_ICON.statTeam} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
                     <span>Team: {inspectedUnit.team}</span>
@@ -9180,7 +9249,7 @@ function CodeConq() {
                     </span>
                   </p>
                   <p className="flex items-start gap-2">
-                    <UiIcon src={UI_ICON.statAttack} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                    <UiIcon src={getTroopRasterIconSrc(inspectedUnit)} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
                     <span>
                       Attack: {inspectedEffectiveAttack}
                       {inspectedEffectiveAttack !== inspectedUnit.attack ? ` (base ${inspectedUnit.attack})` : ""}
@@ -9263,21 +9332,22 @@ function CodeConq() {
                   )}
                   {hasNoAmmoPenalty(inspectedUnit) && (
                     <p className="flex items-start gap-2">
-                      <UiIcon src={UI_ICON.crossedSwords} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
+                      <UiIcon src={getTroopRasterIconSrc(inspectedUnit)} className="mt-0.5 h-4 w-4 shrink-0 opacity-90" alt="" />
                       <span>
                         <strong>No shots left - fights in close combat at half attack</strong>
                       </span>
                     </p>
                   )}
+                  </div>
                 </div>
 
-                <div className="mt-4">
-                  <div className="text-xs text-yellow-200 mb-1">Health</div>
-                  <div className="w-full bg-gray-700 rounded-full h-3 border border-gray-600">
+                <div className="mt-8 border-t border-yellow-800/30 pt-5">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-yellow-300/90">Health</div>
+                  <div className="h-3 w-full rounded-full border border-gray-600 bg-gray-800/90">
                     <div
-                      className="health-bar rounded-full h-full"
+                      className="health-bar h-full rounded-full"
                       style={{ width: `${(inspectedUnit.hp / inspectedUnit.maxHp) * 100}%` }}
-                    ></div>
+                    />
                   </div>
                 </div>
               </div>
@@ -9501,7 +9571,7 @@ function CodeConq() {
                       htmlFor="unit-panel-custom-ai-difficulty"
                       className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-cyan-200/95"
                     >
-                      <UiIcon src={UI_ICON.crossedSwords} className="h-4 w-4 shrink-0" alt="" />
+                      <UiIcon src={UI_ICON.pocketWatch} className="h-4 w-4 shrink-0" alt="" />
                       Enemy AI strength
                     </label>
                     <p className="mt-0.5 text-[9px] leading-snug text-cyan-100/55">HP and attack scaling for AI factions</p>

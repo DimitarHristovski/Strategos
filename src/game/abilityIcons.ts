@@ -2,7 +2,7 @@ import type { TroopAbilityKey } from "../Units/troopStats";
 import type { TroopMechanicType } from "./types";
 
 const B = "/icons/ui";
-const r = (file: string) => `${B}/${file}`;
+const r = (file: string) => `${B}/${encodeURIComponent(file)}`;
 
 /** Battlefield buff strip + signature-skill list (matches `TroopAbilityKey` in troopStats). */
 export const TROOP_ABILITY_BATTLEFIELD_RASTER: Record<TroopAbilityKey, string> = {
@@ -52,7 +52,7 @@ export const HANDBOOK_GAME_ICON_SRC: Record<string, string> = {
   "Formation lines": r("ability-brick-wall.png"),
   "Leader Aura": r("ui-crown-gold.png"),
   "Ranged Shots": r("ui-bow-arrow.png"),
-  "Merge (2 per battle)": r("trap-chain-hook.png"),
+  "Merge (2 per battle)": r("Armored knights merging into power_r2_c2.png"),
   "Spy (3 reports per battle)": r("ui-spy-hood.png"),
   "Faction ability (targeted + cooldown)": r("ui-lightning.png"),
   "Skirmish setup (single player)": r("ui-compass.png"),
@@ -61,10 +61,11 @@ export const HANDBOOK_GAME_ICON_SRC: Record<string, string> = {
 
 export const HANDBOOK_ADDITIONAL_ICON_SRC: Record<string, string> = {
   "Line weight (Light–Unique)": r("ui-pocket-watch.png"),
+  "Elite melee portrait": r("Golden swords in radiant cross formation_r2_c5.png"),
   "Hybrid Troops": r("ability-archery-target.png"),
   "Ammo Exhaustion": r("ui-bow-arrow.png"),
   "Civilization Passives": r("ui-banner-heraldry.png"),
-  "Faction ability (left rail)": r("ability-archery-target.png"),
+  "Faction ability (header)": r("ability-archery-target.png"),
   "Battle Sound Cues": r("ui-war-horn.png"),
   "Battlefield Feedback": r("ability-fire-rage.png"),
   "Terrain Lock": r("trap-magic-pedestal.png"),
