@@ -1,4 +1,5 @@
 import { generateTroopStats } from "./troopStats";
+import { buildMissingPairLevels } from "../game/composeSkirmishLevels";
 
 const createUnit = (
   id: string,
@@ -19,7 +20,7 @@ const createUnit = (
   Icon
 });
 
-export const levels = {
+const LEVELS_BASE = {
   Level1: [
     createUnit("roman_king", "Romans", "Roman King", "Roman King", 3, 0, "👑"),
     createUnit("roman_ballista_left", "Romans", "Ballista", "Ballista", 0, 0, "⚔️"),
@@ -38,9 +39,9 @@ export const levels = {
     createUnit("roman_legionary_7", "Romans", "Legionary", "Legionary", 6, 2, "⚔️"),
     createUnit("roman_legionary_8", "Romans", "Legionary", "Legionary", 7, 2, "⚔️"),
     createUnit("barbarian_chief", "Barbarians", "Barbarian Chief", "Barbarian Chief", 4, 7, "👑"),
-    createUnit("barbarian_axeman_left", "Barbarians", "Barbarian Axeman", "Barbarian Axeman", 0, 7, "⚔️"),
+    createUnit("barbarian_warlord_left", "Barbarians", "Barbarian Warlord", "Barbarian Warlord", 0, 7, "⚔️"),
     createUnit("barbarian_berserker", "Barbarians", "Barbarian Berserker", "Barbarian Berserker", 3, 7, "⚔️"),
-    createUnit("barbarian_axeman_right", "Barbarians", "Barbarian Axeman", "Barbarian Axeman", 7, 7, "⚔️"),
+    createUnit("barbarian_warlord_right", "Barbarians", "Barbarian Warlord", "Barbarian Warlord", 7, 7, "⚔️"),
     createUnit("barbarian_scout_left", "Barbarians", "Barbarian Scout", "Barbarian Scout", 1, 6, "🐎🏹"),
     createUnit("barbarian_archer_left", "Barbarians", "Barbarian Archer", "Barbarian Archer", 2, 6, "🏹"),
     createUnit("barbarian_archer_right", "Barbarians", "Barbarian Archer", "Barbarian Archer", 5, 6, "🏹"),
@@ -347,4 +348,9 @@ export const levels = {
     createUnit("seleucid_elephant_16", "Seleucids", "War Elephant", "Seleucid War Elephant", 6, 4, "🐘"),
     createUnit("seleucid_catapult_16", "Seleucids", "Seleucid Catapult", "Seleucid Catapult", 4, 4, "⚙️")
   ]
+};
+
+export const levels = {
+  ...LEVELS_BASE,
+  ...buildMissingPairLevels(LEVELS_BASE as Record<string, any[]>)
 };

@@ -1,6 +1,8 @@
-import { getTroopAbilities } from "../Units/troopStats";
+import { generateTroopStats, getTroopAbilities } from "../Units/troopStats";
+import { getTroopMechanicIconSrc } from "./abilityIcons";
 import { getTroopMechanicType, isLeaderRole, TROOP_MECHANIC_ICONS, TROOP_MECHANIC_LABELS } from "./battleEngine";
 import type { TeamName, TroopCatalogEntry } from "./types";
+import { getUnitWeight, UNIT_WEIGHT_BADGE_CLASS, UNIT_WEIGHT_LABELS, UNIT_WEIGHT_SUMMARY } from "./unitWeight";
 
 export const AVAILABLE_TROOPS: Record<TeamName, TroopCatalogEntry[]> = {
   Romans: [
@@ -14,7 +16,7 @@ export const AVAILABLE_TROOPS: Record<TeamName, TroopCatalogEntry[]> = {
     { role: "Archer", name: "Archer", Icon: "🏹" },
     { role: "Velites", name: "Velites", Icon: "🏹" },
     { role: "Ballista", name: "Ballista", Icon: "⚙️" },
-    { role: "Scorpion", name: "Scorpion", Icon: "⚙️" },
+    { role: "Heavy Cavalry", name: "Heavy Cavalry", Icon: "🐎" },
     { role: "Onager", name: "Onager", Icon: "⚙️" }
   ],
   Barbarians: [
@@ -191,18 +193,116 @@ const isHybridMountedRangedUnit = (unit: any) => {
   return hasMountedTrait && (unit?.ammo ?? 0) > 0 && (unit?.range ?? 1) > 1;
 };
 
+const TROOP_RASTER_BASE = "/icons/ui";
+const troopRaster = (file: string) => `${TROOP_RASTER_BASE}/${encodeURIComponent(file)}`;
+
+/** Elite-tier melee portrait (distinct from generic crossed swords). */
+const troopEliteCloseCombatRaster = () =>
+  troopRaster("Golden swords in radiant cross formation_r2_c5.png");
+
+const troopArmoredElephantRaster = () => troopRaster("unit-armored-war-elephant.png");
+
+const troopWarChariotRaster = () => troopRaster("unit-war-chariot.png");
+
+const troopArmoredCavalryHeavyRaster = () => troopRaster("unit-armored-cavalry-a.png");
+
+const troopHybridHorseArcherRaster = () => troopRaster("unit-armored-cavalry-archer.png");
+
+/** Armored horse cavalry portrait (melee / shock cav — `unit-armored-cavalry-a.png`). */
+function troopArmoredCavalryRaster(_rl: string): string {
+  return troopArmoredCavalryHeavyRaster();
+}
+
+/** Raster URL under `public/icons/ui/` for setup palette, battlefield tiles, and unit panels. */
+export function getTroopRasterIconSrc(
+  unit: { role?: string; ammo?: number; range?: number; move?: number } | null | undefined
+): string {
+  const role = String(unit?.role ?? "");
+  if (!role) return troopRaster("ui-compass.png");
+  const stats = generateTroopStats(role);
+  const ammo = unit?.ammo ?? stats.ammo;
+  const range = unit?.range ?? stats.range;
+  const move = unit?.move ?? stats.move;
+  const ctx = { role, ammo, range, move };
+  const rl = role.toLowerCase();
+
+  if (getUnitWeight(role) === "unique") return troopRaster("ui-crown-gold.png");
+  const mechanic = getTroopMechanicType(ctx);
+  if (mechanic === "closecombat") {
+    return getUnitWeight(role) === "elite" ? troopEliteCloseCombatRaster() : troopRaster("ui-crossed-swords.png");
+  }
+  if (rl.includes("war drummer")) return troopRaster("unit-war-drummer.png");
+  if (rl.includes("war horn")) return troopRaster("ui-war-horn.png");
+
+  if (rl.includes("elephant")) return troopArmoredElephantRaster();
+
+  if (rl.includes("chariot")) return troopWarChariotRaster();
+
+  if (isHybridMountedRangedUnit(ctx)) {
+    if (rl.includes("camel")) return troopRaster("unit-camel-archer-drawn.png");
+    return troopHybridHorseArcherRaster();
+  }
+
+  if (rl.includes("camel")) {
+    if (/archer/i.test(rl)) return troopRaster("unit-camel-archer-drawn.png");
+    return troopRaster("unit-camel-archer.png");
+  }
+
+  if (/catapult|ballista|onager|polybolos|trebuchet|bombard/.test(rl)) return troopRaster("ui-catapult.png");
+  if (mechanic === "sieged") return troopRaster("ui-catapult.png");
+  if (mechanic === "ranged") return troopRaster("ui-bow-arrow.png");
+  if (mechanic === "mounted") return troopArmoredCavalryRaster(rl);
+  return getTroopMechanicIconSrc(mechanic);
+}
+
+/** Line weight (Light / Medium / Heavy / Elite / Unique) — separate from troop type (melee, mounted, ranged, siege). */
+export const getTroopWeightDisplay = (unit: { role?: string } | null | undefined) => {
+  const weight = getUnitWeight(String(unit?.role ?? ""));
+  return {
+    weight,
+    label: UNIT_WEIGHT_LABELS[weight],
+    summary: UNIT_WEIGHT_SUMMARY[weight],
+    badgeClassName: UNIT_WEIGHT_BADGE_CLASS[weight]
+  };
+};
+
 export const getTroopTypeDisplay = (unit: any) => {
+  const rl = String(unit?.role ?? "").toLowerCase();
+
   if (isHybridMountedRangedUnit(unit)) {
+    const iconSrc = rl.includes("elephant")
+      ? troopArmoredElephantRaster()
+      : rl.includes("chariot")
+        ? troopWarChariotRaster()
+        : rl.includes("camel")
+          ? troopRaster("unit-camel-archer-drawn.png")
+          : troopHybridHorseArcherRaster();
     return {
       icon: "🐎🏹",
+      iconSrc,
       label: "Hybrid",
       type: "hybrid"
     } as const;
   }
 
   const troopType = getTroopMechanicType(unit);
+  if (troopType === "mounted") {
+    const iconSrc = rl.includes("elephant")
+      ? troopArmoredElephantRaster()
+      : rl.includes("chariot")
+        ? troopWarChariotRaster()
+        : troopArmoredCavalryRaster(rl);
+    return {
+      icon: TROOP_MECHANIC_ICONS.mounted,
+      iconSrc,
+      label: TROOP_MECHANIC_LABELS.mounted,
+      type: "mounted"
+    } as const;
+  }
+
   return {
     icon: TROOP_MECHANIC_ICONS[troopType],
+    iconSrc: getTroopRasterIconSrc(unit),
     label: TROOP_MECHANIC_LABELS[troopType],
     type: troopType
   } as const;
@@ -218,6 +318,7 @@ export const getTroopSearchKeywords = (unit: any, team?: TeamName) => {
     String(team ?? unit?.team ?? "").toLowerCase(),
     troopTypeDisplay.label.toLowerCase(),
     troopTypeDisplay.type.toLowerCase(),
+    getUnitWeight(String(unit?.role ?? "")),
     ...abilityKeywords
   ];
 
@@ -255,6 +356,8 @@ const ROLE_ICON_LOOKUP = Object.values(AVAILABLE_TROOPS).flat().reduce((lookup, 
 
 export const getUnitDisplayIcon = (unit: any) => {
   if (!unit) return "⚔️";
+  const role = unit.role;
+  if (role) return getTroopRasterIconSrc(unit);
   return ROLE_ICON_LOOKUP[unit.role] ?? unit.Icon ?? "⚔️";
 };
 

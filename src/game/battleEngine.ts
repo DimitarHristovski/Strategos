@@ -1,4 +1,14 @@
-import { getTroopAbilities } from "../Units/troopStats";
+import { getTroopAbilities, type TroopAbilityKey } from "../Units/troopStats";
+import { BUFF_STRIP_RASTER, TROOP_ABILITY_BATTLEFIELD_RASTER } from "./abilityIcons";
+import {
+  canFormationLink,
+  FORMATION_PASSIVE_SUMMARY,
+  getFormationAttackDisplayMultiplier,
+  getFormationLineCombatModifiers,
+  getFormationLineMeta,
+  getFormationMoveBonus,
+  isHpFormationLine
+} from "./formationLines";
 import { GRID_ORIENTATIONS, TERRAIN_LABELS } from "./constants";
 import { getTerrainAt } from "./terrainEngine";
 import type { BattlefieldSize, GridOrientation, TeamName, TerrainType, TroopMechanicType } from "./types";
@@ -47,7 +57,6 @@ const usesAmmoRole = (unit: any) => {
     "turcopole",
     "thureophoroi",
     "ballista",
-    "scorpion",
     "catapult",
     "trebuchet",
     "polybolos",
@@ -82,7 +91,6 @@ export const ensureRangedAmmo = (unit: any) => {
     "turcopole",
     "thureophoroi",
     "ballista",
-    "scorpion",
     "catapult",
     "trebuchet",
     "polybolos",
@@ -104,7 +112,7 @@ export const ensureRangedAmmo = (unit: any) => {
     return normalizedUnit;
   }
 
-  const isSiegeUnit = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "onager", "bombard"].some((keyword) =>
+  const isSiegeUnit = ["ballista", "catapult", "trebuchet", "polybolos", "onager", "bombard"].some((keyword) =>
     normalizedRole.includes(keyword)
   );
   const isLongbowUnit = normalizedRole.includes("longbow");
@@ -144,7 +152,7 @@ export const getTroopMechanicType = (unit: any): TroopMechanicType => {
   if (!unit) return "closecombat";
 
   const role = String(unit.role ?? "").toLowerCase();
-  const siegeKeywords = ["ballista", "scorpion", "catapult", "trebuchet", "polybolos", "siege tower", "onager", "bombard"];
+  const siegeKeywords = ["ballista", "catapult", "trebuchet", "polybolos", "siege tower", "onager", "bombard"];
   const mountedKeywords = ["cavalry", "chariot", "rider", "scout", "knight", "elephant", "horse", "camel", "cataphract"];
 
   if (siegeKeywords.some((keyword) => role.includes(keyword))) {
@@ -195,20 +203,45 @@ export const TROOP_MECHANIC_ADVANTAGE_MULTIPLIER = 1.1;
 
 export const isLeaderRole = (role: string) => {
   const normalizedRole = String(role ?? "").toLowerCase();
-  return ["king", "jarl", "general", "leader", "marshal", "pharaoh"].some((keyword) => normalizedRole.includes(keyword));
+  return ["king", "jarl", "general", "leader", "marshal", "pharaoh", "chief"].some((keyword) =>
+    normalizedRole.includes(keyword)
+  );
 };
 
-const isNearKing = (unit: any, allUnits: any[]) => {
-  if (!unit || !Array.isArray(allUnits)) return false;
+/** Leaders on a team in deployment / battle lists (King, Pharaoh, Jarl, …). */
+export const countLeadersForTeam = (units: any[], team: string) =>
+  units.filter((u) => u && u.team === team && isLeaderRole(String(u.role ?? ""))).length;
 
-  return allUnits.some((candidate) => {
+/**
+ * Custom setup must include exactly one leader per faction that has troops.
+ * Returns an error message or null if valid.
+ */
+export const getSetupLineupLeaderError = (units: any[]): string | null => {
+  if (!Array.isArray(units) || units.length === 0) return null;
+  const teams = [...new Set(units.map((u) => u?.team).filter(Boolean))] as string[];
+  for (const team of teams) {
+    const n = countLeadersForTeam(units, team);
+    if (n === 0) {
+      return `${team}: each army must include its King (ruler) in the lineup.`;
+    }
+    if (n > 1) {
+      return `${team}: only one King (leader) is allowed per army.`;
+    }
+  }
+  return null;
+};
+
+/** Orthogonally adjacent friendly units with a leader-type role (king, pharaoh, …). */
+export const getAdjacentLeaderUnits = (unit: any, allUnits: any[]) => {
+  if (!unit || !Array.isArray(allUnits)) return [];
+  return allUnits.filter((candidate) => {
     if (!candidate || candidate.id === unit.id || candidate.hp <= 0) return false;
     if (candidate.team !== unit.team || !isLeaderRole(candidate.role)) return false;
-
-    const distance = Math.abs(candidate.x - unit.x) + Math.abs(candidate.y - unit.y);
-    return distance === 1;
+    return Math.abs(candidate.x - unit.x) + Math.abs(candidate.y - unit.y) === 1;
   });
 };
+
+const isNearKing = (unit: any, allUnits: any[]) => getAdjacentLeaderUnits(unit, allUnits).length > 0;
 
 export const getTerrainModifiers = (unit: any, terrainType: TerrainType) => {
   const troopType = getTroopMechanicType(unit);
@@ -353,18 +386,206 @@ export const getAdjacentAllies = (unit: any, allUnits: any[] = []) =>
 export const unitHasAbility = (unit: any, abilityKey: string) =>
   getTroopAbilities(unit?.role ?? "").some((ability) => ability.key === abilityKey);
 
+export type AbilityEffectContext = {
+  round?: number;
+  attackerMovedThisTurn?: boolean;
+};
+
 export const getAdjacentCommanders = (unit: any, allUnits: any[] = []) =>
   getAdjacentAllies(unit, allUnits).filter((candidate) => unitHasAbility(candidate, "command"));
 
 export const hasAdjacentWoundedAlly = (unit: any, allUnits: any[] = []) =>
   getAdjacentAllies(unit, allUnits).some((candidate) => candidate.hp <= Math.ceil(candidate.maxHp * 0.5));
 
+/** Raster paths under `public/icons/ui/` (battlefield buff strip + ability pips). */
+export const TROOP_ABILITY_BATTLEFIELD_ICONS: Record<TroopAbilityKey, string> = TROOP_ABILITY_BATTLEFIELD_RASTER;
+
+/**
+ * Abilities for this unit’s role that are “on” right now (adjacent enemies, terrain, HP thresholds, etc.).
+ * Used for compact icons beside the unit; omits abilities that are not currently applicable.
+ */
+export const getBattlefieldActiveAbilities = (
+  unit: any,
+  allUnits: any[] = [],
+  terrainMap: TerrainType[][] = []
+): { key: TroopAbilityKey; label: string }[] => {
+  if (!unit || (unit.hp ?? 0) <= 0) return [];
+
+  const abilities = getTroopAbilities(unit.role);
+  if (abilities.length === 0) return [];
+
+  const terrainAt = getTerrainAt(terrainMap, unit.x, unit.y);
+  const allies = getAdjacentAllies(unit, allUnits);
+  const enemies = allUnits.filter((o) => o && o.hp > 0 && o.team !== unit.team);
+  const dist = (a: any, b: any) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+  const inRange = (e: any) => dist(unit, e) <= (unit.range ?? 1);
+  const adjacentEnemies = enemies.filter((e) => dist(unit, e) === 1);
+  const unitType = getTroopMechanicType(unit);
+
+  const out: { key: TroopAbilityKey; label: string }[] = [];
+
+  for (const ability of abilities) {
+    let active = false;
+    switch (ability.key) {
+      case "brace":
+        active = adjacentEnemies.some((e) => getTroopMechanicType(e) === "mounted");
+        break;
+      case "shieldWall":
+        active = allies.length > 0;
+        break;
+      case "shock":
+        active = enemies.some((e) => inRange(e) && e.hp <= Math.ceil((e.maxHp ?? 1) * 0.5));
+        break;
+      case "charge":
+        active =
+          (terrainAt === "plain" && unitType === "mounted") ||
+          enemies.some((e) => inRange(e) && (getTroopMechanicType(e) === "ranged" || getTroopMechanicType(e) === "sieged"));
+        break;
+      case "harrier":
+        active =
+          (unit?.ammo ?? 0) > 0 &&
+          enemies.some((e) => inRange(e) && ((e.move ?? 0) <= 1 || getTroopMechanicType(e) === "sieged"));
+        break;
+      case "guarded":
+        active = (unit.hp ?? 0) > Math.ceil((unit.maxHp ?? 0) * 0.5);
+        break;
+      case "ferocity":
+        active = allies.length === 0;
+        break;
+      case "deadeye":
+        active =
+          terrainAt === "hill" ||
+          enemies.some(
+            (e) =>
+              inRange(e) &&
+              (getTroopMechanicType(e) === "ranged" || getTroopMechanicType(e) === "sieged") &&
+              getAdjacentAllies(e, allUnits).length === 0
+          );
+        break;
+      case "crush":
+        active =
+          adjacentEnemies.some((e) => getTroopMechanicType(e) === "closecombat") ||
+          enemies.some(
+            (e) =>
+              inRange(e) &&
+              getTroopAbilities(e.role).some((a) => a.key === "guarded" || a.key === "shieldWall")
+          );
+        break;
+      case "command":
+        active = true;
+        break;
+      case "siegeMastery":
+        active = unitType === "sieged" && (terrainAt === "plain" || terrainAt === "hill");
+        break;
+      case "skirmishStep":
+        active = (unit?.ammo ?? 0) > 0;
+        break;
+      case "resolve":
+        active = hasAdjacentWoundedAlly(unit, allUnits);
+        break;
+      default:
+        active = false;
+    }
+
+    if (active) {
+      out.push({ key: ability.key, label: ability.name });
+    }
+  }
+
+  return out;
+};
+
+const getFormationLinkedAdjacentAllies = (unit: any, allUnits: any[]) =>
+  getAdjacentAllies(unit, allUnits).filter((ally) => canFormationLink(unit, ally));
+
+export type BattlefieldBuffStripItem = {
+  id: string;
+  icon: string;
+  label: string;
+  tooltip: string;
+};
+
+/**
+ * Buffs for the unit strip: auras from adjacent leaders/commanders, formation link, then personal abilities.
+ * Tooltips name sources (who is adjacent / linked).
+ */
+export const getBattlefieldBuffStrip = (
+  unit: any,
+  allUnits: any[] = [],
+  terrainMap: TerrainType[][] = []
+): BattlefieldBuffStripItem[] => {
+  if (!unit || (unit.hp ?? 0) <= 0) return [];
+
+  const strip: BattlefieldBuffStripItem[] = [];
+
+  const adjacentLeaders = getAdjacentLeaderUnits(unit, allUnits);
+  if (adjacentLeaders.length > 0) {
+    const who = adjacentLeaders.map((l) => `${l.name} (${l.team})`).join(", ");
+    strip.push({
+      id: "buff-leader-aura",
+      icon: BUFF_STRIP_RASTER.leaderAura,
+      label: "Leader aura",
+      tooltip: `Leader aura (+10% attack). Adjacent leader(s): ${who}.`
+    });
+  }
+
+  const adjacentCommanders = getAdjacentCommanders(unit, allUnits);
+  if (adjacentCommanders.length > 0) {
+    const who = adjacentCommanders.map((c) => `${c.name} (${c.role})`).join(", ");
+    strip.push({
+      id: "buff-command-aura",
+      icon: BUFF_STRIP_RASTER.commandAura,
+      label: "Command aura",
+      tooltip: `Command aura (+5% attack from adjacent commanders). From: ${who}.`
+    });
+  }
+
+  if (unit.formationGroupActive && unit.formationLineId) {
+    const meta = getFormationLineMeta(unit);
+    const linked = getFormationLinkedAdjacentAllies(unit, allUnits);
+    const linkedNames = linked.map((a) => a.name).join(", ");
+    const summary = FORMATION_PASSIVE_SUMMARY[unit.formationLineId] ?? "";
+    let tooltip = `${meta.name} (formation). ${summary}`.trim();
+    if (linkedNames) {
+      tooltip += ` Orthogonally linked with: ${linkedNames}.`;
+    }
+    if (unit.roleHealthBuffActive && (unit.roleHealthBuffMultiplier ?? 1) > 1) {
+      tooltip += ` +${Math.round(((unit.roleHealthBuffMultiplier ?? 1) - 1) * 100)}% max HP from the line.`;
+    }
+    if (unit.formationLineId === "testudo") {
+      tooltip += " Testudo: −10% damage taken from ranged while linked.";
+    }
+    strip.push({
+      id: `buff-formation-${unit.formationLineId}`,
+      icon: BUFF_STRIP_RASTER.formationLink,
+      label: meta.name,
+      tooltip
+    });
+  }
+
+  const roleAbilities = getTroopAbilities(unit.role);
+  const personalActive = getBattlefieldActiveAbilities(unit, allUnits, terrainMap);
+  const roleByKey = new Map(roleAbilities.map((a) => [a.key, a]));
+  for (const p of personalActive) {
+    const def = roleByKey.get(p.key);
+    strip.push({
+      id: `ability-${p.key}`,
+      icon: TROOP_ABILITY_BATTLEFIELD_ICONS[p.key],
+      label: p.label,
+      tooltip: def ? `${def.name}: ${def.description}` : p.label
+    });
+  }
+
+  return strip;
+};
+
 export const getAbilityEffects = (
   attacker: any,
   defender: any,
   allUnits: any[] = [],
   attackerTerrain: TerrainType,
-  defenderTerrain: TerrainType
+  defenderTerrain: TerrainType,
+  ctx: AbilityEffectContext = {}
 ) => {
   const attackerAbilities = getTroopAbilities(attacker?.role ?? "");
   const defenderAbilities = getTroopAbilities(defender?.role ?? "");
@@ -483,6 +704,26 @@ export const getAbilityEffects = (
     }
   });
 
+  const defenderAbilityKeys = new Set(defenderAbilities.map((a) => a.key));
+  const formationCombat = getFormationLineCombatModifiers(
+    attacker,
+    defender,
+    attackerType,
+    defenderType,
+    attackerTerrain,
+    defenderTerrain,
+    defenderAbilityKeys,
+    { attackerMovedThisTurn: ctx.attackerMovedThisTurn }
+  );
+  if (formationCombat.attackMultiplier !== 1) {
+    attackMultiplier *= formationCombat.attackMultiplier;
+    attackerTags.push(...formationCombat.attackerTags);
+  }
+  if (formationCombat.damageTakenMultiplier !== 1) {
+    damageTakenMultiplier *= formationCombat.damageTakenMultiplier;
+    defenderTags.push(...formationCombat.defenderTags);
+  }
+
   const defenderTerrainModifiers = getTerrainModifiers(defender, defenderTerrain);
   if (defenderTerrainModifiers.damageTakenMultiplier !== 1) {
     damageTakenMultiplier *= defenderTerrainModifiers.damageTakenMultiplier;
@@ -497,7 +738,13 @@ export const getAbilityEffects = (
   };
 };
 
-export const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = [], terrainMap: TerrainType[][] = []) => {
+export const getAttackDamage = (
+  attacker: any,
+  defender: any,
+  allUnits: any[] = [],
+  terrainMap: TerrainType[][] = [],
+  effectContext: AbilityEffectContext = {}
+) => {
   const attackerType = getTroopMechanicType(attacker);
   const defenderType = getTroopMechanicType(defender);
   const hasAdvantage = TROOP_MECHANIC_ADVANTAGE[attackerType].includes(defenderType);
@@ -507,6 +754,16 @@ export const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = 
   const terrainModifiers = getTerrainModifiers(attacker, attackerTerrain);
   const hasTerrainModifier = terrainModifiers.attackMultiplier !== 1;
   let damage = attacker.attack;
+
+  const rRound = effectContext.round;
+  if (
+    typeof rRound === "number" &&
+    typeof attacker.civTrapAttackDebuffPct === "number" &&
+    typeof attacker.civTrapAttackDebuffUntilRound === "number" &&
+    rRound < attacker.civTrapAttackDebuffUntilRound
+  ) {
+    damage = Math.round(damage * (1 - Math.min(90, Math.max(0, attacker.civTrapAttackDebuffPct)) / 100));
+  }
 
   if (hasNoAmmoPenalty(attacker)) {
     damage = Math.round(damage * 0.5);
@@ -520,7 +777,7 @@ export const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = 
     damage = Math.round(damage * terrainModifiers.attackMultiplier);
   }
 
-  const abilityEffects = getAbilityEffects(attacker, defender, allUnits, attackerTerrain, defenderTerrain);
+  const abilityEffects = getAbilityEffects(attacker, defender, allUnits, attackerTerrain, defenderTerrain, effectContext);
   if (abilityEffects.attackMultiplier !== 1) {
     damage = Math.round(damage * abilityEffects.attackMultiplier);
   }
@@ -529,12 +786,27 @@ export const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = 
     damage = Math.round(damage * TROOP_MECHANIC_ADVANTAGE_MULTIPLIER);
   }
 
+  const damageBeforeDefenderMitigation = damage;
+
   if (abilityEffects.damageTakenMultiplier !== 1) {
     damage = Math.round(damage * abilityEffects.damageTakenMultiplier);
   }
 
+  if (
+    typeof rRound === "number" &&
+    typeof defender.civTrapVulnPct === "number" &&
+    typeof defender.civTrapVulnUntilRound === "number" &&
+    rRound < defender.civTrapVulnUntilRound
+  ) {
+    damage = Math.round(damage * (1 + Math.min(200, Math.max(0, defender.civTrapVulnPct)) / 100));
+  }
+
+  /** HP not lost due to armor, shielding, terrain cover, formations, etc. (after rounding). */
+  const mitigatedDamage = Math.max(0, damageBeforeDefenderMitigation - damage);
+
   return {
     damage,
+    mitigatedDamage,
     attackerType,
     defenderType,
     hasAdvantage,
@@ -546,11 +818,27 @@ export const getAttackDamage = (attacker: any, defender: any, allUnits: any[] = 
   };
 };
 
-export const getDisplayedAttack = (unit: any, allUnits: any[] = [], terrainMap: TerrainType[][] = []) => {
+export const getDisplayedAttack = (
+  unit: any,
+  allUnits: any[] = [],
+  terrainMap: TerrainType[][] = [],
+  opts?: { round?: number }
+) => {
   if (!unit) return 0;
 
   let displayedAttack = unit.attack;
-  const terrainModifiers = getTerrainModifiers(unit, getTerrainAt(terrainMap, unit.x, unit.y));
+  const terrainAt = getTerrainAt(terrainMap, unit.x, unit.y);
+  const terrainModifiers = getTerrainModifiers(unit, terrainAt);
+
+  const rRound = opts?.round;
+  if (
+    typeof rRound === "number" &&
+    typeof unit.civTrapAttackDebuffPct === "number" &&
+    typeof unit.civTrapAttackDebuffUntilRound === "number" &&
+    rRound < unit.civTrapAttackDebuffUntilRound
+  ) {
+    displayedAttack = Math.round(displayedAttack * (1 - Math.min(90, Math.max(0, unit.civTrapAttackDebuffPct)) / 100));
+  }
 
   if (hasNoAmmoPenalty(unit)) {
     displayedAttack = Math.round(displayedAttack * 0.5);
@@ -564,6 +852,11 @@ export const getDisplayedAttack = (unit: any, allUnits: any[] = [], terrainMap: 
     displayedAttack = Math.round(displayedAttack * terrainModifiers.attackMultiplier);
   }
 
+  const formationAtk = getFormationAttackDisplayMultiplier(unit, terrainAt);
+  if (formationAtk !== 1) {
+    displayedAttack = Math.round(displayedAttack * formationAtk);
+  }
+
   return displayedAttack;
 };
 
@@ -571,11 +864,13 @@ export const getUnitEffectNotes = (
   unit: any,
   allUnits: any[] = [],
   terrainMap: TerrainType[][] = [],
-  terrainEffectsEnabled = true
+  terrainEffectsEnabled = true,
+  _opts?: { round?: number }
 ) => {
   if (!unit) return [] as string[];
 
   const notes: string[] = [];
+  const terrainAt = getTerrainAt(terrainMap, unit.x, unit.y);
 
   if (unit.civPassiveName && unit.civPassiveEffect) {
     notes.push(`${unit.civPassiveName}: ${unit.civPassiveEffect}`);
@@ -592,7 +887,17 @@ export const getUnitEffectNotes = (
   }
 
   if (unit.roleHealthBuffActive) {
-    notes.push(`Formation Buff: +${Math.round(((unit.roleHealthBuffMultiplier ?? 1) - 1) * 100)}% max health`);
+    const formationMeta = getFormationLineMeta(unit);
+    notes.push(
+      `${formationMeta.name}: +${Math.round(((unit.roleHealthBuffMultiplier ?? 1) - 1) * 100)}% max health (orthogonally linked allies in this formation, min ${ROLE_HEALTH_BUFF_MIN_GROUP_SIZE})`
+    );
+    if (unit.formationLineId === "testudo") {
+      notes.push("Testudo (linked): −10% damage taken from ranged attacks (×0.9)");
+    }
+  } else if (unit.formationGroupActive && unit.formationLineId && !isHpFormationLine(unit.formationLineId)) {
+    const name = getFormationLineMeta(unit).name;
+    const summary = FORMATION_PASSIVE_SUMMARY[unit.formationLineId];
+    notes.push(summary ? `${name} (linked): ${summary}` : `${name}: formation passive (linked)`);
   }
 
   if (hasNoAmmoPenalty(unit)) {
@@ -600,74 +905,79 @@ export const getUnitEffectNotes = (
   }
 
   if (terrainEffectsEnabled) {
-    const terrainNotes = getTerrainModifiers(unit, getTerrainAt(terrainMap, unit.x, unit.y)).notes;
+    const terrainNotes = getTerrainModifiers(unit, terrainAt).notes;
     terrainNotes.forEach((note) => notes.push(`Terrain: ${note}`));
   }
 
   getTroopAbilities(unit.role).forEach((ability) => {
     switch (ability.key) {
+      case "brace":
+        notes.push(`${ability.name}: +15% attack vs mounted (×1.15); −15% damage taken from mounted (×0.85)`);
+        break;
       case "shieldWall":
         if (getAdjacentAllies(unit, allUnits).length > 0) {
-          notes.push(`${ability.name}: active while holding formation next to an ally`);
+          notes.push(`${ability.name}: −10% damage taken (×0.9) — adjacent ally`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: −10% damage taken (×0.9) when adjacent to an ally`);
         }
         break;
+      case "shock":
+        notes.push(`${ability.name}: +20% attack (×1.2) vs targets at ≤50% HP`);
+        break;
       case "charge":
-        if (getTerrainAt(terrainMap, unit.x, unit.y) === "plain") {
-          notes.push(`${ability.name}: active on open ground`);
+        if (terrainAt === "plain") {
+          notes.push(`${ability.name}: mounted — +15% attack (×1.15) on plains; +10% (×1.1) vs ranged/siege`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: mounted — +15% (×1.15) on plains; +10% (×1.1) vs ranged or siege`);
         }
+        break;
+      case "harrier":
+        notes.push(`${ability.name}: with ammo — +10% (×1.1) vs move ≤1 or siege`);
         break;
       case "guarded":
         if ((unit?.hp ?? 0) > Math.ceil((unit?.maxHp ?? 0) * 0.5)) {
-          notes.push(`${ability.name}: active while above half health`);
+          notes.push(`${ability.name}: −10% damage taken (×0.9) while above 50% HP`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: −10% damage taken (×0.9) while above 50% HP (inactive now)`);
         }
         break;
       case "ferocity":
         if (getAdjacentAllies(unit, allUnits).length === 0) {
-          notes.push(`${ability.name}: active while fighting away from allied support`);
+          notes.push(`${ability.name}: +10% attack (×1.1) — no adjacent allies`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: +10% attack (×1.1) when not adjacent to allies`);
         }
         break;
       case "deadeye":
-        if (getTerrainAt(terrainMap, unit.x, unit.y) === "hill") {
-          notes.push(`${ability.name}: active high-ground range bonus`);
-        } else {
-          notes.push(`${ability.name}: ${ability.description}`);
-        }
+        notes.push(`${ability.name}: +1 range on hills; +10% attack (×1.1) vs unsupported ranged/siege`);
         break;
       case "crush":
-        notes.push(`${ability.name}: extra damage against close-combat and defensive units`);
+        notes.push(`${ability.name}: +15% (×1.15) vs close combat; +5% (×1.05) vs Guarded or Shield Wall`);
         break;
       case "command":
-        notes.push(`${ability.name}: adjacent allies gain +5% attack`);
+        notes.push(`${ability.name}: adjacent allies +5% attack (×1.05)`);
         break;
       case "siegeMastery":
-        if (getTerrainAt(terrainMap, unit.x, unit.y) === "hill") {
-          notes.push(`${ability.name}: active elevated range and damage bonus`);
-        } else if (getTerrainAt(terrainMap, unit.x, unit.y) === "plain") {
-          notes.push(`${ability.name}: active stable-ground damage bonus`);
+        if (terrainAt === "hill") {
+          notes.push(`${ability.name}: siege — +10% (×1.1) attack; +1 range on hills`);
+        } else if (terrainAt === "plain") {
+          notes.push(`${ability.name}: siege — +10% (×1.1) on plains or hills; +1 range on hills`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: siege — +10% (×1.1) on plains/hills; +1 range on hills`);
         }
         break;
       case "skirmishStep":
         if ((unit?.ammo ?? 0) > 0) {
-          notes.push(`${ability.name}: active +1 move while ammunition lasts`);
+          notes.push(`${ability.name}: +1 move while ammo remains`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: +1 move while ammo > 0 (inactive — no ammo)`);
         }
         break;
       case "resolve":
         if (hasAdjacentWoundedAlly(unit, allUnits)) {
-          notes.push(`${ability.name}: active near a wounded ally`);
+          notes.push(`${ability.name}: +10% attack (×1.1) — adjacent ally at ≤50% HP`);
         } else {
-          notes.push(`${ability.name}: ${ability.description}`);
+          notes.push(`${ability.name}: +10% attack (×1.1) when adjacent ally at ≤50% HP`);
         }
         break;
       default:
@@ -709,12 +1019,18 @@ export const rotateUnitCoordinates = (units: any[], steps: number, battlefieldSi
   });
 };
 
-export const getEffectiveMove = (unit: any, terrainMap: TerrainType[][]) => {
+export const getEffectiveMove = (
+  unit: any,
+  terrainMap: TerrainType[][],
+  _opts?: { round?: number }
+) => {
   if (!unit) return 0;
   const terrainType = getTerrainAt(terrainMap, unit.x, unit.y);
   const modifiers = getTerrainModifiers(unit, terrainType);
-  const skirmishStepBonus = getTroopAbilities(unit.role).some((ability) => ability.key === "skirmishStep") && (unit?.ammo ?? 0) > 0 ? 1 : 0;
-  return Math.max(1, unit.move + modifiers.moveDelta + skirmishStepBonus);
+  const abilities = getTroopAbilities(unit.role);
+  const skirmishStepBonus = abilities.some((a) => a.key === "skirmishStep") && (unit?.ammo ?? 0) > 0 ? 1 : 0;
+  const formationMove = getFormationMoveBonus(unit, terrainType);
+  return Math.max(1, unit.move + modifiers.moveDelta + skirmishStepBonus + formationMove);
 };
 
 export const getEffectiveRange = (unit: any, terrainMap: TerrainType[][]) => {
@@ -736,7 +1052,8 @@ export const applyRoleHealthBuffs = (units: any[]) => {
   if (!Array.isArray(units) || units.length === 0) return units;
 
   const aliveUnits = units.filter((unit) => unit && unit.hp > 0);
-  const qualifyingBuffs = new Map<string, number>();
+  const qualifyingHpBuffs = new Map<string, number>();
+  const formationLinkState = new Map<string, { lineId: string }>();
   const visited = new Set<string>();
 
   aliveUnits.forEach((unit) => {
@@ -754,7 +1071,7 @@ export const applyRoleHealthBuffs = (units: any[]) => {
 
       aliveUnits.forEach((candidate) => {
         if (visited.has(candidate.id)) return;
-        if (candidate.team !== current.team || candidate.role !== current.role) return;
+        if (!canFormationLink(current, candidate)) return;
 
         const distance = Math.abs(candidate.x - current.x) + Math.abs(candidate.y - current.y);
         if (distance === 1) stack.push(candidate);
@@ -762,8 +1079,12 @@ export const applyRoleHealthBuffs = (units: any[]) => {
     }
 
     if (component.length >= ROLE_HEALTH_BUFF_MIN_GROUP_SIZE) {
-      const multiplier = 1 + ROLE_HEALTH_BUFF_PER_EXTRA_UNIT * (component.length - 1);
-      component.forEach((member) => qualifyingBuffs.set(member.id, multiplier));
+      const lineId = getFormationLineMeta(component[0]).id;
+      component.forEach((member) => formationLinkState.set(member.id, { lineId }));
+      if (isHpFormationLine(lineId)) {
+        const multiplier = 1 + ROLE_HEALTH_BUFF_PER_EXTRA_UNIT * (component.length - 1);
+        component.forEach((member) => qualifyingHpBuffs.set(member.id, multiplier));
+      }
     }
   });
 
@@ -771,14 +1092,19 @@ export const applyRoleHealthBuffs = (units: any[]) => {
     if (!unit) return unit;
 
     const baseMaxHp = unit.baseMaxHp ?? unit.maxHp;
-    const roleHealthBuffMultiplier = qualifyingBuffs.get(unit.id) ?? 1;
+    const link = formationLinkState.get(unit.id);
+    const formationGroupActive = Boolean(link);
+    const formationLineId = link?.lineId;
+    const roleHealthBuffMultiplier = qualifyingHpBuffs.get(unit.id) ?? 1;
     const desiredBuff = unit.hp > 0 && roleHealthBuffMultiplier > 1;
     const desiredMaxHp = desiredBuff ? Math.round(baseMaxHp * roleHealthBuffMultiplier) : baseMaxHp;
     const currentMaxHp = unit.maxHp ?? baseMaxHp;
     const stateChanged =
       currentMaxHp !== desiredMaxHp ||
       Boolean(unit.roleHealthBuffActive) !== desiredBuff ||
-      unit.baseMaxHp !== baseMaxHp;
+      unit.baseMaxHp !== baseMaxHp ||
+      Boolean(unit.formationGroupActive) !== formationGroupActive ||
+      unit.formationLineId !== formationLineId;
 
     let nextHp = unit.hp;
     if (unit.hp > 0 && stateChanged) {
@@ -792,7 +1118,9 @@ export const applyRoleHealthBuffs = (units: any[]) => {
       roleHealthBuffMultiplier,
       maxHp: desiredMaxHp,
       hp: unit.hp <= 0 ? unit.hp : nextHp,
-      roleHealthBuffActive: desiredBuff
+      roleHealthBuffActive: desiredBuff,
+      formationGroupActive,
+      formationLineId
     };
   });
 };
@@ -807,7 +1135,9 @@ export const didRoleHealthBuffStateChange = (currentUnits: any[], updatedUnits: 
       current?.maxHp !== unit?.maxHp ||
       current?.baseMaxHp !== unit?.baseMaxHp ||
       current?.roleHealthBuffMultiplier !== unit?.roleHealthBuffMultiplier ||
-      current?.roleHealthBuffActive !== unit?.roleHealthBuffActive
+      current?.roleHealthBuffActive !== unit?.roleHealthBuffActive ||
+      current?.formationGroupActive !== unit?.formationGroupActive ||
+      current?.formationLineId !== unit?.formationLineId
     );
   });
 };

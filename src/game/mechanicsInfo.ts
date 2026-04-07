@@ -45,6 +45,20 @@ export const getBattleLogAppearance = (entry: string) => {
       bg: "bg-fuchsia-950/35"
     };
   }
+  if (normalizedEntry.includes("spy")) {
+    return {
+      accent: "border-slate-400/70",
+      text: "text-slate-100",
+      bg: "bg-slate-950/40"
+    };
+  }
+  if (normalizedEntry.includes("[civilization ability]")) {
+    return {
+      accent: "border-cyan-500/65",
+      text: "text-cyan-50",
+      bg: "bg-cyan-950/40"
+    };
+  }
   if (normalizedEntry.includes("move clock")) {
     return {
       accent: "border-amber-400/70",
@@ -63,27 +77,48 @@ export const GAME_MECHANICS_INFO = [
   {
     icon: "⚔️",
     title: "Troop Type Matchups",
-    description: "Only mounted troops get a type advantage. They deal +10% attack damage against ranged and sieged units."
+    description: "Only mounted troops get a type advantage: +10% attack (×1.1) against ranged and sieged units."
   },
   {
     icon: "🧱",
-    title: "Role Formation Buff",
-    description: "Adjacent allied troops with the same role gain scaling max health: 2 units = +5%, 3 = +10%, 4 = +15%, and larger groups keep scaling while connected."
+    title: "Formation lines",
+    description:
+      "Orthogonally adjacent allies (cardinal neighbors) form a line. With at least two linked units on the same team and the same formation, bonuses apply. Generic Battle line (any role not in a named faction list) requires matching role and grants +5% max HP per extra linked unit. Named faction lines can mix listed roles; most use combat/move passives instead of HP—see the handbook Formation lines entry."
   },
   {
     icon: "👑",
     title: "Leader Aura",
-    description: "Troops directly next to a King, Jarl, General, or Leader gain +10% attack."
+    description: "Troops orthogonally adjacent to a King, Jarl, General, or Leader gain +10% attack (×1.1)."
   },
   {
     icon: "🏹",
     title: "Ranged Shots",
-    description: "Ranged and sieged troops have limited shots. When they run dry, they can no longer fire effectively."
+    description:
+      "Ranged and siege troops have limited ammo. At 0 ammo they drop to range 1 and melee attacks deal −50% damage (×0.5)."
   },
   {
     icon: "🧬",
-    title: "Merge Limit",
-    description: "You can merge adjacent same-role troops into elite units a limited number of times each battle."
+    title: "Merge (2 per battle)",
+    description:
+      "On your turn, use the **merge** toolbar button (armored knights icon) to enter merge mode (single-player, campaign, custom scenario, hot-seat, or AI vs AI). Click two orthogonally adjacent friendly units of the same role to combine them. **Two merges per battle** (HUD counter). Merge mode and Spy mode cancel each other."
+  },
+  {
+    icon: "🕵️",
+    title: "Spy (3 reports per battle)",
+    description:
+      "On your turn, use 🕵️ to enter Spy mode: living enemies highlight; click one to file a **spy report** and unlock full stats, skills, and effects for that unit in the side panel for the rest of the match. **Three reports per battle** (HUD counter). Unspied enemies show **classified** intel (hidden numbers) until reported. Re-opening a unit you already spied costs nothing."
+  },
+  {
+    icon: "⚡",
+    title: "Faction ability (targeted + cooldown)",
+    description:
+      "Each civilization has a **targeted** ability on the **cyan** button beside its passive in the **header** (or top icon strip on phone). Tap to **arm** it (again to cancel): **volley** factions pick **one enemy** in range of any ally (≤5 tiles)—damage uses a **fixed volley attack value** for that civ (then terrain, matchup, and mitigation as normal); **reinforcement** picks **one living ally** to restore **250 HP** (capped at that unit’s max HP) plus **flat attack** on the card where listed (no % of max HP); **Romans** **summon** one **Legionary** on an empty tile in range. Resolving it **ends your turn**. **Cooldown:** every faction uses a **full battle-round** timer (each time the turn order wraps to the first side again); values differ by civ—see the **cyan hover tooltip** and the **live table** under **Game Menu → Mechanics → Special Systems**. When a cooldown ends, the **battle log** and a short **cyan button pulse** recommend arming the skill again (human play only). Hover also shows **preview motion** (arrows, siege stones, axes, javelins; heal sparks; deploy streak). Not in the tutorial or **AI vs AI** watch. Log lines: **[Civilization Ability]** (cyan)."
+  },
+  {
+    icon: "🧭",
+    title: "Skirmish setup (single player)",
+    description:
+      "Main menu **Single player** opens a setup screen: choose any skirmish map (original scenarios plus extra faction pairings), pick your faction, then start. During skirmish, **🧭** returns to that screen (confirms if a battle is in progress). Skirmish **level** is chosen there or via 🧭—not from a header dropdown. The header can still set **faction** and **AI difficulty** for skirmish when you are not in the tutorial."
   },
   {
     icon: "🗺️",
@@ -95,6 +130,18 @@ export const GAME_MECHANICS_INFO = [
 
 export const ADDITIONAL_MECHANICS_INFO = [
   {
+    icon: "⚖️",
+    title: "Line weight (Light–Unique)",
+    description:
+      "Every role is tagged Light, Medium, Heavy, Elite, or Unique (faction rulers only) for roster balance and the unit reference. This is separate from troop type (melee, mounted, ranged, siege): weight describes typical durability and cost tier, not how the unit attacks. Search the roster by light, medium, heavy, elite, or unique."
+  },
+  {
+    icon: "✨",
+    title: "Elite melee portrait",
+    description:
+      "Units that are both **Elite** line weight and **close combat** use the **golden crossed-swords** portrait on the field, in deployment, and in unit details. Other melee weights keep the steel crossed-swords look; kings and special roles keep their own art."
+  },
+  {
     icon: "🐎🏹",
     title: "Hybrid Troops",
     description: "Mounted-ranged units are shown as Hybrid in the UI. While they still have ammo, they fight as ranged attackers and keep their two-icon identity."
@@ -102,17 +149,20 @@ export const ADDITIONAL_MECHANICS_INFO = [
   {
     icon: "🪫",
     title: "Ammo Exhaustion",
-    description: "Every shot spends 1 ammo. At 0 ammo, the unit drops to range 1 and attacks at half power, turning ranged hybrids into close-combat fighters."
+    description:
+      "Each ranged/siege shot spends 1 ammo. At 0 ammo: range 1, melee attack ×0.5."
   },
   {
     icon: "🏴",
     title: "Civilization Passives",
-    description: "Each faction applies a passive bonus before battle starts, which can change movement, health, range, or attack depending on the civilization."
+    description:
+      "Each faction applies a **passive bonus before battle starts** (movement, health, range, or attack depending on the civ). **Yellow-bordered icons** in the **header** (tablet/desktop) or top strip (phone) are the in-battle reference—hover for the full tooltip (passive aura + icon motion). The **cyan** button is the **cooldown-based targeted** ability (see **Faction ability** in core rules); its hover tooltip adds **faction-themed motion** (volley projectiles, reinforcement sparks, Roman deploy drop)."
   },
   {
-    icon: "✨",
-    title: "Signature Unit Abilities",
-    description: "Selected roles now carry passive signature abilities like Brace, Shield Wall, Charge, Harrier, Shock Assault, Guarded, Deadeye, Crush, Command Aura, Siege Mastery, Skirmish Step, and Resolve that trigger automatically during combat."
+    icon: "⚡",
+    title: "Faction ability (header)",
+    description:
+      "Full wording under **Core rules → Faction ability**. Map: **yellow** = passive · **cyan** = arm **volley** (fixed attack power per civ), **reinforcement** (**250 HP** per use, capped at max, plus attack on the card where listed), or **Roman summon** · valid targets **pulse** on the grid · **amber** cyan = targeting armed · ends turn on resolve · **cooldown = battle rounds** per faction (tooltip + **Mechanics → Special Systems** table). **Ready-again** log + pulse when the cooldown expires (human modes)."
   },
   {
     icon: "🎺",
@@ -138,79 +188,194 @@ export const ADDITIONAL_MECHANICS_INFO = [
     icon: "📜",
     title: "Battle Log",
     description:
-      "Use the scroll button on the floating toolbar to open a centered battle log modal; tap the same button again to close. Entries are color-coded (attacks, kills, moves, charges, morale, merges, time events). With Turn Banner on, the panel also shows whose turn it is and—when timed play is on—the active move clock."
+      "Use the scroll button on the floating toolbar to open a centered battle log modal; tap the same button again to close. Entries are color-coded (attacks, kills, moves, charges, morale, merges, spy, **civilization abilities**, **ability ready again** reminders, time events). With Turn Banner on, the panel also shows whose turn it is and—when timed play is on—the active move clock."
+  },
+  {
+    icon: "📚",
+    title: "Tutorial lessons",
+    description:
+      "Sixteen short missions on an 8×8 field teach movement, melee, terrain, ranged ammo, signatures, rivers, merge, and more. Enemy turns auto-skip. Lesson 1 (March) completes in **one move** onto the goal tile—no combat. Strike-style lessons count **any damaging hit** (wound or kill). The handbook here matches what you see in-game."
   }
 ] as const;
 
-export const UNIT_ABILITY_MECHANICS_INFO = [
+/** Per-role combat passives (shown on unit cards). */
+export const SIGNATURE_ABILITY_MECHANICS_INFO = [
   {
     icon: "🛡️",
     title: "Brace",
-    detail: "Spear and phalanx troops deal +15% damage into mounted enemies and take 15% less damage when receiving a mounted charge."
+    detail: "+15% attack vs mounted (×1.15); −15% damage taken from mounted (incoming ×0.85)."
   },
   {
     icon: "🧱",
     title: "Shield Wall",
-    detail: "Defensive infantry take 10% less damage while standing adjacent to at least 1 allied unit."
+    detail: "With ≥1 adjacent ally: −10% damage taken (×0.9)."
   },
   {
     icon: "🔥",
     title: "Shock Assault",
-    detail: "Berserker and falx-style shock troops hit 20% harder against targets already at or below half health."
+    detail: "+20% attack vs targets at ≤50% HP (×1.2)."
   },
   {
     icon: "🐎",
     title: "Charge",
-    detail: "Mounted shock troops gain +15% damage on plains and gain another +10% when crashing into ranged or siege units."
+    detail: "Mounted: +15% attack on plains (×1.15); +10% vs ranged or siege (×1.1), multiplicative."
   },
   {
     icon: "🏹",
     title: "Harrier",
-    detail: "Skirmishers and horse archers deal +10% damage while they still have ammo against targets with 1 or less move, and against siege crews."
+    detail: "With ammo left: +10% attack vs move ≤1 or siege (×1.1)."
   },
   {
     icon: "🪖",
     title: "Guarded",
-    detail: "Heavy line troops take 10% less damage while they stay above half health."
+    detail: "Above 50% HP: −10% damage taken (×0.9)."
   },
   {
     icon: "🪓",
     title: "Ferocity",
-    detail: "Aggressive fighters gain +10% attack when they are not standing next to an allied unit."
+    detail: "No adjacent allies: +10% attack (×1.1)."
   },
   {
     icon: "🎯",
     title: "Deadeye",
-    detail: "Precision archers gain +1 range on hills and deal +10% damage into unsupported ranged or siege targets."
+    detail: "On hills: +1 range; +10% vs unsupported ranged/siege (×1.1)."
   },
   {
     icon: "🐘",
     title: "Crush",
-    detail: "Elephants and impact troops deal +15% damage into close-combat units and gain another +5% against Guarded or Shield Wall defenders."
+    detail: "+15% vs close combat (×1.15); +5% extra vs Guarded or Shield Wall (×1.05)."
   },
   {
     icon: "🏴",
     title: "Command Aura",
-    detail: "Allies adjacent to a command unit gain +5% attack, stacking with the normal +10% leader aura when present."
+    detail: "Adjacent allies: +5% attack (×1.05); stacks with Leader Aura +10% (×1.1)."
   },
   {
     icon: "🏰",
     title: "Siege Mastery",
-    detail: "Siege engines gain +10% attack from plains or hills and gain +1 extra range on hills."
+    detail: "Siege on plains or hills: +10% attack (×1.1); on hills also +1 range."
   },
   {
     icon: "🪶",
     title: "Skirmish Step",
-    detail: "Mobile skirmish troops gain +1 move while they still have ammunition."
+    detail: "With ammo: +1 move."
   },
   {
     icon: "⚡",
     title: "Resolve",
-    detail: "Elite troops gain +10% attack when an adjacent allied unit is at or below 50% HP."
+    detail: "Adjacent ally at ≤50% HP: +10% attack (×1.1)."
+  }
+] as const;
+
+/** One card per formation rule or faction line (handbook Formations tab). */
+export const FORMATION_BUFF_MECHANICS_INFO: ReadonlyArray<{
+  icon: string;
+  title: string;
+  subtitle?: string;
+  detail: string;
+}> = [
+  {
+    icon: "🔗",
+    title: "How linking works",
+    subtitle: "Applies to every formation below",
+    detail:
+      "You need at least two living allies on the same team, standing in an orthogonal chain (up, down, left, right—no diagonals). Every unit in the chain must share the same formation: either a named line (mixed roles allowed where listed) or the generic Battle line (same unit role only). Disconnected groups do not share bonuses; moving or casualties can break the chain."
+  },
+  {
+    icon: "⚔️",
+    title: "Battle line",
+    subtitle: "Default line · all factions",
+    detail:
+      "Who gets it: any unit whose role is not on that faction’s named formation card below (e.g. Roman Velites, Auxiliary, Triarii—not Legionary/Praetorian/Centurion who use Testudo; Greek Archers or Cavalry—not Hoplite/Phalangite/Agema who use Phalanx; same idea for every team). Only units of the same role can link. Buff: +5% max HP for each extra linked ally after the first (two of the same role = +5% max HP, three in a chain = +10%, and so on). No extra attack or damage reduction from this formation alone."
+  },
+  {
+    icon: "🐢",
+    title: "Testudo",
+    subtitle: "Romans",
+    detail:
+      "Roles: Legionary, Praetorian, Centurion. Buff: same max HP scaling as Battle line (+5% per extra linked ally in the chain). While linked, additionally −10% damage taken from ranged troop attacks (archers, slingers, etc.—not siege engines). Log tag: Testudo (ranged)."
+  },
+  {
+    icon: "🔱",
+    title: "Phalanx",
+    subtitle: "Greeks",
+    detail:
+      "Roles: Phalangite, Hoplite, Agema. No HP from formation. While linked: +12% attack when attacking mounted troops; −12% damage taken when defending against close-combat attackers. Log tags: Phalanx (vs mounted), Phalanx (hold)."
+  },
+  {
+    icon: "🩸",
+    title: "Blood Oath",
+    subtitle: "Barbarians",
+    detail:
+      "Roles: Barbarian Warrior, Barbarian Berserker, Barbarian Axeman, Oathsworn, Barbarian Warlord. While linked: +12% attack when your unit is at or below 50% HP. Log tag: Blood Oath (low HP)."
+  },
+  {
+    icon: "🔥",
+    title: "Fury Charge",
+    subtitle: "Gauls",
+    detail:
+      "Roles: Gallic Warrior, Gaesatae, Gallic Berserker, Gallic Oathsworn. While linked: +8% attack when attacking. Log tag: Fury Charge."
+  },
+  {
+    icon: "🌲",
+    title: "Wild Ambush",
+    subtitle: "Germanic",
+    detail:
+      "Roles: Germanic Warrior, Germanic Spearman, Germanic Raider, Chosen Axeman, Hearthguard. While linked: +10% attack when your tile is forest; when defending on forest or hill, −12% damage taken from ranged attackers. Log tags: Wild Ambush, Wild Ambush Cover."
+  },
+  {
+    icon: "🐘",
+    title: "Battle Cohesion",
+    subtitle: "Carthage",
+    detail:
+      "Roles: Libyan Infantry, Sacred Band, African Pikeman, Numidian Cavalry, Balearic Slinger, War Elephant. While linked: +6% attack when attacking; −6% damage taken when defending. Log tags: Battle Cohesion."
+  },
+  {
+    icon: "☀️",
+    title: "Sun Chariot",
+    subtitle: "Egypt",
+    detail:
+      "Roles: War Chariot, Royal Chariot, Nubian Archer, Egyptian Archer, Medjay. While linked: +8% attack after moving this turn when attacking with a chariot role; −15% damage taken from ranged attackers; +1 move on desert tiles. Log tags: Sun Chariot, Sun Chariot Cover."
+  },
+  {
+    icon: "🗡️",
+    title: "Rhomphaia Line",
+    subtitle: "Thracians",
+    detail:
+      "Roles: Rhomphaia Fighter, Falx Warrior, Thracian Guard. While linked: +12% attack when the defender has Guarded or Shield Wall (ability active). Log tag: Rhomphaia Line."
+  },
+  {
+    icon: "🪓",
+    title: "Falx Dominion",
+    subtitle: "Dacians",
+    detail:
+      "Roles: Falxman, Dacian Warrior, Dacian Guard. While linked: +12% attack when attacking close-combat troops. Log tag: Falx Dominion."
+  },
+  {
+    icon: "🏹",
+    title: "Nomad Strike",
+    subtitle: "Parthians",
+    detail:
+      "Roles: Horse Archer, Elite Horse Archer, Camel Rider Archer. While linked: +10% attack when you moved earlier this turn before attacking. Log tag: Nomad Strike."
+  },
+  {
+    icon: "🏛️",
+    title: "Imperial Cohort",
+    subtitle: "Seleucids",
+    detail:
+      "Roles: Seleucid Phalangite, Silver Shield Infantry, Thorakitai, Seleucid Cataphract, Seleucid War Elephant. While linked: +6% attack when attacking; −8% damage taken when defending. Log tags: Imperial Cohort."
+  },
+  {
+    icon: "🛡️",
+    title: "Iron Shield",
+    subtitle: "Vikings",
+    detail:
+      "Roles: Huscarl, Hirdman, Shieldmaiden, Jomsviking, Varangian Guard. While linked: +6% attack when attacking; −18% damage taken when defending against close-combat attackers. Log tags: Iron Shield."
   }
 ] as const;
 
 export const AI_MECHANICS_INFO = [
+  "AI-controlled factions **use civilization abilities** on cooldown when a good target exists (volley vs exposed enemies using the same fixed volley power as players, reinforcement with the same **250 HP** restore and card attack bonuses, Roman summon toward the fight). **Human** players get a **battle-log line and cyan-button pulse** when their civ ability comes off cooldown (not tutorial / AI watch).",
   "Front-line melee units now push harder and value moves that create an immediate attack on the next turn.",
   "The AI focuses wounded enemies, exposed ranged units, siege crews, and isolated leaders more aggressively.",
   "Ranged and siege troops still prefer safer firing ground, but they now step into pressure range sooner instead of drifting too far back.",
