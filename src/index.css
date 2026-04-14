@@ -1703,6 +1703,48 @@
     overflow: visible;
 }
 
+.battle-unit-layout-root > *:not(.battle-unit-pixel-cluster) {
+    z-index: 2;
+}
+
+.battle-unit-icon {
+    position: relative;
+    z-index: 2;
+}
+
+.battle-unit-pixel-cluster {
+    position: absolute;
+    top: 52%;
+    left: 50%;
+    width: 90%;
+    height: 30%;
+    transform: translate(-50%, -50%);
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.94;
+    filter: drop-shadow(0 1px 0 rgba(15, 23, 42, 0.6));
+    display: grid;
+    grid-template-columns: repeat(var(--hp-grid-side, 1), minmax(0, 1fr));
+    grid-auto-rows: 1fr;
+    gap: 1px;
+    padding: 1px;
+    border-radius: 1px;
+    background: color-mix(in oklab, var(--unit-pixel-color, #94a3b8) 24%, rgba(2, 6, 23, 0.78));
+    overflow: hidden;
+}
+
+.battle-unit-pixel-dot {
+    width: 1px;
+    height: 1px;
+    justify-self: center;
+    align-self: center;
+    border-radius: 0;
+    background: var(--unit-pixel-color, #94a3b8);
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.22),
+        0 0 3px color-mix(in oklab, var(--unit-pixel-color, #94a3b8) 35%, transparent);
+}
+
 /* Outer: position + rotation. Inner: CSS “props” (arrows / rocks / charge embers) flying along the arc. */
 .battle-projectile-wrap {
     position: absolute;

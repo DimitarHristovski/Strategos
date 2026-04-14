@@ -284,6 +284,20 @@ const renderTeamSelectOptions = (
   });
 
 const SETUP_ROSTER_TIP_CLOSE_MS = 140;
+const TEAM_PIXEL_COLORS: Record<TeamName, string> = {
+  Romans: "#ef4444",
+  Barbarians: "#d97706",
+  Greeks: "#3b82f6",
+  Gauls: "#22c55e",
+  Germanic: "#78716c",
+  Carthage: "#92400e",
+  Egypt: "#eab308",
+  Thracians: "#a855f7",
+  Dacians: "#475569",
+  Parthians: "#f97316",
+  Seleucids: "#0ea5e9",
+  Vikings: "#14b8a6"
+};
 
 /**
  * Combine two same-role units for merge: sum current HP (capped to combined max) and combine max/base max
@@ -9006,8 +9020,23 @@ function CodeConq() {
                           }}
                           className="battle-unit-layout-root relative z-30 flex h-full w-full min-w-0 flex-col items-center justify-center will-change-transform [transform:translateZ(0)]"
                         >
+                          {/* Pixel troop body so tile feels occupied (bird-dot style). */}
+                          <div
+                            className="battle-unit-pixel-cluster"
+                            style={{
+                              ["--hp-grid-side" as string]: String(
+                                Math.max(1, Math.ceil(Math.sqrt(Math.max(1, Math.floor(Number(u.hp) || 1)))))
+                              ),
+                              ["--unit-pixel-color" as string]: TEAM_PIXEL_COLORS[u.team as TeamName] ?? "#94a3b8"
+                            }}
+                            aria-hidden
+                          >
+                            {Array.from({ length: Math.max(1, Math.floor(Number(u.hp) || 1)) }, (_, idx) => (
+                              <span key={idx} className="battle-unit-pixel-dot" />
+                            ))}
+                          </div>
                           {/* Unit Icon */}
-                          <div className="mb-0 drop-shadow-md sm:mb-0.5">
+                          <div className="battle-unit-icon mb-0 drop-shadow-md sm:mb-0.5">
                             <TroopIconMark unit={u} imgClassName="h-[1.35rem] w-[1.35rem] sm:h-8 sm:w-8" />
                           </div>
 
