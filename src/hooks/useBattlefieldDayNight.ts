@@ -7,6 +7,8 @@ export type DayNightClockState = {
   timeLabel: string;
   /** True when simulated time is in [18:00, 06:00) — battlefield dark. */
   isNight: boolean;
+  /** 0..1 darkness intensity (0 = daylight, 1 = deepest night). */
+  nightStrength: number;
 };
 
 /** Minutes since midnight; cycle starts at 6:00 AM when t = 0. */
@@ -14,14 +16,27 @@ function totalMinutesSinceMidnight(t: number): number {
   return (6 * 60 + t * 24 * 60) % (24 * 60);
 }
 
-/** Battlefield dark from 18:00 through 06:00 (not inclusive of 06:00). */
-function isBattlefieldDarkHours(totalMinutes: number): boolean {
-  return totalMinutes >= 18 * 60 || totalMinutes < 6 * 60;
+function smoothstep01(x: number): number {
+  const clamped = Math.max(0, Math.min(1, x));
+  return clamped * clamped * (3 - 2 * clamped);
 }
 
-/** 0 = day overlay, 1 = full night overlay (for gradient mixing). */
+/** 0 = day overlay, 1 = full night overlay (with dusk/dawn ramps). */
 function nightStrengthFromCycleT(t: number): number {
-  return isBattlefieldDarkHours(totalMinutesSinceMidnight(t)) ? 1 : 0;
+  const totalMinutes = totalMinutesSinceMidnight(t);
+  const dawnStart = 5 * 60;
+  const dayStart = 7 * 60;
+  const duskStart = 17 * 60;
+  const nightStart = 19 * 60;
+
+  if (totalMinutes >= dayStart && totalMinutes < duskStart) return 0;
+  if (totalMinutes >= nightStart || totalMinutes < dawnStart) return 1;
+  if (totalMinutes >= dawnStart && totalMinutes < dayStart) {
+    const p = (totalMinutes - dawnStart) / (dayStart - dawnStart);
+    return 1 - smoothstep01(p);
+  }
+  const p = (totalMinutes - duskStart) / (nightStart - duskStart);
+  return smoothstep01(p);
 }
 
 function formatTimeFromCycleT(t: number): string {
@@ -35,13 +50,14 @@ function formatTimeFromCycleT(t: number): string {
 
 /**
  * Drives a pointer-events-none overlay on the battlefield: day vs night from clock hours.
- * Exposes a clock label synced to the same cycle for the header (updates every 1s).
+ * Exposes a clock label synced to the same cycle for the header (high-frequency updates for smooth transitions).
  */
 export function useBattlefieldDayNightOverlay(reduceMotion: boolean | null) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const [dayNightClock, setDayNightClock] = useState<DayNightClockState>(() => ({
     timeLabel: "6:00 AM",
-    isNight: false
+    isNight: false,
+    nightStrength: 0
   }));
 
   useEffect(() => {
@@ -49,20 +65,22 @@ export function useBattlefieldDayNightOverlay(reduceMotion: boolean | null) {
 
     const updateClock = () => {
       if (reduceMotion) {
-        setDayNightClock({ timeLabel: "—", isNight: false });
+        setDayNightClock({ timeLabel: "—", isNight: false, nightStrength: 0 });
         return;
       }
       const t = (performance.now() % cycleMs) / cycleMs;
-      const tm = totalMinutesSinceMidnight(t);
+      const nightStrength = nightStrengthFromCycleT(t);
       setDayNightClock({
         timeLabel: formatTimeFromCycleT(t),
-        isNight: isBattlefieldDarkHours(tm)
+        isNight: nightStrength >= 0.55,
+        nightStrength
       });
     };
 
     updateClock();
     if (reduceMotion) return;
-    const id = setInterval(updateClock, 1000);
+    // Higher frequency prevents visible stepping in CSS vars driven by `nightStrength`.
+    const id = setInterval(updateClock, 120);
     return () => clearInterval(id);
   }, [reduceMotion]);
 

@@ -954,6 +954,8 @@ function CodeConq() {
     return generateTerrainMap(s.gameOptions.battlefieldSize, s.terrainPreset, s.terrainGenerationSettings);
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Battle multi-select: click multiple friendly units, then issue one formation move order. */
+  const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
   /** After clicking an enemy with multiple valid melee approach tiles, player picks an empty adjacent cell. */
   const [meleeApproachPendingTargetId, setMeleeApproachPendingTargetId] = useState<string | null>(null);
   const [inspectedUnitId, setInspectedUnitId] = useState<string | null>(null);
@@ -1092,6 +1094,13 @@ function CodeConq() {
     damage: number;
     mitigated: number;
   } | null>(null);
+  useEffect(() => {
+    if (!selectedId) {
+      setSelectedUnitIds([]);
+      return;
+    }
+    setSelectedUnitIds((prev) => (prev.includes(selectedId) ? prev : [selectedId]));
+  }, [selectedId]);
   const turnRef = useRef(turn);
   const timedPlayCommittedMsRef = useRef(timedPlayCommittedMs);
   turnRef.current = turn;
@@ -3568,7 +3577,7 @@ function CodeConq() {
       : null;
 
   const highlightMove =
-    selected && gameOptions.showMoveHighlights && (isSetupMode ? customUnits : units)
+    selected && selectedUnitIds.length <= 1 && gameOptions.showMoveHighlights && (isSetupMode ? customUnits : units)
       ? [...Array(battlefieldSize)].flatMap((_, y) =>
           [...Array(battlefieldSize)].map((_, x) => {
             if (isSetupMode) {
@@ -3582,7 +3591,7 @@ function CodeConq() {
         )
       : [];
 
-  const highlightAttack = selected && gameOptions.showAttackHighlights && (isSetupMode ? customUnits : units) ? [...Array(battlefieldSize)].flatMap((_, y) =>
+  const highlightAttack = selected && selectedUnitIds.length <= 1 && gameOptions.showAttackHighlights && (isSetupMode ? customUnits : units) ? [...Array(battlefieldSize)].flatMap((_, y) =>
     [...Array(battlefieldSize)].map((_, x) => {
       const target = getUnit(x, y);
       const distance = Math.abs(x - selected.x) + Math.abs(y - selected.y);
@@ -3906,7 +3915,14 @@ function CodeConq() {
       return;
     }
 
-    if (clicked && clicked.id === selectedId && !mergeMode && !spyMode && !civAbilityModeTeam) {
+    if (
+      clicked &&
+      clicked.id === selectedId &&
+      selectedUnitIds.length <= 1 &&
+      !mergeMode &&
+      !spyMode &&
+      !civAbilityModeTeam
+    ) {
       setInspectedTile(null);
       setInspectedUnitId(clicked.id);
       return;
@@ -3974,13 +3990,114 @@ function CodeConq() {
           setSelectedId(null);
         }
       } else {
-        // Normal selection mode
+        // Normal selection mode (supports multi-select by clicking multiple allied units).
+        if (clicked.hp <= 0) return;
+        const alreadySelected = selectedUnitIds.includes(clicked.id);
+        if (alreadySelected) {
+          const nextIds = selectedUnitIds.filter((id) => id !== clicked.id);
+          setSelectedUnitIds(nextIds);
+          setSelectedId(nextIds.length > 0 ? nextIds[nextIds.length - 1]! : null);
+          if (nextIds.length === 0) {
+            setInspectedUnitId(clicked.id);
+          }
+          return;
+        }
+        const nextIds = [...selectedUnitIds, clicked.id];
         setInspectedTile(null);
+        setSelectedUnitIds(nextIds);
         setSelectedId(clicked.id);
         playTroopSelectSfx(clicked);
       }
     } else if (selected) {
       if (!clicked) {
+        if (selectedUnitIds.length > 1) {
+          const selectedGroup = units.filter(
+            (unit: any) => selectedUnitIds.includes(unit.id) && unit.team === selected.team && unit.hp > 0
+          );
+          const anchor = selectedGroup.find((unit: any) => unit.id === selected.id) ?? selectedGroup[0];
+          if (anchor && selectedGroup.length > 1) {
+            const deltaX = x - anchor.x;
+            const deltaY = y - anchor.y;
+            if (deltaX === 0 && deltaY === 0) {
+              setInspectedUnitId(null);
+              setInspectedTile({ x, y });
+              return;
+            }
+            const occupiedByOthers = new Set(
+              units
+                .filter((unit: any) => unit.hp > 0 && !selectedUnitIds.includes(unit.id))
+                .map((unit: any) => `${unit.x},${unit.y}`)
+            );
+            const plannedById = new Map<string, { x: number; y: number }>();
+            const reserved = new Set<string>();
+            const errors: string[] = [];
+
+            selectedGroup.forEach((unit: any) => {
+              const tx = unit.x + deltaX;
+              const ty = unit.y + deltaY;
+              if (tx < 0 || tx >= battlefieldSize || ty < 0 || ty >= battlefieldSize) {
+                errors.push(`${unit.name} would move out of the battlefield.`);
+                return;
+              }
+              const targetKey = `${tx},${ty}`;
+              if (occupiedByOthers.has(targetKey)) {
+                errors.push(`${unit.name} is blocked by another unit.`);
+                return;
+              }
+              if (reserved.has(targetKey)) {
+                errors.push(`Formation overlap detected at ${targetKey}.`);
+                return;
+              }
+              const reachableKeys = new Set(getReachableTiles(unit, units).map((tile) => `${tile.x},${tile.y}`));
+              if (!reachableKeys.has(targetKey)) {
+                errors.push(`${unit.name} cannot reach target tile.`);
+                return;
+              }
+              reserved.add(targetKey);
+              plannedById.set(unit.id, { x: tx, y: ty });
+            });
+
+            if (errors.length > 0) {
+              setLog((prevLog) => [`Formation move cancelled: ${errors[0]}`, ...prevLog]);
+              return;
+            }
+
+            let moved = units.map((unit: any) => {
+              const planned = plannedById.get(unit.id);
+              return planned ? { ...unit, x: planned.x, y: planned.y } : unit;
+            });
+            let trapsWorking = civBattleTraps;
+            const trapLogBatch: string[] = [];
+            selectedGroup.forEach((unit: any) => {
+              const mover = moved.find((candidate: any) => candidate.id === unit.id);
+              if (!mover || mover.hp <= 0) return;
+              const tr = applyCivTrapOnEntry(trapsWorking, moved, mover, mover.x, mover.y, round);
+              trapsWorking = tr.traps;
+              moved = tr.units;
+              trapLogBatch.push(...tr.logLines);
+            });
+            setCivBattleTraps(trapsWorking);
+            setUnits(moved);
+            triggerCellFeedback(`${x},${y}`, "move", 2000);
+            setLog((prevLog) => [
+              `${selectedGroup.length} ${selected.team} troop${selectedGroup.length === 1 ? "" : "s"} advanced in formation.`,
+              ...trapLogBatch,
+              ...prevLog
+            ]);
+            setInspectedTile(null);
+            setSelectedUnitIds([]);
+            setSelectedId(null);
+            advanceTurn();
+            if (
+              tutorialMissionIndex === 0 &&
+              selected.team === playerTeam &&
+              moved.some((unit: any) => unit.x === TUTORIAL_MISSION_0_GOAL.x && unit.y === TUTORIAL_MISSION_0_GOAL.y)
+            ) {
+              setTutorialCelebrate(true);
+            }
+            return;
+          }
+        }
         const key = `${x},${y}`;
         if (meleeApproachPendingTargetId) {
           const pendingTarget = units.find((u: any) => u.id === meleeApproachPendingTargetId);
@@ -8414,8 +8531,14 @@ function CodeConq() {
               ? "bf-fs-battlefield min-h-0 flex-1 flex-col overflow-hidden items-center justify-center"
               : "mt-2 sm:mt-9 items-center"
           }`}
-          style={battlefieldMotionCssVars as CSSProperties}
+          style={
+            {
+              ...battlefieldMotionCssVars,
+              ["--battle-night-strength" as string]: String(dayNightClock.nightStrength)
+            } as CSSProperties
+          }
           data-battle-motion={reduceUiMotion ? "reduced" : "normal"}
+          data-battle-night={dayNightClock.isNight ? "true" : "false"}
         >
           <div
             className={
@@ -8516,7 +8639,7 @@ function CodeConq() {
                 {[...Array(battlefieldSize)].flatMap((_, y) =>
                   [...Array(battlefieldSize)].map((_, x) => {
                 const u = getUnit(x, y);
-                const isSelected = u?.id === selectedId;
+                const isSelected = Boolean(u?.id && selectedUnitIds.includes(u.id));
                 const key = `${x},${y}`;
                 const isMeleeApproach =
                   Boolean(highlightMeleeApproach.length > 0 && highlightMeleeApproach.includes(key));
@@ -9168,7 +9291,7 @@ function CodeConq() {
                       {projectileFeedback.map((projectile) => (
                         <div
                           key={projectile.id}
-                          className="battle-projectile-wrap"
+                          className={`battle-projectile-wrap ${dayNightClock.isNight ? "battle-projectile-wrap--night" : ""}`}
                           style={{
                             left: `${projectile.startX}px`,
                             top: `${projectile.startY}px`,

@@ -65,6 +65,7 @@
     box-shadow: 
         inset 0 0 20px rgba(0,0,0,0.3),
         0 8px 16px rgba(0,0,0,0.4);
+    transition: filter 420ms ease;
 }
 
 /* Atmospheric lighting + SVG film grain (see index.html #cc-film-grain) — sits under tiles */
@@ -1893,6 +1894,62 @@
     filter: drop-shadow(0 0 2px rgba(148, 163, 184, 0.65));
 }
 
+/* Night battle ranged effects: fire arrows and burning stones. */
+.battle-projectile-wrap--night .battle-arrow-tip {
+    border-color: transparent transparent transparent #f59e0b;
+    filter:
+        drop-shadow(0 0 5px rgba(251, 191, 36, 0.98))
+        drop-shadow(0 0 12px rgba(249, 115, 22, 0.9))
+        drop-shadow(0 0 20px rgba(239, 68, 68, 0.7));
+}
+
+.battle-projectile-wrap--night .battle-arrow-stick {
+    background: linear-gradient(180deg, #a16207, #d97706 52%, #7c2d12);
+}
+
+.battle-projectile-wrap--night .battle-arrow-feather {
+    background: repeating-linear-gradient(
+        180deg,
+        #f97316 0px,
+        #f97316 2px,
+        #7c2d12 2px,
+        #7c2d12 4px
+    );
+}
+
+.battle-projectile-wrap--night .battle-arrow-unit {
+    animation: battleNightArrowFlicker 0.22s ease-in-out infinite alternate;
+    filter:
+        drop-shadow(0 0 4px rgba(251, 191, 36, 0.7))
+        drop-shadow(0 0 10px rgba(249, 115, 22, 0.55));
+}
+
+.battle-projectile-wrap--night .battle-rock {
+    background: radial-gradient(ellipse at 35% 28%, #fde68a 0%, #f97316 30%, #7c2d12 68%, #1f2937 100%);
+    box-shadow:
+        inset 2px -3px 4px rgba(0, 0, 0, 0.5),
+        inset -1px 1px 2px rgba(255, 209, 102, 0.28),
+        0 0 14px rgba(249, 115, 22, 0.75),
+        0 0 24px rgba(239, 68, 68, 0.42),
+        1px 2px 3px rgba(0, 0, 0, 0.45);
+}
+
+.battle-projectile-wrap--night .battle-rock-salvo {
+    filter:
+        drop-shadow(0 0 10px rgba(251, 146, 60, 0.72))
+        drop-shadow(0 0 20px rgba(249, 115, 22, 0.42));
+}
+
+[data-battle-night="true"] .battlefield-daynight-overlay {
+    filter: saturate(1.08) brightness(0.9);
+}
+
+/* Make night unmistakable: dim the whole battlefield proportionally to cycle darkness. */
+.battlefield-container .battlefield-grid {
+    filter: brightness(calc(1 - (var(--battle-night-strength, 0) * 0.5)))
+            saturate(calc(1 - (var(--battle-night-strength, 0) * 0.14)));
+}
+
 /* —— Siege: tumbling rocks —— */
 .battle-rock-salvo {
     position: absolute;
@@ -2014,6 +2071,15 @@
         transform: translateY(-50%) translateX(-100%);
         opacity: 1;
         filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.35));
+    }
+}
+
+@keyframes battleNightArrowFlicker {
+    0% {
+        filter: brightness(0.96) saturate(1.06);
+    }
+    100% {
+        filter: brightness(1.5) saturate(1.45);
     }
 }
 
