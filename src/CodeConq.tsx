@@ -2148,6 +2148,11 @@ function CodeConq() {
       playBattleSfx("morale-break", { cooldownMs: 200, volumeMultiplier: 0.95 });
     }
   };
+
+  /** Melee exchange only: defender strikes back for half of their attack stat (no mitigation). */
+  const getCloseCombatCounterattackDamage = (defender: any) =>
+    Math.max(0, Math.round((defender?.attack ?? 0) * 0.5));
+
   const getRangeForBattle = (unit: any) => (gameOptions.terrainEffectsEnabled ? getEffectiveRange(unit, battlefieldTerrain) : unit.range);
   const getMoveForBattle = (unit: any) =>
     gameOptions.terrainEffectsEnabled ? getEffectiveMove(unit, battlefieldTerrain, { round }) : unit.move;
@@ -2385,7 +2390,8 @@ function CodeConq() {
           const simulatedAttacker = closeCombatDestination ? { ...unit, ...closeCombatDestination } : unit;
           const attackOutcome = getAttackDamage(simulatedAttacker, target, battleUnits, terrainEffectMap, {
             round,
-            attackerMovedThisTurn: Boolean(closeCombatDestination)
+            attackerMovedThisTurn: Boolean(closeCombatDestination),
+            timeOfDay: dayNightClock.isNight ? "night" : "day"
           });
           let attackScore = targetPriority + attackOutcome.damage / 3;
           if (attackOutcome.damage >= target.hp) attackScore += aiProf.lethalAttackBonus;
@@ -2622,10 +2628,16 @@ function CodeConq() {
       : selected.move
     : 0;
   const selectedEffectiveRange = selected ? getRangeForBattle(selected) : 0;
+  const battleTimeOfDay: "day" | "night" | undefined =
+    gameStarted && !isSetupMode ? (dayNightClock.isNight ? "night" : "day") : undefined;
   const inspectedEffectNotes = inspectedUnit
     ? getUnitEffectNotes(inspectedUnit, currentBattleUnits, battlefieldTerrain, gameOptions.terrainEffectsEnabled, {
-        round
+        round,
+        timeOfDay: battleTimeOfDay
       })
+    : [];
+  const inspectedBuffStrip = inspectedUnit
+    ? getBattlefieldBuffStrip(inspectedUnit, currentBattleUnits, battlefieldTerrain)
     : [];
   const focusedBattleUnit = inspectedUnit ?? selected ?? null;
   const isFocusedIntelObscured = useMemo(() => {
@@ -2636,13 +2648,22 @@ function CodeConq() {
     if (gameMode === "custom-scenario" && !customScenarioSpectator) return focusedBattleUnit.team !== playerTeam;
     return false;
   }, [focusedBattleUnit, gameStarted, spiedEnemyIds, gameMode, turn, playerTeam, customScenarioSpectator]);
+  const isInspectedIntelObscured = useMemo(() => {
+    if (!inspectedUnit || !gameStarted) return false;
+    if (spiedEnemyIds.includes(inspectedUnit.id)) return false;
+    if (gameMode === "multiplayer" || gameMode === "ai-versus") return inspectedUnit.team !== turn;
+    if (gameMode === "single-player" || gameMode === "campaign") return inspectedUnit.team !== playerTeam;
+    if (gameMode === "custom-scenario" && !customScenarioSpectator) return inspectedUnit.team !== playerTeam;
+    return false;
+  }, [inspectedUnit, gameStarted, spiedEnemyIds, gameMode, turn, playerTeam, customScenarioSpectator]);
   const focusedUnitAbilities = focusedBattleUnit ? getTroopAbilities(focusedBattleUnit.role) : [];
   const focusedTroopTypeDisplay = focusedBattleUnit ? getTroopTypeDisplay(focusedBattleUnit) : null;
   const focusedWeightDisplay = focusedBattleUnit ? getTroopWeightDisplay(focusedBattleUnit) : null;
   const focusedTerrainType = focusedBattleUnit ? getTerrainAt(battlefieldTerrain, focusedBattleUnit.x, focusedBattleUnit.y) : null;
   const focusedEffectNotes = focusedBattleUnit
     ? getUnitEffectNotes(focusedBattleUnit, currentBattleUnits, battlefieldTerrain, gameOptions.terrainEffectsEnabled, {
-        round
+        round,
+        timeOfDay: battleTimeOfDay
       })
     : [];
   const focusedFeedbackKinds = focusedBattleUnit ? (cellFeedback[`${focusedBattleUnit.x},${focusedBattleUnit.y}`] ?? []) : [];
@@ -3173,7 +3194,8 @@ function CodeConq() {
         const movedAttacker = aiDecision.moveTo ? { ...actingLive, ...aiDecision.moveTo } : actingLive;
         const attackOutcome = getAttackDamage(movedAttacker, targetLive, workingUnits, terrainEffectMap, {
           round,
-          attackerMovedThisTurn: Boolean(aiDecision.moveTo)
+          attackerMovedThisTurn: Boolean(aiDecision.moveTo),
+          timeOfDay: dayNightClock.isNight ? "night" : "day"
         });
         const remainingAmmo = actingLive.ammo && actingLive.ammo > 0 ? actingLive.ammo - 1 : actingLive.ammo;
         const updatedTargetHp = targetLive.hp - attackOutcome.damage;
@@ -3207,9 +3229,20 @@ function CodeConq() {
           suppressOutcome: true
         });
 
+        const counterDmgAi = !usedProjectileAttack ? getCloseCombatCounterattackDamage(targetLive) : 0;
+
         registerFeedbackTimeout(() => {
-          setUnits((prev) =>
-            prev
+          const attackerX = movedAttacker.x;
+          const attackerY = movedAttacker.y;
+          const counterAttackerStateAi = {
+            applied: false,
+            killed: false,
+            hp: 0,
+            maxHp: actingLive.maxHp ?? 0
+          };
+
+          setUnits((prev) => {
+            let next = prev
               .map((unit: any) => {
                 if (unit.id === targetLive.id) {
                   return {
@@ -3219,8 +3252,25 @@ function CodeConq() {
                 }
                 return unit;
               })
-              .filter((unit: any) => unit.hp > 0)
-          );
+              .filter((unit: any) => unit.hp > 0);
+
+            if (counterDmgAi > 0) {
+              const attackerRow = next.find((u: any) => u.id === actingUnit.id);
+              if (attackerRow && attackerRow.hp > 0) {
+                counterAttackerStateAi.applied = true;
+                counterAttackerStateAi.maxHp = attackerRow.maxHp ?? counterAttackerStateAi.maxHp;
+                const hp = Math.max(0, attackerRow.hp - counterDmgAi);
+                next = next
+                  .map((u: any) => (u.id === actingUnit.id ? { ...u, hp } : u))
+                  .filter((u: any) => u.hp > 0);
+                const survived = next.some((u: any) => u.id === actingUnit.id);
+                counterAttackerStateAi.killed = !survived;
+                counterAttackerStateAi.hp = survived ? next.find((u: any) => u.id === actingUnit.id)!.hp : 0;
+              }
+            }
+
+            return next;
+          });
 
           setLog((existingLog) => {
             const nextLog = [
@@ -3240,8 +3290,23 @@ function CodeConq() {
               nextLog.unshift(`${targetLive.name} (${targetLive.team}) was killed!`);
             }
 
+            if (counterDmgAi > 0) {
+              nextLog.unshift(
+                `${targetLive.name} (${targetLive.team}) countered ${actingLive.name} (${currentTeam}) for ${counterDmgAi} damage.`
+              );
+            }
+
+            if (counterDmgAi > 0 && counterAttackerStateAi.applied && counterAttackerStateAi.killed) {
+              nextLog.unshift(`${actingLive.name} (${currentTeam}) was killed in the exchange!`);
+            }
+
             return nextLog;
           });
+
+          if (counterDmgAi > 0) {
+            triggerCellFeedback(`${attackerX},${attackerY}`, "meleeHit", HIT_FLASH_MS);
+            showDamagePopupAt(attackerX, attackerY, counterDmgAi, 0, 0);
+          }
 
           if (attackOutcome.abilityTags.includes("Charge")) {
             setLog((existingLog) => [`${actingLive.name} (${currentTeam}) crashed into the line with a charge!`, ...existingLog]);
@@ -3252,6 +3317,21 @@ function CodeConq() {
           }
 
           applyAttackOutcomeFeedback(targetLive, updatedTargetHp, 0.35);
+          if (counterDmgAi > 0 && counterAttackerStateAi.applied) {
+            const attackerStub = { ...actingLive, x: attackerX, y: attackerY, maxHp: counterAttackerStateAi.maxHp };
+            if (counterAttackerStateAi.killed) {
+              applyAttackOutcomeFeedback(attackerStub, 0, 0.35);
+            } else if (
+              counterAttackerStateAi.hp > 0 &&
+              counterAttackerStateAi.hp <= Math.ceil(counterAttackerStateAi.maxHp * 0.35)
+            ) {
+              applyAttackOutcomeFeedback(
+                { ...attackerStub, hp: counterAttackerStateAi.hp },
+                counterAttackerStateAi.hp,
+                0.35
+              );
+            }
+          }
           advanceAiTurn(currentTeam as TeamName);
           aiAttackAnimatingRef.current = false;
         }, resolveDelayMs);
@@ -3666,7 +3746,8 @@ function CodeConq() {
 
     const attackOutcome = getAttackDamage(attackingUnit, clickedLive, workingUnits, terrainEffectMap, {
       round,
-      attackerMovedThisTurn: Boolean(attackerPosition)
+      attackerMovedThisTurn: Boolean(attackerPosition),
+      timeOfDay: dayNightClock.isNight ? "night" : "day"
     });
     const dmg = attackOutcome.damage;
     const updatedTargetHp = nextClickedHp - dmg;
@@ -3701,9 +3782,20 @@ function CodeConq() {
       suppressOutcome: true
     });
 
+    const counterDmg = !usedProjectileAttack ? getCloseCombatCounterattackDamage(clickedLive) : 0;
+
     registerFeedbackTimeout(() => {
-      setUnits((prev) =>
-        prev
+      const attackerX = attackingUnit.x;
+      const attackerY = attackingUnit.y;
+      const counterAttackerState = {
+        applied: false,
+        killed: false,
+        hp: 0,
+        maxHp: selectedLive.maxHp ?? 0
+      };
+
+      setUnits((prev) => {
+        let next = prev
           .map((unit: any) => {
             if (unit.id === clickedLive.id) {
               return {
@@ -3713,8 +3805,25 @@ function CodeConq() {
             }
             return unit;
           })
-          .filter((unit: any) => unit.hp > 0)
-      );
+          .filter((unit: any) => unit.hp > 0);
+
+        if (counterDmg > 0) {
+          const attackerRow = next.find((u: any) => u.id === selectedLive.id);
+          if (attackerRow && attackerRow.hp > 0) {
+            counterAttackerState.applied = true;
+            counterAttackerState.maxHp = attackerRow.maxHp ?? counterAttackerState.maxHp;
+            const hp = Math.max(0, attackerRow.hp - counterDmg);
+            next = next
+              .map((u: any) => (u.id === selectedLive.id ? { ...u, hp } : u))
+              .filter((u: any) => u.hp > 0);
+            const survived = next.some((u: any) => u.id === selectedLive.id);
+            counterAttackerState.killed = !survived;
+            counterAttackerState.hp = survived ? next.find((u: any) => u.id === selectedLive.id)!.hp : 0;
+          }
+        }
+
+        return next;
+      });
 
       if (usedProjectileAttack) {
         setLog((prevLog) => [
@@ -3744,7 +3853,30 @@ function CodeConq() {
         setLog((prevLog) => [`${clickedLive.name} (${clickedLive.team}) was killed!`, ...prevLog]);
       }
 
+      if (counterDmg > 0) {
+        setLog((prevLog) => [
+          `${clickedLive.name} (${clickedLive.team}) countered ${attackingUnit.name} (${attackingUnit.team}) for ${counterDmg} damage.`,
+          ...prevLog
+        ]);
+        if (counterAttackerState.applied && counterAttackerState.killed) {
+          setLog((prevLog) => [`${attackingUnit.name} (${attackingUnit.team}) was killed in the exchange!`, ...prevLog]);
+        }
+        triggerCellFeedback(`${attackerX},${attackerY}`, "meleeHit", HIT_FLASH_MS);
+        showDamagePopupAt(attackerX, attackerY, counterDmg, 0, 0);
+      }
+
       applyAttackOutcomeFeedback(clickedLive, updatedTargetHp, 0.35);
+      if (counterDmg > 0 && counterAttackerState.applied) {
+        const attackerStub = { ...selectedLive, x: attackerX, y: attackerY, maxHp: counterAttackerState.maxHp };
+        if (counterAttackerState.killed) {
+          applyAttackOutcomeFeedback(attackerStub, 0, 0.35);
+        } else if (
+          counterAttackerState.hp > 0 &&
+          counterAttackerState.hp <= Math.ceil(counterAttackerState.maxHp * 0.35)
+        ) {
+          applyAttackOutcomeFeedback({ ...attackerStub, hp: counterAttackerState.hp }, counterAttackerState.hp, 0.35);
+        }
+      }
       setSelectedId(null);
       advanceTurn();
       battleResolutionPendingRef.current = false;
@@ -6373,7 +6505,8 @@ function CodeConq() {
               <h1 className="text-3xl font-bold text-yellow-200 drop-shadow-lg sm:text-4xl">Interactive tutorial</h1>
               <p className="mt-3 text-sm leading-relaxed text-yellow-100/85">
                 {TUTORIAL_MISSION_COUNT} lessons on an 8×8 field — basics, terrain, signatures, leader aura, merge, matchups,
-                and siege. Enemy turns are skipped. Use <span className="font-semibold text-amber-200/95">Next</span> after each
+                siege, counters, and advanced Roman kits. Enemy turns are skipped. Use{" "}
+                <span className="font-semibold text-amber-200/95">Next</span> after each
                 objective. The in-game <span className="font-semibold text-amber-200/95">Mechanics</span> menu has the full rulebook.
               </p>
               <button
@@ -8834,7 +8967,8 @@ function CodeConq() {
                       if (!canPreviewAttackDamage || !u || !selected) return;
                       const outcome = getAttackDamage(selected, u, units, terrainEffectMap, {
                         round,
-                        attackerMovedThisTurn: false
+                        attackerMovedThisTurn: false,
+                        timeOfDay: dayNightClock.isNight ? "night" : "day"
                       });
                       setAttackPreviewHover({
                         key,
@@ -9446,6 +9580,40 @@ function CodeConq() {
                       Terrain: <strong>{TERRAIN_LABELS[inspectedTerrainType ?? "plain"]}</strong>
                     </span>
                   </p>
+                  <div className="rounded-lg border border-amber-600/55 bg-black/20 px-3 py-2">
+                    <div className="text-amber-200 text-sm font-semibold mb-1">Active buffs (this moment)</div>
+                    {isInspectedIntelObscured ? (
+                      <p className="text-xs text-yellow-100/75 leading-relaxed">
+                        Enemy intel is hidden — use <span className="font-semibold text-amber-200/95">Spy</span> on this unit to
+                        reveal live buffs and details.
+                      </p>
+                    ) : inspectedBuffStrip.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {inspectedBuffStrip.map((b) => (
+                          <span
+                            key={b.id}
+                            tabIndex={0}
+                            className="group relative inline-flex max-w-full rounded-full outline-none focus-visible:ring-2 focus-visible:ring-amber-400/55"
+                            aria-label={b.tooltip}
+                          >
+                            <span className="inline-flex cursor-help items-center gap-1.5 rounded-full border border-amber-700/50 bg-amber-950/25 px-2.5 py-1 text-[11px] font-semibold text-amber-100/95">
+                              <UiIcon src={b.icon} className="h-4 w-4 shrink-0" alt="" />
+                              {b.label}
+                            </span>
+                            <span
+                              role="tooltip"
+                              className="pointer-events-none absolute left-1/2 top-full z-[90] mt-1 w-max max-w-[min(94vw,20rem)] -translate-x-1/2 whitespace-normal rounded-md border border-amber-600/60 bg-gray-950/98 px-2 py-1.5 text-left text-[10px] font-medium leading-snug text-amber-50 opacity-0 shadow-lg transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 sm:text-[11px]"
+                            >
+                              <span className="block font-bold text-amber-200/95">{b.label}</span>
+                              <span className="mt-0.5 block text-yellow-100/92">{b.tooltip}</span>
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-yellow-100/75">No situational buffs are active right now.</p>
+                    )}
+                  </div>
                   <div className="rounded-lg border border-cyan-700 bg-black/20 px-3 py-2">
                     <div className="text-cyan-300 text-sm font-semibold mb-1">Signature Skills</div>
                     {inspectedUnitAbilities.length > 0 ? (
@@ -9468,7 +9636,7 @@ function CodeConq() {
                   )}
                   {inspectedEffectNotes.length > 0 && (
                     <div className="rounded-lg border border-lime-700 bg-black/20 px-3 py-2">
-                      <div className="text-lime-300 text-sm font-semibold mb-1">Active Effects</div>
+                      <div className="text-lime-300 text-sm font-semibold mb-1">Modifiers &amp; context</div>
                       <div className="space-y-1">
                         {inspectedEffectNotes.map((note) => (
                           <p key={note} className="text-xs text-yellow-100">{note}</p>

@@ -12,6 +12,9 @@ export const CIV_VOLLEY_RANGE = 5;
  */
 export const CIV_ABILITY_COOLDOWN_OWN_TURNS = 10;
 
+/** Full battle rounds a trap remains hidden on the field if never triggered. */
+export const CIV_TRAP_FIELD_DURATION_BATTLE_ROUNDS = 100;
+
 export type CivActiveTargeting = "enemy_volley" | "ally_reinforce" | "summon_unit" | "place_trap";
 
 export type CivActiveDef = {
@@ -58,7 +61,7 @@ export type CivBattleTrap = {
 };
 
 /**
- * Faction actives: volley, ally reinforce, or summon (e.g. Roman Legionary, Carthage War Elephant). Each entry uses `cooldownBattleRounds` (see `getCivActiveHandbookRows` for the handbook table).
+ * Faction actives: volley, ally reinforce, or summon (e.g. Roman Praetorian, Carthage War Elephant). Each entry uses `cooldownBattleRounds` (see `getCivActiveHandbookRows` for the handbook table).
  */
 export const CIV_ACTIVES: Record<TeamName, CivActiveDef> = {
  // 🏛️ SUMMON (3)
@@ -66,9 +69,9 @@ export const CIV_ACTIVES: Record<TeamName, CivActiveDef> = {
   name: "Legion Reinforcement",
   icon: "🏛️",
   description:
-    "Summon a Legionary on an empty tile within 5 range of any ally. Strong frontline reinforcement.",
+    "Summon a Praetorian on an empty tile within 5 range of any ally. Elite bodyguard reinforcement.",
   targeting: "summon_unit",
-  summonRole: "Legionary",
+  summonRole: "Praetorian",
   cooldownBattleRounds: 30
 },
 
@@ -163,7 +166,7 @@ Gauls: {
   targeting: "place_trap",
   trapDamage: 120,
   trapMoveReduction: 2,
-  duration: 1,
+  duration: CIV_TRAP_FIELD_DURATION_BATTLE_ROUNDS,
   cooldownBattleRounds: 10
 },
 
@@ -175,7 +178,7 @@ Dacians: {
   targeting: "place_trap",
   trapDamage: 180,
   armorReductionPercent: 25,
-  duration: 2,
+  duration: CIV_TRAP_FIELD_DURATION_BATTLE_ROUNDS,
   cooldownBattleRounds: 18
 },
 
@@ -187,7 +190,7 @@ Thracians: {
   targeting: "place_trap",
   trapDamage: 140,
   attackReductionPercent: 20,
-  duration: 2,
+  duration: CIV_TRAP_FIELD_DURATION_BATTLE_ROUNDS,
   cooldownBattleRounds: 14
 }
 };
@@ -227,6 +230,7 @@ export function getCivActiveHandbookRows(): CivActiveHandbookRow[] {
     }
     if (d.targeting === "place_trap") {
       const dmg = d.trapDamage ?? 0;
+      const fieldDur = Math.max(1, d.duration ?? CIV_TRAP_FIELD_DURATION_BATTLE_ROUNDS);
       const bits: string[] = [];
       if (d.attackReductionPercent) bits.push(`−${d.attackReductionPercent}% victim atk`);
       if (d.armorReductionPercent) bits.push(`+${d.armorReductionPercent}% victim dmg taken`);
@@ -235,7 +239,7 @@ export function getCivActiveHandbookRows(): CivActiveHandbookRow[] {
         team,
         icon: d.icon,
         cooldownBattleRounds: br,
-        summary: `Trap — ${dmg} HP if stepped on${extra} · ${br} battle rounds`
+        summary: `Trap — ${dmg} HP if stepped on${extra} · ${fieldDur} rounds on field if unused · ability CD ${br} battle rounds`
       };
     }
     return {
@@ -593,7 +597,7 @@ export function getCivActiveHowItWorks(targeting: CivActiveTargeting): string {
     case "summon_unit":
       return "Tap the cyan button to arm, then click an empty tile within 5 tiles of a living ally to deploy one recruit. Ends your turn.";
     case "place_trap":
-      return "Tap the cyan button to arm, then click an empty tile within 5 tiles of a living ally to lay a trap. The first enemy that moves onto it takes direct damage (and debuffs on the card, if any). Traps expire after a few battle rounds if unused. Ends your turn.";
+      return `Tap the cyan button to arm, then click an empty tile within 5 tiles of a living ally to lay a trap. The first enemy that moves onto it takes direct damage (and debuffs on the card, if any). Traps expire after ${CIV_TRAP_FIELD_DURATION_BATTLE_ROUNDS} full battle rounds if unused. Ends your turn.`;
     default:
       return "";
   }
