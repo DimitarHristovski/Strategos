@@ -1746,6 +1746,59 @@
         0 0 3px color-mix(in oklab, var(--unit-pixel-color, #94a3b8) 35%, transparent);
 }
 
+/* Close combat: rectangular “block” pixels in a tight grid */
+.battle-unit-pixel-cluster--melee {
+    width: 94%;
+    height: 30%;
+    grid-template-columns: repeat(var(--hp-grid-side, 1), 6px);
+    grid-auto-rows: 3px;
+    gap: 2px 1px;
+}
+
+.battle-unit-pixel-cluster--melee .battle-unit-pixel-dot {
+    width: 5px;
+    height: 2px;
+    border-radius: 0;
+}
+
+/* Mounted: triangular wedge + arrowhead pixels */
+.battle-unit-pixel-cluster--mounted {
+    width: 78%;
+    height: 56%;
+    clip-path: polygon(50% 2%, 4% 100%, 100% 100%);
+    grid-template-columns: repeat(var(--hp-grid-side, 1), 4px);
+    grid-auto-rows: 2px;
+    gap: 3px;
+    padding-top: 2px;
+}
+
+.battle-unit-pixel-cluster--mounted .battle-unit-pixel-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 0;
+    clip-path: polygon(100% 0%, 0% 100%, 100% 100%);
+}
+
+/* Ranged & siege: flex + per-dot jitter (React) reads as scattered skirmishers */
+.battle-unit-pixel-cluster--scatter {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-content: center;
+    align-items: center;
+    width: 96%;
+    height: 58%;
+    gap: 0;
+}
+
+.battle-unit-pixel-cluster--scatter .battle-unit-pixel-dot {
+    flex: 0 0 auto;
+    width: 2px;
+    height: 2px;
+    margin: 0 1px;
+    border-radius: 0;
+}
+
 /* Outer: position + rotation. Inner: CSS “props” (arrows / rocks / charge embers) flying along the arc. */
 .battle-projectile-wrap {
     position: absolute;
@@ -3313,5 +3366,90 @@ body.cc-cursor-setup-deploy {
 }
 
 body.cc-cursor-setup-deploy * {
-  cursor: inherit !important;
+    cursor: inherit !important;
+}
+
+/* Resource war — link minigame overlay (fonts loaded from Google Fonts in component) */
+.resource-mining-ui {
+    font-family: "DM Sans", system-ui, sans-serif;
+}
+
+.resource-mining-ui .resource-mining-ui__title,
+.resource-mining-ui .resource-mining-ui__eyebrow,
+.resource-mining-ui .resource-mining-ui__timer,
+.resource-mining-ui .resource-mining-ui__score {
+    font-family: "Cinzel", "Palatino Linotype", "Book Antiqua", Palatino, serif;
+}
+
+.resource-mining-overlay {
+    animation: resource-mining-overlay-in 320ms ease-out both;
+}
+
+@keyframes resource-mining-overlay-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .resource-mining-overlay {
+        animation: none;
+    }
+
+    .resource-mining-cell--path {
+        transform: none !important;
+    }
+}
+
+/* Link minigame: no dark “socket” behind ores (grid + header strip stay brighter). */
+.resource-mining-overlay .resource-ore-icon-wrap {
+    background: transparent;
+    box-shadow: none;
+}
+
+/* Resource war — ore PNGs sit in a dark “socket” so white backgrounds read as stone */
+.resource-ore-icon-wrap {
+    isolation: isolate;
+    border-radius: 0.45rem;
+    background: radial-gradient(ellipse 90% 90% at 38% 28%, rgba(58, 48, 40, 0.98), rgba(22, 19, 16, 0.99));
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.72),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+        0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.resource-ore-icon-wrap .resource-ore-icon-img,
+img.resource-ore-icon-img {
+    mix-blend-mode: multiply;
+    filter: contrast(1.14) saturate(1.12);
+}
+
+/* Must follow rules above: (0,2,1) beats HUD ore img selectors so minigame ores aren’t darkened. */
+.resource-mining-overlay img.resource-ore-icon-img {
+    mix-blend-mode: normal;
+    filter: none;
+}
+
+/* Scale only — animating filter/contrast on HUD icons looked like random color shifts. */
+@keyframes resource-ore-pulse {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.06);
+    }
+}
+
+.resource-ore-icon-anim {
+    animation: resource-ore-pulse 2.45s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .resource-ore-icon-anim {
+        animation: none;
+    }
 }

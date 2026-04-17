@@ -4,8 +4,11 @@ import { ALL_TEAMS } from "./constants";
 import { AVAILABLE_TROOPS } from "./unitCatalog";
 import type { TeamName, TerrainType } from "./types";
 
-/** Max Manhattan distance from any living ally to a valid volley target. */
+/** Max Manhattan distance from any living ally to a valid volley target (and trap placement). */
 export const CIV_VOLLEY_RANGE = 5;
+
+/** Max Manhattan distance from any living ally to deploy a **summon** recruit (adjacent ring only). */
+export const CIV_SUMMON_ALLY_RANGE = 1;
 
 /**
  * Fallback if a civ def omits `cooldownBattleRounds`. Current data uses **battle rounds only** for every faction.
@@ -69,7 +72,7 @@ export const CIV_ACTIVES: Record<TeamName, CivActiveDef> = {
   name: "Legion Reinforcement",
   icon: "🏛️",
   description:
-    "Summon a Praetorian on an empty tile within 5 range of any ally. Elite bodyguard reinforcement.",
+    "Summon a Praetorian on an empty tile within 1 range of any living ally. Elite bodyguard reinforcement.",
   targeting: "summon_unit",
   summonRole: "Praetorian",
   cooldownBattleRounds: 30
@@ -79,7 +82,7 @@ Carthage: {
   name: "Beast of the Line",
   icon: "🐘",
   description:
-    "Summon a War Elephant within 5 range of any ally. High HP shock unit.",
+    "Summon a War Elephant on an empty tile within 1 range of any living ally. High HP shock unit.",
   targeting: "summon_unit",
   summonRole: "War Elephant",
   cooldownBattleRounds: 40
@@ -89,7 +92,7 @@ Seleucids: {
   name: "Imperial Reserves",
   icon: "🏺",
   description:
-    "Summon Silver Shield Infantry within 5 range of any ally. Elite defensive unit.",
+    "Summon Silver Shield Infantry on an empty tile within 1 range of any living ally. Elite defensive unit.",
   targeting: "summon_unit",
   summonRole: "Silver Shield Infantry",
   cooldownBattleRounds: 35
@@ -100,7 +103,7 @@ Barbarians: {
   name: "Axe Volley",
   icon: "📣",
   description:
-    "Target an enemy within 5 range of any ally. Deals 50 damage (affected by terrain and defense).",
+    "Target an enemy within 5 tiles of any living ally. Deals 50 damage (affected by terrain and defense).",
   targeting: "enemy_volley",
   volleyAttackPower: 50,
   cooldownBattleRounds: 5
@@ -110,7 +113,7 @@ Parthians: {
   name: "Parthian Volley",
   icon: "🏹",
   description:
-    "Target an enemy within 5 range. Deals 130 damage. Highly effective hit-and-run strike.",
+    "Target an enemy within 5 tiles of any living ally. Deals 130 damage. Highly effective hit-and-run strike.",
   targeting: "enemy_volley",
   volleyAttackPower: 130,
   cooldownBattleRounds: 13
@@ -120,7 +123,7 @@ Germanic: {
   name: "Blood Feud Shot",
   icon: "⚒️",
   description:
-    "Target an enemy within 5 range. Deals 150 damage. Powerful single-target strike.",
+    "Target an enemy within 5 tiles of any living ally. Deals 150 damage. Powerful single-target strike.",
   targeting: "enemy_volley",
   volleyAttackPower: 150,
   cooldownBattleRounds: 15
@@ -162,7 +165,7 @@ Gauls: {
   name: "Hidden Snares",
   icon: "🌿",
   description:
-    "Place a concealed trap on an empty tile within 5 range of any ally. The first enemy entering it takes 120 damage.",
+    "Place a concealed trap on an empty tile within 5 tiles of any ally. The first enemy entering it takes 120 damage.",
   targeting: "place_trap",
   trapDamage: 120,
   trapMoveReduction: 2,
@@ -174,7 +177,7 @@ Dacians: {
   name: "Falx Trap",
   icon: "🐺",
   description:
-    "Place a brutal trap on an empty tile within 5 range of any ally. The first enemy entering it takes 180 damage.",
+    "Place a brutal trap on an empty tile within 5 tiles of any ally. The first enemy entering it takes 180 damage.",
   targeting: "place_trap",
   trapDamage: 180,
   armorReductionPercent: 25,
@@ -186,7 +189,7 @@ Thracians: {
   name: "Terror Trap",
   icon: "⛰️",
   description:
-    "Place a fear trap on an empty tile within 5 range of any ally. The first enemy entering it takes 140 damage and suffers -20% attack.",
+    "Place a fear trap on an empty tile within 5 tiles of any ally. The first enemy entering it takes 140 damage and suffers −20% attack.",
   targeting: "place_trap",
   trapDamage: 140,
   attackReductionPercent: 20,
@@ -246,7 +249,7 @@ export function getCivActiveHandbookRows(): CivActiveHandbookRow[] {
       team,
       icon: d.icon,
       cooldownBattleRounds: br,
-      summary: `Summon ${d.summonRole ?? "unit"} · ${br} battle rounds`
+      summary: `Summon ${d.summonRole ?? "unit"} (empty tile ≤${CIV_SUMMON_ALLY_RANGE} from ally) · ${br} battle rounds`
     };
   });
 }
@@ -266,10 +269,19 @@ export function pickVolleySpotter(units: any[], team: TeamName, target: any): an
   return allies.reduce((best, u) => (manhattan(u, target) < manhattan(best, target) ? u : best));
 }
 
-/** Empty tile in reinforcement range of a living ally (for summon abilities). */
-export function isSummonReinforcementTileValid(units: any[], team: TeamName, x: number, y: number): boolean {
+/**
+ * Empty tile within `maxAllyDistance` (Manhattan) of a living ally.
+ * Summon uses `CIV_SUMMON_ALLY_RANGE`; traps and legacy callers use `CIV_VOLLEY_RANGE`.
+ */
+export function isSummonReinforcementTileValid(
+  units: any[],
+  team: TeamName,
+  x: number,
+  y: number,
+  maxAllyDistance: number = CIV_VOLLEY_RANGE
+): boolean {
   if (units.some((u) => u.hp > 0 && u.x === x && u.y === y)) return false;
-  return units.some((u) => u.team === team && u.hp > 0 && manhattan(u, { x, y }) <= CIV_VOLLEY_RANGE);
+  return units.some((u) => u.team === team && u.hp > 0 && manhattan(u, { x, y }) <= maxAllyDistance);
 }
 
 export function clearExpiredCivTraps(traps: CivBattleTrap[], battleRound: number): CivBattleTrap[] {
@@ -418,13 +430,19 @@ export function pickAiCivReinforceTarget(units: any[], team: TeamName): any | nu
   })[0];
 }
 
-/** Empty summon tile: prefer spots closer to enemies (pressure). */
-export function pickAiCivSummonTile(units: any[], team: TeamName, gridW: number, gridH: number): { x: number; y: number } | null {
+/** Empty tile near allies for summon (default 1) or trap (pass `CIV_VOLLEY_RANGE`); prefers spots closer to enemies. */
+export function pickAiCivSummonTile(
+  units: any[],
+  team: TeamName,
+  gridW: number,
+  gridH: number,
+  maxAllyDistance: number = CIV_SUMMON_ALLY_RANGE
+): { x: number; y: number } | null {
   const enemies = units.filter((u) => u.team !== team && u.hp > 0);
   const candidates: { x: number; y: number; d: number }[] = [];
   for (let y = 0; y < gridH; y++) {
     for (let x = 0; x < gridW; x++) {
-      if (!isSummonReinforcementTileValid(units, team, x, y)) continue;
+      if (!isSummonReinforcementTileValid(units, team, x, y, maxAllyDistance)) continue;
       let d = Infinity;
       for (const e of enemies) {
         d = Math.min(d, manhattan({ x, y }, e));
@@ -595,7 +613,7 @@ export function getCivActiveHowItWorks(targeting: CivActiveTargeting): string {
     case "ally_reinforce":
       return "Tap the cyan button to arm, then click one of your living troops. Heal and attack bonuses follow the card (most civs restore 250 HP capped at max; some are attack-only). Ends your turn.";
     case "summon_unit":
-      return "Tap the cyan button to arm, then click an empty tile within 5 tiles of a living ally to deploy one recruit. Ends your turn.";
+      return "Tap the cyan button to arm, then click an empty tile within 1 range (next to) a living ally to deploy one recruit. Ends your turn.";
     case "place_trap":
       return `Tap the cyan button to arm, then click an empty tile within 5 tiles of a living ally to lay a trap. The first enemy that moves onto it takes direct damage (and debuffs on the card, if any). Traps expire after ${CIV_TRAP_FIELD_DURATION_BATTLE_ROUNDS} full battle rounds if unused. Ends your turn.`;
     default:
