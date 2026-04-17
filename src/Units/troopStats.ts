@@ -249,7 +249,7 @@ const TROOP_ROLE_ABILITIES: Record<string, TroopAbilityKey[]> = {
   "War Elephant": ["crush"],
   "Seleucid War Elephant": ["crush"],
   "Barbarian Chief": ["command"],
-  "Barbarian Warlord": ["command"],
+  "Barbarian Warlord": ["shock"],
   "Macedonian King": ["command"],
   "Gallic King": ["command"],
   "Germanic King": ["command"],

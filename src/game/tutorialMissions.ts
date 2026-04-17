@@ -57,6 +57,10 @@ export function buildTutorialTerrain(missionIndex: number): TerrainType[][] {
     grid[4][4] = "forest";
     grid[4][5] = "forest";
   }
+  if (missionIndex === 20) {
+    grid[3][4] = "hill";
+    grid[5][4] = "forest";
+  }
   return grid;
 }
 
@@ -150,6 +154,39 @@ export function buildTutorialUnits(missionIndex: number): any[] {
         makeUnit("tut_m15_arch", PT, "Archer", "Archer", 2, 4, "🏹"),
         makeUnit("tut_m15_bar", ET, "Barbarian Warrior", "Barbarian Warrior", 6, 4, "🪓")
       ];
+    case 16:
+      return [
+        makeUnit("tut_m16_leg", PT, "Legionary", "Legionary", 2, 4, "⚔️"),
+        makeUnit("tut_m16_bar", ET, "Barbarian Warrior", "Barbarian Warrior", 3, 4, "🪓")
+      ];
+    case 17:
+      return [
+        makeUnit("tut_m17_cent", PT, "Centurion", "Centurion", 2, 4, "🪖"),
+        makeUnit("tut_m17_leg", PT, "Legionary", "Legionary", 3, 4, "⚔️"),
+        makeUnit("tut_m17_bar", ET, "Barbarian Warrior", "Barbarian Warrior", 6, 4, "🪓")
+      ];
+    case 18:
+      return [
+        makeUnit("tut_m18_elp", PT, "War Elephant", "War Elephant", 1, 4, "🐘"),
+        makeUnit("tut_m18_bar", ET, "Barbarian Warrior", "Barbarian Warrior", 6, 4, "🪓")
+      ];
+    case 19:
+      return [
+        makeUnit("tut_m19_vel", PT, "Velites", "Velites", 2, 4, "🏹"),
+        makeUnit("tut_m19_bar", ET, "Barbarian Warrior", "Barbarian Warrior", 6, 4, "🪓")
+      ];
+    case 20:
+      return [
+        makeUnit("tut_m20_leg", PT, "Legionary", "Legionary", 1, 4, "⚔️"),
+        makeUnit("tut_m20_arch", PT, "Archer", "Archer", 2, 4, "🏹"),
+        makeUnit("tut_m20_bar", ET, "Barbarian Berserker", "Barbarian Berserker", 6, 4, "🪓")
+      ];
+    case 21:
+      return [
+        makeUnit("tut_m21_leg", PT, "Legionary", "Legionary", 2, 4, "⚔️"),
+        makeUnit("tut_m21_aux", PT, "Auxiliary", "Auxiliary", 3, 4, "🗡️"),
+        makeUnit("tut_m21_bar", ET, "Barbarian Warrior", "Barbarian Warrior", 6, 4, "🪓")
+      ];
     default:
       return [];
   }
@@ -176,6 +213,19 @@ export function isTutorialMissionComplete(
   const mergedRomanUnit = () =>
     units.some((u) => u.team === playerTeam && String(u.id ?? "").startsWith("merged_"));
 
+  const auxiliaryFerocitySeparated = () => {
+    const aux = units.find((u) => u.team === playerTeam && u.role === "Auxiliary" && u.hp > 0);
+    if (!aux) return false;
+    const allyBeside = units.some(
+      (u) =>
+        u.team === playerTeam &&
+        u.hp > 0 &&
+        u.id !== aux.id &&
+        Math.abs(u.x - aux.x) + Math.abs(u.y - aux.y) === 1
+    );
+    return !allyBeside;
+  };
+
   switch (missionIndex) {
     case 0:
       return units.some(
@@ -194,6 +244,11 @@ export function isTutorialMissionComplete(
     case 13:
     case 14:
     case 15:
+    case 16:
+    case 17:
+    case 18:
+    case 19:
+    case 20:
       return strikeObjectiveMet();
     case 2: {
       const u = units.find((x) => x.team === playerTeam && x.hp > 0);
@@ -233,12 +288,14 @@ export function isTutorialMissionComplete(
       const onDesert = mine.some((u) => getTerrainAt(terrainMap, u.x, u.y) === "desert");
       return onDesert || strikeObjectiveMet();
     }
+    case 21:
+      return auxiliaryFerocitySeparated() && strikeObjectiveMet();
     default:
       return false;
   }
 }
 
-export const TUTORIAL_MISSION_COUNT = 16;
+export const TUTORIAL_MISSION_COUNT = 22;
 
 export type TutorialMissionMeta = {
   id: number;
@@ -359,6 +416,48 @@ export const TUTORIAL_MISSIONS: readonly TutorialMissionMeta[] = [
     subtitle: "Forest shooting",
     instruction:
       "Forests give ranged units a small attack bonus and soft cover. Step into the trees and volley — combine terrain with your role for efficiency."
+  },
+  {
+    id: 16,
+    title: "Riposte",
+    subtitle: "Melee counter",
+    instruction:
+      "In close combat, the defender strikes back for half of their attack stat (ranged volleys do not trigger this). Melee the warrior — expect chip damage on your legionary — and wound or rout the foe to pass."
+  },
+  {
+    id: 17,
+    title: "Rally",
+    subtitle: "Resolve passive",
+    instruction:
+      "Centurions have Resolve: +10% attack while orthogonally adjacent to an ally. Keep your centurion beside the legionary (north/south/east/west), then coordinate attacks until the barbarian is wounded or dead."
+  },
+  {
+    id: 18,
+    title: "Behemoth",
+    subtitle: "Crush & heavy",
+    instruction:
+      "War elephants bring the Crush signature: extra punch versus infantry and fortified targets. Trundle forward and smash the warrior — feel how a slow, huge unit changes the approach."
+  },
+  {
+    id: 19,
+    title: "Javelins",
+    subtitle: "Harrier skirmisher",
+    instruction:
+      "Velites have Harrier: bonus damage with ammo against slow targets (1 move or less) and versus siege. The barbarian warrior is slow — stay at range and use javelins before they close."
+  },
+  {
+    id: 20,
+    title: "Twilight",
+    subtitle: "Day & night",
+    instruction:
+      "The battlefield light cycles between day and night. Some cultures gain small attack or durability bonuses depending on the time — check unit details and buff chips during the fight. Use the legionary and archer to bring down the berserker."
+  },
+  {
+    id: 21,
+    title: "Lone blade",
+    subtitle: "Ferocity",
+    instruction:
+      "Auxiliaries have Ferocity: +10% attack while not orthogonally adjacent to any ally. Step your auxiliary away from the legionary (leave a gap), then strike — you must finish separated from friendlies for this lesson to count."
   }
 ] as const;
 

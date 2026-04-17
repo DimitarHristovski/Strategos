@@ -22,6 +22,9 @@ const HARDY_FOREST_FACTIONS = new Set<TeamName>(["Barbarians"]);
 const HARDY_HILL_FACTIONS = new Set<TeamName>(["Egypt", "Seleucids"]);
 const HARDY_RIVER_FACTIONS = new Set<TeamName>(["Carthage"]);
 
+const NIGHT_ATTACK_TEAMS = new Set<TeamName>(["Vikings", "Germanic", "Gauls", "Dacians", "Thracians", "Barbarians"]);
+const DAY_ATTACK_HP_TEAMS = new Set<TeamName>(["Romans", "Greeks", "Carthage", "Egypt", "Parthians", "Seleucids"]);
+
 const isDesertHardyTeam = (team: unknown): boolean =>
   typeof team === "string" && DESERT_HARDY_TEAMS.has(team as TeamName);
 
@@ -389,6 +392,8 @@ export const unitHasAbility = (unit: any, abilityKey: string) =>
 export type AbilityEffectContext = {
   round?: number;
   attackerMovedThisTurn?: boolean;
+  /** Time-of-day for battle bonuses. */
+  timeOfDay?: "day" | "night";
 };
 
 export const getAdjacentCommanders = (unit: any, allUnits: any[] = []) =>
@@ -782,6 +787,12 @@ export const getAttackDamage = (
     damage = Math.round(damage * abilityEffects.attackMultiplier);
   }
 
+  if (effectContext.timeOfDay === "night" && NIGHT_ATTACK_TEAMS.has(attacker.team as TeamName)) {
+    damage = Math.round(damage * 1.1);
+  } else if (effectContext.timeOfDay === "day" && DAY_ATTACK_HP_TEAMS.has(attacker.team as TeamName)) {
+    damage = Math.round(damage * 1.05);
+  }
+
   if (hasAdvantage) {
     damage = Math.round(damage * TROOP_MECHANIC_ADVANTAGE_MULTIPLIER);
   }
@@ -802,6 +813,10 @@ export const getAttackDamage = (
   }
 
   /** HP not lost due to armor, shielding, terrain cover, formations, etc. (after rounding). */
+  if (effectContext.timeOfDay === "day" && DAY_ATTACK_HP_TEAMS.has(defender.team as TeamName)) {
+    damage = Math.round(damage * 0.95);
+  }
+
   const mitigatedDamage = Math.max(0, damageBeforeDefenderMitigation - damage);
 
   return {
@@ -862,15 +877,17 @@ export const getDisplayedAttack = (
 
 export const getUnitEffectNotes = (
   unit: any,
-  allUnits: any[] = [],
+  _allUnits: any[] = [],
   terrainMap: TerrainType[][] = [],
   terrainEffectsEnabled = true,
-  _opts?: { round?: number }
+  opts?: { round?: number; timeOfDay?: "day" | "night" }
 ) => {
   if (!unit) return [] as string[];
 
   const notes: string[] = [];
   const terrainAt = getTerrainAt(terrainMap, unit.x, unit.y);
+  const rRound = opts?.round;
+  const timeOfDay = opts?.timeOfDay;
 
   if (unit.civPassiveName && unit.civPassiveEffect) {
     notes.push(`${unit.civPassiveName}: ${unit.civPassiveEffect}`);
@@ -878,26 +895,28 @@ export const getUnitEffectNotes = (
     notes.push(unit.civPassiveEffect);
   }
 
-  if (isNearKing(unit, allUnits)) {
-    notes.push("Leader Aura: +10% attack");
+  if (timeOfDay === "night" && NIGHT_ATTACK_TEAMS.has(unit.team as TeamName)) {
+    notes.push("Night battle: +10% attack (this faction)");
+  } else if (timeOfDay === "day" && DAY_ATTACK_HP_TEAMS.has(unit.team as TeamName)) {
+    notes.push("Day battle: +5% attack and you take ~5% less damage (effective +5% HP, this faction)");
   }
 
-  if (getAdjacentCommanders(unit, allUnits).length > 0) {
-    notes.push("Command Aura: +5% attack from an adjacent commander");
+  if (
+    typeof rRound === "number" &&
+    typeof unit.civTrapAttackDebuffPct === "number" &&
+    typeof unit.civTrapAttackDebuffUntilRound === "number" &&
+    rRound < unit.civTrapAttackDebuffUntilRound
+  ) {
+    notes.push(`Trap debuff: −${unit.civTrapAttackDebuffPct}% attack until battle round ${unit.civTrapAttackDebuffUntilRound}`);
   }
 
-  if (unit.roleHealthBuffActive) {
-    const formationMeta = getFormationLineMeta(unit);
-    notes.push(
-      `${formationMeta.name}: +${Math.round(((unit.roleHealthBuffMultiplier ?? 1) - 1) * 100)}% max health (orthogonally linked allies in this formation, min ${ROLE_HEALTH_BUFF_MIN_GROUP_SIZE})`
-    );
-    if (unit.formationLineId === "testudo") {
-      notes.push("Testudo (linked): −10% damage taken from ranged attacks (×0.9)");
-    }
-  } else if (unit.formationGroupActive && unit.formationLineId && !isHpFormationLine(unit.formationLineId)) {
-    const name = getFormationLineMeta(unit).name;
-    const summary = FORMATION_PASSIVE_SUMMARY[unit.formationLineId];
-    notes.push(summary ? `${name} (linked): ${summary}` : `${name}: formation passive (linked)`);
+  if (
+    typeof rRound === "number" &&
+    typeof unit.civTrapVulnPct === "number" &&
+    typeof unit.civTrapVulnUntilRound === "number" &&
+    rRound < unit.civTrapVulnUntilRound
+  ) {
+    notes.push(`Trap mark: +${unit.civTrapVulnPct}% damage taken until battle round ${unit.civTrapVulnUntilRound}`);
   }
 
   if (hasNoAmmoPenalty(unit)) {
@@ -908,83 +927,6 @@ export const getUnitEffectNotes = (
     const terrainNotes = getTerrainModifiers(unit, terrainAt).notes;
     terrainNotes.forEach((note) => notes.push(`Terrain: ${note}`));
   }
-
-  getTroopAbilities(unit.role).forEach((ability) => {
-    switch (ability.key) {
-      case "brace":
-        notes.push(`${ability.name}: +15% attack vs mounted (×1.15); −15% damage taken from mounted (×0.85)`);
-        break;
-      case "shieldWall":
-        if (getAdjacentAllies(unit, allUnits).length > 0) {
-          notes.push(`${ability.name}: −10% damage taken (×0.9) — adjacent ally`);
-        } else {
-          notes.push(`${ability.name}: −10% damage taken (×0.9) when adjacent to an ally`);
-        }
-        break;
-      case "shock":
-        notes.push(`${ability.name}: +20% attack (×1.2) vs targets at ≤50% HP`);
-        break;
-      case "charge":
-        if (terrainAt === "plain") {
-          notes.push(`${ability.name}: mounted — +15% attack (×1.15) on plains; +10% (×1.1) vs ranged/siege`);
-        } else {
-          notes.push(`${ability.name}: mounted — +15% (×1.15) on plains; +10% (×1.1) vs ranged or siege`);
-        }
-        break;
-      case "harrier":
-        notes.push(`${ability.name}: with ammo — +10% (×1.1) vs move ≤1 or siege`);
-        break;
-      case "guarded":
-        if ((unit?.hp ?? 0) > Math.ceil((unit?.maxHp ?? 0) * 0.5)) {
-          notes.push(`${ability.name}: −10% damage taken (×0.9) while above 50% HP`);
-        } else {
-          notes.push(`${ability.name}: −10% damage taken (×0.9) while above 50% HP (inactive now)`);
-        }
-        break;
-      case "ferocity":
-        if (getAdjacentAllies(unit, allUnits).length === 0) {
-          notes.push(`${ability.name}: +10% attack (×1.1) — no adjacent allies`);
-        } else {
-          notes.push(`${ability.name}: +10% attack (×1.1) when not adjacent to allies`);
-        }
-        break;
-      case "deadeye":
-        notes.push(`${ability.name}: +1 range on hills; +10% attack (×1.1) vs unsupported ranged/siege`);
-        break;
-      case "crush":
-        notes.push(`${ability.name}: +15% (×1.15) vs close combat; +5% (×1.05) vs Guarded or Shield Wall`);
-        break;
-      case "command":
-        notes.push(`${ability.name}: adjacent allies +5% attack (×1.05)`);
-        break;
-      case "siegeMastery":
-        if (terrainAt === "hill") {
-          notes.push(`${ability.name}: siege — +10% (×1.1) attack; +1 range on hills`);
-        } else if (terrainAt === "plain") {
-          notes.push(`${ability.name}: siege — +10% (×1.1) on plains or hills; +1 range on hills`);
-        } else {
-          notes.push(`${ability.name}: siege — +10% (×1.1) on plains/hills; +1 range on hills`);
-        }
-        break;
-      case "skirmishStep":
-        if ((unit?.ammo ?? 0) > 0) {
-          notes.push(`${ability.name}: +1 move while ammo remains`);
-        } else {
-          notes.push(`${ability.name}: +1 move while ammo > 0 (inactive — no ammo)`);
-        }
-        break;
-      case "resolve":
-        if (hasAdjacentWoundedAlly(unit, allUnits)) {
-          notes.push(`${ability.name}: +10% attack (×1.1) — adjacent ally at ≤50% HP`);
-        } else {
-          notes.push(`${ability.name}: +10% attack (×1.1) when adjacent ally at ≤50% HP`);
-        }
-        break;
-      default:
-        notes.push(`${ability.name}: ${ability.description}`);
-        break;
-    }
-  });
 
   return notes;
 };

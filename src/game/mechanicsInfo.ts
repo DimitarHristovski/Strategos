@@ -112,7 +112,7 @@ export const GAME_MECHANICS_INFO = [
     icon: "⚡",
     title: "Faction ability (targeted + cooldown)",
     description:
-      "Each civilization has a **targeted** ability on the **cyan** button beside its passive in the **header** (or top icon strip on phone). Tap to **arm** it (again to cancel): **volley** factions pick **one enemy** in range of any ally (≤5 tiles)—damage uses a **fixed volley attack value** for that civ (then terrain, matchup, and mitigation as normal); **reinforcement** picks **one living ally** to restore **250 HP** (capped at that unit’s max HP) plus **flat attack** on the card where listed (no % of max HP); **Romans** **summon** one **Legionary** on an empty tile in range. Resolving it **ends your turn**. **Cooldown:** every faction uses a **full battle-round** timer (each time the turn order wraps to the first side again); values differ by civ—see the **cyan hover tooltip** and the **live table** under **Game Menu → Mechanics → Special Systems**. When a cooldown ends, the **battle log** and a short **cyan button pulse** recommend arming the skill again (human play only). Hover also shows **preview motion** (arrows, siege stones, axes, javelins; heal sparks; deploy streak). Not in the tutorial or **AI vs AI** watch. Log lines: **[Civilization Ability]** (cyan)."
+      "Each civilization has a **targeted** ability on the **cyan** button beside its passive in the **header** (or top icon strip on phone). Tap to **arm** it (again to cancel): **volley** factions pick **one enemy** in range of any ally (≤5 tiles)—damage uses a **fixed volley attack value** for that civ (then terrain, matchup, and mitigation as normal); **reinforcement** picks **one living ally** to restore **250 HP** (capped at that unit’s max HP) plus **flat attack** on the card where listed (no % of max HP); **Romans** **summon** one **Praetorian** on an empty tile in range. Resolving it **ends your turn**. **Cooldown:** every faction uses a **full battle-round** timer (each time the turn order wraps to the first side again); values differ by civ—see the **cyan hover tooltip** and the **live table** under **Game Menu → Mechanics → Special Systems**. When a cooldown ends, the **battle log** and a short **cyan button pulse** recommend arming the skill again (human play only). Hover also shows **preview motion** (arrows, siege stones, axes, javelins; heal sparks; deploy streak). Not in the tutorial or **AI vs AI** watch. Log lines: **[Civilization Ability]** (cyan)."
   },
   {
     icon: "🧭",
@@ -194,7 +194,7 @@ export const ADDITIONAL_MECHANICS_INFO = [
     icon: "📚",
     title: "Tutorial lessons",
     description:
-      "Sixteen short missions on an 8×8 field teach movement, melee, terrain, ranged ammo, signatures, rivers, merge, and more. Enemy turns auto-skip. Lesson 1 (March) completes in **one move** onto the goal tile—no combat. Strike-style lessons count **any damaging hit** (wound or kill). The handbook here matches what you see in-game."
+      "Twenty-two short missions on an 8×8 field teach movement, melee, terrain, ranged ammo, signatures, rivers, merge, counters, skirmishers, heavies, day/night context, and more. Enemy turns auto-skip. Lesson 1 (March) completes in **one move** onto the goal tile—no combat. Strike-style lessons count **any damaging hit** (wound or kill). The handbook here matches what you see in-game."
   }
 ] as const;
 

@@ -21,7 +21,7 @@ export const UNIT_WEIGHT_BY_ROLE: Record<string, UnitWeight> = {
 
   // Barbarians
   "Barbarian Chief": "unique",
-  "Barbarian Warlord": "unique",
+  "Barbarian Warlord": "heavy",
   "Barbarian Warrior": "medium",
   "Barbarian Berserker": "medium",
   "Barbarian Axeman": "medium",
