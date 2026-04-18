@@ -7,7 +7,6 @@ import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-m
 import { BattlefieldSkyLayer } from "./components/codeconq/BattlefieldSkyLayer";
 import { BattlefieldMinimap } from "./components/codeconq/BattlefieldMinimap";
 import { FormationLoadingScreen } from "./components/codeconq/FormationLoadingScreen";
-import { ResourceLinkMinigame, type ResourceLinkMinigameResult } from "./components/ResourceLinkMinigame";
 import { TroopIconMark, UiIcon } from "./components/UiIcon";
 import { useBattlefieldDayNightOverlay } from "./hooks/useBattlefieldDayNight";
 import { useBattlefieldViewport } from "./hooks/useBattlefieldViewport";
@@ -110,28 +109,6 @@ import {
   getTroopTypeDisplay,
   getTroopWeightDisplay
 } from "./game/unitCatalog";
-import { RESOURCE_LINK_ICON_SRC } from "./game/resourceLinkMinigame";
-import {
-  RESOURCE_WAR_AI_MINIGAME_GOLD_MULT,
-  RESOURCE_WAR_STARTING_GOLD,
-  RESOURCE_WAR_TOTAL_WAVES,
-  RESOURCE_WAR_WAVE_ENEMY_TEAM,
-  collectResourceWarSummonSlots,
-  findEmptyEnemyTileNearRally,
-  getResourceWarEnemyRallyCell,
-  getResourceWarPlayerStartLayout,
-  getResourceWarTroopGoldPrice,
-  getResourceWarWaveRecruitBonus,
-  isResourceWarDeploymentTile
-} from "./game/resourceWar";
-import {
-  addResourceWarOresToBag,
-  emptyResourceWarOreBag,
-  normalizeResourceWarOreBag,
-  refundResourceWarOresToBag,
-  sumResourceWarOres,
-  tryPayResourceWarOrePrice
-} from "./game/resourceWarOres";
 import { SETUP_ARMY_TOKEN_BUDGET, getUnitWeightTokenCost, sumSetupTokensForTeam } from "./game/unitWeight";
 import {
   applyCivAbilityOnTarget,
@@ -325,31 +302,6 @@ const renderTeamSelectOptions = (
     );
   });
 
-/** Ore puzzle icons: dark “socket” so white PNG backgrounds read as stone. HUD uses no pulse (stable colors). */
-function ResourceWarOreIcon({
-  src,
-  sizeClass = "h-5 w-5 sm:h-6 sm:w-6",
-  animated = false,
-  animDelaySec = 0
-}: {
-  src: string;
-  sizeClass?: string;
-  /** Only for decorative contexts; header/panels stay false so icons don’t flicker. */
-  animated?: boolean;
-  animDelaySec?: number;
-}) {
-  const style: CSSProperties =
-    animated && animDelaySec > 0 ? { animationDelay: `${animDelaySec}s` } : {};
-  return (
-    <span
-      className={`resource-ore-icon-wrap inline-flex items-center justify-center p-0.5 sm:p-1${animated ? " resource-ore-icon-anim" : ""}`}
-      style={style}
-    >
-      <UiIcon src={src} className={`resource-ore-icon-img shrink-0 ${sizeClass}`} alt="" />
-    </span>
-  );
-}
-
 const SETUP_ROSTER_TIP_CLOSE_MS = 140;
 const TEAM_PIXEL_COLORS: Record<TeamName, string> = {
   Romans: "#ef4444",
@@ -385,19 +337,14 @@ function SetupTroopPaletteCell({
   onDragStart,
   onDragEnd,
   deploymentBudgetApplies,
-  deploymentGoldApplies,
   selectedTeamTokenSpend,
-  selectedTeamGold,
   paletteSize = "default"
 }: {
   troop: TroopCatalogEntry;
   onDragStart: () => void;
   onDragEnd: () => void;
   deploymentBudgetApplies: boolean;
-  /** When true, must have enough vault ore (total ore points) for this role. Pass `sumResourceWarOres(normalizeResourceWarOreBag(...))`. */
-  deploymentGoldApplies?: boolean;
   selectedTeamTokenSpend: number;
-  selectedTeamGold?: number;
   /** Larger touch targets in custom scenario deployment panel */
   paletteSize?: "default" | "comfortable";
 }) {
@@ -457,11 +404,9 @@ function SetupTroopPaletteCell({
   });
   const leaderUnit = isLeaderRole(troop.role);
   const tokenCost = getUnitWeightTokenCost(troop.role);
-  const goldPrice = deploymentGoldApplies ? getResourceWarTroopGoldPrice(troop.role) : 0;
   const canAffordTokens =
     !deploymentBudgetApplies || selectedTeamTokenSpend + tokenCost <= SETUP_ARMY_TOKEN_BUDGET;
-  const canAffordOrePoints = !deploymentGoldApplies || (selectedTeamGold ?? 0) >= goldPrice;
-  const canAffordPlacement = canAffordTokens && canAffordOrePoints;
+  const canAffordPlacement = canAffordTokens;
 
   const tooltip =
     tipOpen &&
@@ -529,15 +474,6 @@ function SetupTroopPaletteCell({
               )}
             </p>
           )}
-          {deploymentGoldApplies && (
-            <p className="mt-2 text-[10px] text-yellow-100/90">
-              Ore cost: <span className="font-semibold text-yellow-200">{goldPrice}</span> (spent from your vault, slot order)
-              {!canAffordOrePoints && (
-                <span className="block text-red-300/95">Not enough ores — play Mine or remove troops to refund.</span>
-              )}
-            </p>
-          )}
-
           <div className="mt-3">
             <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/85">Signature skills</div>
             {troopAbilities.length > 0 ? (
@@ -580,7 +516,7 @@ function SetupTroopPaletteCell({
             onDragStart();
           }}
           onDragEnd={onDragEnd}
-          title={`${troop.name} (${troop.role}) · ${weightDisplay.label}${deploymentBudgetApplies ? ` · ${tokenCost} tokens` : ""}${deploymentGoldApplies ? ` · ${goldPrice} ore` : ""}`}
+          title={`${troop.name} (${troop.role}) · ${weightDisplay.label}${deploymentBudgetApplies ? ` · ${tokenCost} tokens` : ""}`}
           className={`flex shrink-0 touch-manipulation items-center justify-center rounded-xl border border-yellow-700/50 bg-gradient-to-br from-slate-800/95 to-slate-950/95 shadow-md transition-[transform,box-shadow,border-color] ${
             paletteSize === "comfortable"
               ? "h-12 w-12 text-xl sm:h-14 sm:w-14 sm:text-2xl"
@@ -1091,16 +1027,9 @@ function CodeConq() {
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>("normal");
   /** Custom scenario only: all factions AI — player does not issue orders. */
   const [customScenarioSpectator, setCustomScenarioSpectator] = useState(false);
-  const [resourceWarEnemyTeam, setResourceWarEnemyTeam] = useState<TeamName>("Barbarians");
-  const [resourceWarGold, setResourceWarGold] = useState<Partial<Record<TeamName, number>>>({});
-  const [resourceWarOres, setResourceWarOres] = useState<Partial<Record<TeamName, number[]>>>({});
-  const [resourceWarMinigameOpen, setResourceWarMinigameOpen] = useState(false);
-  /**0 = not in battle yet; during battle, last wave number that was spawned (1..RESOURCE_WAR_TOTAL_WAVES). */
-  const [resourceWarWave, setResourceWarWave] = useState(0);
-  const [resourceWarIntermission, setResourceWarIntermission] = useState(false);
   /** Hot-seat two factions (multiplayer) or AI vs AI — shared roster/setup rules. */
   const isDualTeamBattle = gameMode === "multiplayer" || gameMode === "ai-versus";
-  const setupPanelLikeCustomScenario = gameMode === "custom-scenario" || gameMode === "resource-war";
+  const setupPanelLikeCustomScenario = gameMode === "custom-scenario";
   const [civAbilityModeTeam, setCivAbilityModeTeam] = useState<TeamName | null>(null);
   const [civOwnTurnOrdinalForAbility, setCivOwnTurnOrdinalForAbility] = useState<Partial<Record<TeamName, number>>>({});
   const [civAbilityUnlockAtOwnOrdinal, setCivAbilityUnlockAtOwnOrdinal] = useState<Partial<Record<TeamName, number>>>({});
@@ -1350,12 +1279,7 @@ function CodeConq() {
       return;
     }
 
-    if (
-      gameMode === "custom-scenario" ||
-      gameMode === "resource-war" ||
-      gameMode === "multiplayer" ||
-      gameMode === "ai-versus"
-    ) {
+    if (gameMode === "custom-scenario" || gameMode === "multiplayer" || gameMode === "ai-versus") {
       return;
     }
 
@@ -1560,7 +1484,9 @@ function CodeConq() {
       );
       setCivAbilityModeTeam(null);
       setSelectedForMerge(savedState.selectedForMerge ? applyCivilizationPassive(restoreUnitFromStorage(savedState.selectedForMerge)) : null);
-      const restoredGameMode = (savedState.gameMode ?? null) as GameMode | null;
+      const rawSavedMode = savedState.gameMode ?? null;
+      const restoredGameMode: GameMode | null =
+        rawSavedMode === "resource-war" ? null : (rawSavedMode as GameMode | null);
       setGameMode(restoredGameMode);
       {
         const ss = savedState.startScreen;
@@ -1586,54 +1512,11 @@ function CodeConq() {
           setAboutSlideIndex(Math.floor(asi));
         }
       }
-      if (restoredGameMode === "resource-war") {
-        const pt = (savedState.playerTeam ?? "Romans") as TeamName;
-        setMultiplayerTeams([pt, RESOURCE_WAR_WAVE_ENEMY_TEAM]);
-      } else {
-        setMultiplayerTeams(normalizeMultiplayerTeams(savedState.multiplayerTeams));
-      }
+      setMultiplayerTeams(normalizeMultiplayerTeams(savedState.multiplayerTeams));
       setAiDifficulty(parseAiDifficulty(savedState.aiDifficulty));
       setCustomScenarioSpectator(
-        restoredGameMode === "custom-scenario" || restoredGameMode === "resource-war"
-          ? false
-          : Boolean(savedState.customScenarioSpectator)
+        restoredGameMode === "custom-scenario" ? false : Boolean(savedState.customScenarioSpectator)
       );
-      {
-        if (restoredGameMode === "resource-war") {
-          setResourceWarEnemyTeam(RESOURCE_WAR_WAVE_ENEMY_TEAM);
-        } else {
-          const rwEnemy = savedState.resourceWarEnemyTeam;
-          if (typeof rwEnemy === "string" && ALL_TEAMS.includes(rwEnemy as TeamName)) {
-            setResourceWarEnemyTeam(rwEnemy as TeamName);
-          }
-        }
-        if (savedState.resourceWarGold && typeof savedState.resourceWarGold === "object") {
-          setResourceWarGold(savedState.resourceWarGold as Partial<Record<TeamName, number>>);
-        } else if (restoredGameMode === "resource-war") {
-          setResourceWarGold({});
-        }
-        if (savedState.resourceWarOres && typeof savedState.resourceWarOres === "object") {
-          const raw = savedState.resourceWarOres as Partial<Record<TeamName, number[]>>;
-          const norm: Partial<Record<TeamName, number[]>> = {};
-          for (const t of ALL_TEAMS) {
-            if (raw[t]) norm[t] = normalizeResourceWarOreBag(raw[t]);
-          }
-          setResourceWarOres(norm);
-        } else if (restoredGameMode === "resource-war") {
-          setResourceWarOres({});
-        }
-        if (restoredGameMode === "resource-war") {
-          if (typeof savedState.resourceWarWave === "number" && savedState.resourceWarWave >= 0) {
-            setResourceWarWave(Math.floor(savedState.resourceWarWave));
-          } else {
-            setResourceWarWave(0);
-          }
-          setResourceWarIntermission(Boolean(savedState.resourceWarIntermission));
-        } else {
-          setResourceWarWave(0);
-          setResourceWarIntermission(false);
-        }
-      }
       setGridOrientation(GRID_ORIENTATIONS.includes(savedState.gridOrientation) ? savedState.gridOrientation : "north");
       const restoredTerrainPreset: TerrainPreset = ["mixed", "plain", "forest", "hill", "desert"].includes(savedState.terrainPreset)
         ? savedState.terrainPreset
@@ -1720,11 +1603,6 @@ function CodeConq() {
       civBattleTraps,
       selectedForMerge: stripUnitForStorage(selectedForMerge),
       gameMode,
-      resourceWarEnemyTeam,
-      resourceWarGold,
-      resourceWarOres,
-      resourceWarWave,
-      resourceWarIntermission,
       startScreen,
       tutorialMissionIndex,
       aboutSlideIndex,
@@ -1768,11 +1646,6 @@ function CodeConq() {
     civBattleTraps,
     selectedForMerge,
     gameMode,
-    resourceWarEnemyTeam,
-    resourceWarGold,
-    resourceWarOres,
-    resourceWarWave,
-    resourceWarIntermission,
     startScreen,
     tutorialMissionIndex,
     aboutSlideIndex,
@@ -1937,8 +1810,6 @@ function CodeConq() {
       } else {
         correct = playerTeam;
       }
-    } else if (gameMode === "resource-war") {
-      correct = playerTeam;
     }
 
     if (!correct || !alive.includes(correct)) return;
@@ -2077,7 +1948,6 @@ function CodeConq() {
       if (gameMode === "multiplayer") return multiplayerTeams.includes(t);
       if (gameMode === "single-player" || gameMode === "campaign") return t === playerTeam;
       if (gameMode === "custom-scenario") return !customScenarioSpectator && t === playerTeam;
-      if (gameMode === "resource-war") return t === playerTeam;
       return false;
     };
 
@@ -2808,7 +2678,6 @@ function CodeConq() {
     if (gameMode === "multiplayer" || gameMode === "ai-versus") return focusedBattleUnit.team !== turn;
     if (gameMode === "single-player" || gameMode === "campaign") return focusedBattleUnit.team !== playerTeam;
     if (gameMode === "custom-scenario" && !customScenarioSpectator) return focusedBattleUnit.team !== playerTeam;
-    if (gameMode === "resource-war") return focusedBattleUnit.team !== playerTeam;
     return false;
   }, [focusedBattleUnit, gameStarted, spiedEnemyIds, gameMode, turn, playerTeam, customScenarioSpectator]);
   const isInspectedIntelObscured = useMemo(() => {
@@ -2817,7 +2686,6 @@ function CodeConq() {
     if (gameMode === "multiplayer" || gameMode === "ai-versus") return inspectedUnit.team !== turn;
     if (gameMode === "single-player" || gameMode === "campaign") return inspectedUnit.team !== playerTeam;
     if (gameMode === "custom-scenario" && !customScenarioSpectator) return inspectedUnit.team !== playerTeam;
-    if (gameMode === "resource-war") return inspectedUnit.team !== playerTeam;
     return false;
   }, [inspectedUnit, gameStarted, spiedEnemyIds, gameMode, turn, playerTeam, customScenarioSpectator]);
   const focusedUnitAbilities = focusedBattleUnit ? getTroopAbilities(focusedBattleUnit.role) : [];
@@ -2860,32 +2728,13 @@ function CodeConq() {
     isDualTeamBattle || (gameMode === "custom-scenario" && customScenarioSpectator) ? turn : playerTeam;
   const setupTeamsInPlay = (() => {
     if (isDualTeamBattle) return multiplayerTeams;
-    if (gameMode === "resource-war") return [playerTeam, resourceWarEnemyTeam];
     if (gameMode === "single-player" || gameMode === "campaign") return levelTeams;
 
     const customScenarioTeams = getAliveTeams(customUnits);
     return customScenarioTeams.length > 0 ? customScenarioTeams : [playerTeam];
   })();
   const passiveTeams = (isSetupMode ? setupTeamsInPlay : aliveBattleTeams).filter((team, index, arr) => arr.indexOf(team) === index);
-  const setupTeams: TeamName[] = isDualTeamBattle
-    ? [...multiplayerTeams]
-    : gameMode === "resource-war"
-      ? [playerTeam, resourceWarEnemyTeam]
-      : [...ALL_TEAMS];
-  /** Resource war: roster always shows your faction (only you place troops). */
-  const resourceWarTroopPaletteTeam = gameMode === "resource-war" ? playerTeam : selectedTeam;
-  const resourceWarDeploymentBannerTeams: TeamName[] =
-    gameMode === "resource-war" ? [playerTeam] : setupTeams;
-  const resourceWarPlayerOreBag = useMemo(
-    () => normalizeResourceWarOreBag(resourceWarOres[playerTeam]),
-    [resourceWarOres, playerTeam]
-  );
-
-  useEffect(() => {
-    if (gameMode === "resource-war" && selectedTeam !== playerTeam) {
-      setSelectedTeam(playerTeam);
-    }
-  }, [gameMode, playerTeam, selectedTeam]);
+  const setupTeams: TeamName[] = isDualTeamBattle ? [...multiplayerTeams] : [...ALL_TEAMS];
   const iconActionButtonClass =
     "battle-button flex h-5 w-5 shrink-0 items-center justify-center p-0 text-xs font-semibold sm:h-10 sm:w-10 sm:text-lg";
   const toggleCivAbilityTargeting = (team: TeamName) => {
@@ -2898,8 +2747,7 @@ function CodeConq() {
         gameMode === "multiplayer" ||
         gameMode === "single-player" ||
         gameMode === "campaign" ||
-        gameMode === "custom-scenario" ||
-        gameMode === "resource-war"
+        gameMode === "custom-scenario"
       )
     ) {
       return;
@@ -2991,8 +2839,7 @@ function CodeConq() {
       })
     )
   ), [troopReferenceStats]);
-  const isTeamAllowedInSetup = (team: TeamName) =>
-    setupTeams.includes(team) && !(gameMode === "resource-war" && team !== playerTeam);
+  const isTeamAllowedInSetup = (team: TeamName) => setupTeams.includes(team);
 
   const checkEnd = () => {
     if (tutorialMissionIndex !== null) return null;
@@ -3009,18 +2856,6 @@ function CodeConq() {
       );
       if (aliveInMatch.length === 0) return "Draw — all factions in this match eliminated.";
       if (aliveInMatch.length === 1) return `Winner: ${aliveInMatch[0]}`;
-      return null;
-    }
-
-    if (gameMode === "resource-war") {
-      const enemy = resourceWarEnemyTeam;
-      const playersAlive = currentUnits.some((u: any) => u.team === playerTeam && u.hp > 0);
-      const enemiesAlive = currentUnits.some((u: any) => u.team === enemy && u.hp > 0);
-      if (!playersAlive) return `Winner: ${enemy}`;
-      if (playersAlive && !enemiesAlive) {
-        if (resourceWarWave < RESOURCE_WAR_TOTAL_WAVES) return null;
-        return `Winner: ${playerTeam} — all ${RESOURCE_WAR_TOTAL_WAVES} waves survived.`;
-      }
       return null;
     }
 
@@ -3062,34 +2897,7 @@ function CodeConq() {
     timedPlayLoserTeam,
     gameMode,
     multiplayerTeams,
-    playerTeam,
-    resourceWarEnemyTeam,
-    resourceWarWave
-  ]);
-
-  useEffect(() => {
-    if (!gameStarted || isSetupMode || gameMode !== "resource-war") return;
-    if (resourceWarIntermission) return;
-    const enemy = resourceWarEnemyTeam;
-    const enemiesAlive = units.some((u: any) => u.team === enemy && u.hp > 0);
-    const playersAlive = units.some((u: any) => u.team === playerTeam && u.hp > 0);
-    if (!playersAlive || enemiesAlive) return;
-    if (resourceWarWave >= RESOURCE_WAR_TOTAL_WAVES) return;
-    setResourceWarIntermission(true);
-    setResourceWarMinigameOpen(true);
-    setLog((prev) => [
-      `Wave ${resourceWarWave} cleared — Mine to call in wave ${resourceWarWave + 1} of ${RESOURCE_WAR_TOTAL_WAVES}.`,
-      ...prev
-    ]);
-  }, [
-    gameStarted,
-    isSetupMode,
-    gameMode,
-    units,
-    playerTeam,
-    resourceWarEnemyTeam,
-    resourceWarWave,
-    resourceWarIntermission
+    playerTeam
   ]);
 
   useEffect(() => {
@@ -3187,33 +2995,6 @@ function CodeConq() {
         setTurn(pt);
         setSelectedTeam(pt);
         setLog([]);
-        setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
-        return;
-      }
-
-      if (mode === "resource-war") {
-        setGameMode("resource-war");
-        setPlayerTeam(pt);
-        const enemy = RESOURCE_WAR_WAVE_ENEMY_TEAM;
-        setResourceWarEnemyTeam(enemy);
-        setMultiplayerTeams([pt, enemy]);
-        setUnits([]);
-        setCustomUnits(buildResourceWarStarterUnits(enemy));
-        setResourceWarGold({
-          [enemy]: RESOURCE_WAR_STARTING_GOLD
-        });
-        setResourceWarOres({
-          [pt]: emptyResourceWarOreBag(),
-          [enemy]: emptyResourceWarOreBag()
-        });
-        setResourceWarWave(0);
-        setResourceWarIntermission(false);
-        setIsSetupMode(true);
-        setTurn(pt);
-        setSelectedTeam(pt);
-        setLog([
-          `Resource war: You start with your king and four troops — adjust if you like. Mine for ores, then start battle. ${RESOURCE_WAR_TOTAL_WAVES} Barbarian waves spawn like summons near their chief; mine between waves.`
-        ]);
         setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
         return;
       }
@@ -3734,9 +3515,8 @@ function CodeConq() {
   }
 
   // Safety check - don't render if units is not properly initialized.
-  // Custom scenario + resource war keep `units` empty during setup; the grid uses `customUnits` until battle starts.
-  const setupGridUsesCustomUnitsOnly =
-    isSetupMode && (gameMode === "custom-scenario" || gameMode === "resource-war");
+  // Custom scenario keeps `units` empty during setup; the grid uses `customUnits` until battle starts.
+  const setupGridUsesCustomUnitsOnly = isSetupMode && gameMode === "custom-scenario";
   if (!units || (!setupGridUsesCustomUnitsOnly && units.length === 0)) {
     return <FormationLoadingScreen />;
   }
@@ -4589,192 +4369,11 @@ function CodeConq() {
     return u;
   };
 
-  const buildResourceWarStarterUnits = (enemyTeamForHalf: TeamName): any[] => {
-    const layout = getResourceWarPlayerStartLayout(playerTeam, gameOptions.battlefieldSize, enemyTeamForHalf);
-    if (!layout) return [];
-    return layout.map((slot, i) =>
-      finalizeSetupPlacedTroop({
-        ...slot.entry,
-        ...generateTroopStats(slot.entry.role),
-        id: `${playerTeam}_rw_start_${slot.entry.role}_${Date.now()}_${i}`,
-        team: playerTeam,
-        x: slot.x,
-        y: slot.y,
-        Icon: slot.entry.Icon
-      })
-    );
-  };
-
-  /** Barbarian waves: chief at rally if needed, then recruits on summon tiles (≤1 step from a living foe). */
-  const recruitResourceWarAiArmy = (
-    goldState: Partial<Record<TeamName, number>>,
-    unitsState: any[]
-  ): { gold: Partial<Record<TeamName, number>>; units: any[] } => {
-    const enemy = resourceWarEnemyTeam;
-    const size = gameOptions.battlefieldSize;
-    const waveCatalog = AVAILABLE_TROOPS[RESOURCE_WAR_WAVE_ENEMY_TEAM];
-    let gold = { ...goldState };
-    let units = [...unitsState];
-    const rally = getResourceWarEnemyRallyCell(size, playerTeam, enemy);
-
-    const livingEnemyChief = () =>
-      units.some((u) => u.team === enemy && isLeaderRole(u.role) && u.hp > 0);
-    const occLive = (x: number, y: number) => units.some((u) => u.hp > 0 && u.x === x && u.y === y);
-
-    if (!livingEnemyChief()) {
-      const chiefEntry = waveCatalog.find((t) => isLeaderRole(t.role));
-      if (chiefEntry) {
-        const price = getResourceWarTroopGoldPrice(chiefEntry.role);
-        if ((gold[enemy] ?? 0) >= price) {
-          const tile = !occLive(rally.x, rally.y)
-            ? rally
-            : findEmptyEnemyTileNearRally(units, size, playerTeam, enemy, rally);
-          if (tile) {
-            const stats = generateTroopStats(chiefEntry.role);
-            const newTroop = {
-              ...chiefEntry,
-              ...stats,
-              id: `${enemy}_${chiefEntry.role}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-              team: enemy,
-              x: tile.x,
-              y: tile.y,
-              Icon: chiefEntry.Icon
-            };
-            units = [...units, finalizeSetupPlacedTroop(newTroop)];
-            gold = { ...gold, [enemy]: (gold[enemy] ?? 0) - price };
-          }
-        }
-      }
-    }
-
-    let iterations = 0;
-    while (iterations < 120 && units.filter((u) => u.team === enemy && u.hp > 0).length < 16) {
-      iterations += 1;
-      const hasLeaderNow = units.some((u) => u.team === enemy && isLeaderRole(u.role) && u.hp > 0);
-      const sortedByPrice = [...waveCatalog].sort(
-        (a, b) => getResourceWarTroopGoldPrice(a.role) - getResourceWarTroopGoldPrice(b.role)
-      );
-      const tryOrder = hasLeaderNow
-        ? sortedByPrice
-        : [...sortedByPrice].sort((a, b) => {
-            const la = isLeaderRole(a.role) ? -1 : 0;
-            const lb = isLeaderRole(b.role) ? -1 : 0;
-            if (la !== lb) return la - lb;
-            return getResourceWarTroopGoldPrice(a.role) - getResourceWarTroopGoldPrice(b.role);
-          });
-
-      let slots = collectResourceWarSummonSlots(units, enemy, size, playerTeam, enemy);
-      for (let i = slots.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [slots[i], slots[j]] = [slots[j]!, slots[i]!];
-      }
-
-      let placed = false;
-      for (const troop of tryOrder) {
-        if (isLeaderRole(troop.role) && units.some((u) => u.team === enemy && isLeaderRole(u.role) && u.hp > 0)) {
-          continue;
-        }
-        const price = getResourceWarTroopGoldPrice(troop.role);
-        if ((gold[enemy] ?? 0) < price) continue;
-        let slot: { x: number; y: number } | undefined;
-        while (slots.length > 0) {
-          const c = slots.pop()!;
-          if (!units.some((u) => u.hp > 0 && u.x === c.x && u.y === c.y)) {
-            slot = c;
-            break;
-          }
-        }
-        if (!slot) break;
-        const stats = generateTroopStats(troop.role);
-        const newTroop = {
-          ...troop,
-          ...stats,
-          id: `${enemy}_${troop.role}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          team: enemy,
-          x: slot.x,
-          y: slot.y,
-          Icon: troop.Icon
-        };
-        units = [...units, finalizeSetupPlacedTroop(newTroop)];
-        gold = { ...gold, [enemy]: (gold[enemy] ?? 0) - price };
-        placed = true;
-        break;
-      }
-      if (!placed) break;
-    }
-    return { gold, units };
-  };
-
-  const handleResourceWarMinigameComplete = (result: ResourceLinkMinigameResult) => {
-    if (gameMode !== "resource-war") {
-      setResourceWarMinigameOpen(false);
-      return;
-    }
-    const enemy = resourceWarEnemyTeam;
-    const nextOres = { ...resourceWarOres };
-    const pBag = normalizeResourceWarOreBag(nextOres[playerTeam]);
-    nextOres[playerTeam] = addResourceWarOresToBag(pBag, result.oresMined);
-    const nextGold = { ...resourceWarGold };
-    const aiDig = Math.floor(result.bonusGold * RESOURCE_WAR_AI_MINIGAME_GOLD_MULT);
-    nextGold[enemy] = (nextGold[enemy] ?? 0) + aiDig;
-    const oreLog = result.oresMined.map((n, i) => (n > 0 ? `${i + 1}:+${n}` : null)).filter(Boolean).join(" · ");
-
-    if (isSetupMode) {
-      setResourceWarGold(nextGold);
-      setResourceWarOres(nextOres);
-      setResourceWarMinigameOpen(false);
-      setLog((prev) => [
-        `Mining session: ores ${oreLog || "none"}. ${enemy} war chest +${aiDig} (score ${result.totalScore}). No enemy troops yet — deploy your army, then start wave 1.`,
-        ...prev
-      ]);
-      return;
-    }
-
-    if (resourceWarIntermission) {
-      const nextWave = resourceWarWave + 1;
-      const bonus = getResourceWarWaveRecruitBonus(nextWave);
-      const spend = { ...nextGold, [enemy]: (nextGold[enemy] ?? 0) + bonus };
-      const rec = recruitResourceWarAiArmy(spend, units);
-      setResourceWarGold(rec.gold);
-      setResourceWarOres(nextOres);
-      setUnits(rec.units);
-      setResourceWarIntermission(false);
-      setResourceWarWave(nextWave);
-      setResourceWarMinigameOpen(false);
-      battleOutcomeLoggedRef.current = false;
-      initTimedPlayFromUnitList(rec.units);
-      setLog((prev) => [
-        `Wave ${nextWave} — ${enemy} marches in. Ores: ${oreLog || "none"}. Levy +${aiDig} gold.`,
-        ...prev
-      ]);
-      return;
-    }
-
-    setResourceWarOres(nextOres);
-    setResourceWarMinigameOpen(false);
-  };
-
   const handleSetupClick = (x: number, y: number) => {
     if (draggedTroop) {
       if (!isTeamAllowedInSetup(selectedTeam)) return;
       // Check if position is valid (not occupied)
       if (!getUnit(x, y)) {
-        if (
-          gameMode === "resource-war" &&
-          !isResourceWarDeploymentTile(
-            gameOptions.battlefieldSize,
-            y,
-            selectedTeam,
-            playerTeam,
-            resourceWarEnemyTeam
-          )
-        ) {
-          setLog((prev) => [
-            `Deploy only on your half of the map (rows near you). Earn ores with the Mine minigame on the map bar.`,
-            ...prev
-          ]);
-          return;
-        }
         // Check team limits
         const teamCount = customUnits.filter(u => u.team === selectedTeam).length;
         const placeCost = getUnitWeightTokenCost(draggedTroop.role);
@@ -4788,30 +4387,12 @@ function CodeConq() {
           ]);
           return;
         }
-        if (gameMode === "resource-war") {
-          const gPrice = getResourceWarTroopGoldPrice(draggedTroop.role);
-          const bag = normalizeResourceWarOreBag(resourceWarOres[selectedTeam]);
-          const pay = tryPayResourceWarOrePrice(bag, gPrice);
-          if (!pay) {
-            setLog((prev) => [
-              `Not enough ores (${gPrice} cost for ${draggedTroop.role}). Run the Mine minigame or remove a troop to refund.`,
-              ...prev
-            ]);
-            return;
-          }
-        }
         if (isLeaderRole(draggedTroop.role) && customUnits.some((u) => u.team === selectedTeam && isLeaderRole(u.role))) {
           setLog((prev) => [`Only one King per army — your ruler is already deployed.`, ...prev]);
           return;
         }
         if (teamCount < 16) {
           const stats = generateTroopStats(draggedTroop.role);
-          let pay: { nextBag: number[]; debit: number[] } | null = null;
-          if (gameMode === "resource-war") {
-            const gPrice = getResourceWarTroopGoldPrice(draggedTroop.role);
-            const bag = normalizeResourceWarOreBag(resourceWarOres[selectedTeam]);
-            pay = tryPayResourceWarOrePrice(bag, gPrice);
-          }
           const newTroop = {
             ...draggedTroop,
             ...stats,
@@ -4819,14 +4400,10 @@ function CodeConq() {
             team: selectedTeam,
             x,
             y,
-            Icon: draggedTroop.Icon,
-            ...(gameMode === "resource-war" && pay ? { resourceWarOreDebit: pay.debit } : {})
+            Icon: draggedTroop.Icon
           };
           const placed = finalizeSetupPlacedTroop(newTroop);
           setCustomUnits((prev) => [...prev, placed]);
-          if (gameMode === "resource-war" && pay) {
-            setResourceWarOres((o) => ({ ...o, [selectedTeam]: pay!.nextBag }));
-          }
           setDraggedTroop(null);
           setInspectedTile(null);
         }
@@ -4835,10 +4412,6 @@ function CodeConq() {
       // Select existing unit for removal
       const existingUnit = getUnit(x, y);
       if (existingUnit) {
-        if (gameMode === "resource-war" && existingUnit.team !== playerTeam) {
-          setLog((prev) => [`You can only remove your own troops in this mode.`, ...prev]);
-          return;
-        }
         if (isLeaderRole(existingUnit.role)) {
           const team = existingUnit.team as TeamName;
           const otherLeadersOnTeam = customUnits.filter(
@@ -4847,21 +4420,6 @@ function CodeConq() {
           if (otherLeadersOnTeam === 0) {
             setLog((prev) => [`You cannot remove your King — every army must keep its ruler on the field.`, ...prev]);
             return;
-          }
-        }
-        if (gameMode === "resource-war" && existingUnit.team === playerTeam) {
-          const debit = existingUnit.resourceWarOreDebit as number[] | undefined;
-          if (debit && Array.isArray(debit)) {
-            setResourceWarOres((o) => ({
-              ...o,
-              [playerTeam]: refundResourceWarOresToBag(normalizeResourceWarOreBag(o[playerTeam]), debit)
-            }));
-          } else {
-            const refund = getResourceWarTroopGoldPrice(existingUnit.role);
-            setResourceWarOres((o) => ({
-              ...o,
-              [playerTeam]: addResourceWarOresToBag(normalizeResourceWarOreBag(o[playerTeam]), [refund, 0, 0, 0, 0])
-            }));
           }
         }
         setCustomUnits(prev => prev.filter(u => u.id !== existingUnit.id));
@@ -4882,22 +4440,6 @@ function CodeConq() {
       if (!isTeamAllowedInSetup(selectedTeam)) return;
       // Check if position is valid (not occupied)
       if (!getUnit(x, y)) {
-        if (
-          gameMode === "resource-war" &&
-          !isResourceWarDeploymentTile(
-            gameOptions.battlefieldSize,
-            y,
-            selectedTeam,
-            playerTeam,
-            resourceWarEnemyTeam
-          )
-        ) {
-          setLog((prev) => [
-            `Deploy only on your half of the map. Earn ores with the Mine minigame.`,
-            ...prev
-          ]);
-          return;
-        }
         // Check team limits
         const teamCount = customUnits.filter(u => u.team === selectedTeam).length;
         const placeCost = getUnitWeightTokenCost(draggedTroop.role);
@@ -4911,26 +4453,12 @@ function CodeConq() {
           ]);
           return;
         }
-        if (gameMode === "resource-war") {
-          const gPrice = getResourceWarTroopGoldPrice(draggedTroop.role);
-          const bag = normalizeResourceWarOreBag(resourceWarOres[selectedTeam]);
-          if (!tryPayResourceWarOrePrice(bag, gPrice)) {
-            setLog((prev) => [`Not enough ores (${gPrice} cost for ${draggedTroop.role}).`, ...prev]);
-            return;
-          }
-        }
         if (isLeaderRole(draggedTroop.role) && customUnits.some((u) => u.team === selectedTeam && isLeaderRole(u.role))) {
           setLog((prev) => [`Only one King per army — your ruler is already deployed.`, ...prev]);
           return;
         }
         if (teamCount < 16) {
           const stats = generateTroopStats(draggedTroop.role);
-          let pay: { nextBag: number[]; debit: number[] } | null = null;
-          if (gameMode === "resource-war") {
-            const gPrice = getResourceWarTroopGoldPrice(draggedTroop.role);
-            const bag = normalizeResourceWarOreBag(resourceWarOres[selectedTeam]);
-            pay = tryPayResourceWarOrePrice(bag, gPrice);
-          }
           const newTroop = {
             ...draggedTroop,
             ...stats,
@@ -4938,14 +4466,10 @@ function CodeConq() {
             team: selectedTeam,
             x,
             y,
-            Icon: draggedTroop.Icon,
-            ...(gameMode === "resource-war" && pay ? { resourceWarOreDebit: pay.debit } : {})
+            Icon: draggedTroop.Icon
           };
           const placed = finalizeSetupPlacedTroop(newTroop);
           setCustomUnits((prev) => [...prev, placed]);
-          if (gameMode === "resource-war" && pay) {
-            setResourceWarOres((o) => ({ ...o, [selectedTeam]: pay!.nextBag }));
-          }
           setDraggedTroop(null);
         }
       }
@@ -4964,19 +4488,6 @@ function CodeConq() {
           return;
         }
         if (!targetUnit) {
-          if (
-            gameMode === "resource-war" &&
-            !isResourceWarDeploymentTile(
-              gameOptions.battlefieldSize,
-              y,
-              moving.team as TeamName,
-              playerTeam,
-              resourceWarEnemyTeam
-            )
-          ) {
-            setLog((prev) => [`Troops must stay in your deployment zone until the battle starts.`, ...prev]);
-            return;
-          }
           setCustomUnits((prev) =>
             prev.map((c: any) => (c.id === movingId ? { ...c, x, y } : c))
           );
@@ -4984,27 +4495,6 @@ function CodeConq() {
         }
         if (!isTeamAllowedInSetup(targetUnit.team as TeamName)) {
           return;
-        }
-        if (gameMode === "resource-war") {
-          if (
-            !isResourceWarDeploymentTile(
-              gameOptions.battlefieldSize,
-              y,
-              moving.team as TeamName,
-              playerTeam,
-              resourceWarEnemyTeam
-            ) ||
-            !isResourceWarDeploymentTile(
-              gameOptions.battlefieldSize,
-              moving.y,
-              targetUnit.team as TeamName,
-              playerTeam,
-              resourceWarEnemyTeam
-            )
-          ) {
-            setLog((prev) => [`Swaps must keep each army in its own half.`, ...prev]);
-            return;
-          }
         }
         const mx = moving.x;
         const my = moving.y;
@@ -5020,10 +4510,6 @@ function CodeConq() {
       // Drop on a unit with no field-drag payload: remove that unit (legacy setup gesture)
       const existingUnit = getUnit(x, y);
       if (existingUnit) {
-        if (gameMode === "resource-war" && existingUnit.team !== playerTeam) {
-          setLog((prev) => [`You can only remove your own troops in this mode.`, ...prev]);
-          return;
-        }
         if (isLeaderRole(existingUnit.role)) {
           const team = existingUnit.team as TeamName;
           const otherLeadersOnTeam = customUnits.filter(
@@ -5032,21 +4518,6 @@ function CodeConq() {
           if (otherLeadersOnTeam === 0) {
             setLog((prev) => [`You cannot remove your King — every army must keep its ruler on the field.`, ...prev]);
             return;
-          }
-        }
-        if (gameMode === "resource-war" && existingUnit.team === playerTeam) {
-          const debit = existingUnit.resourceWarOreDebit as number[] | undefined;
-          if (debit && Array.isArray(debit)) {
-            setResourceWarOres((o) => ({
-              ...o,
-              [playerTeam]: refundResourceWarOresToBag(normalizeResourceWarOreBag(o[playerTeam]), debit)
-            }));
-          } else {
-            const refund = getResourceWarTroopGoldPrice(existingUnit.role);
-            setResourceWarOres((o) => ({
-              ...o,
-              [playerTeam]: addResourceWarOresToBag(normalizeResourceWarOreBag(o[playerTeam]), [refund, 0, 0, 0, 0])
-            }));
           }
         }
         setCustomUnits((prev) => prev.filter((u) => u.id !== existingUnit.id));
@@ -5121,27 +4592,20 @@ function CodeConq() {
     } else {
       const playerUnits = customUnits.filter((u: any) => u.team === playerTeam).length;
       const enemyUnits = customUnits.filter((u: any) => u.team !== playerTeam).length;
-      if (gameMode === "resource-war") {
-        if (playerUnits === 0) {
-          setLog((prev) => [`${playerTeam} needs at least 1 troop before starting. Enemies arrive in waves after you Mine between rounds.`, ...prev]);
-          return;
-        }
-      } else if (playerUnits === 0 || enemyUnits === 0) {
+      if (playerUnits === 0 || enemyUnits === 0) {
         setLog((prev) => [`${playerTeam} needs at least 1 troop and there must be at least 1 enemy troop before starting.`, ...prev]);
         return;
       }
     }
     const teamsInPlay = [...new Set(customUnits.map((u: any) => u.team as TeamName))];
-    if (gameMode !== "resource-war") {
-      for (const team of teamsInPlay) {
-        const spend = sumSetupTokensForTeam(customUnits, team);
-        if (spend > SETUP_ARMY_TOKEN_BUDGET) {
-          setLog((prev) => [
-            `${team} exceeds the ${SETUP_ARMY_TOKEN_BUDGET} army token budget (${spend} spent). Remove units before starting.`,
-            ...prev
-          ]);
-          return;
-        }
+    for (const team of teamsInPlay) {
+      const spend = sumSetupTokensForTeam(customUnits, team);
+      if (spend > SETUP_ARMY_TOKEN_BUDGET) {
+        setLog((prev) => [
+          `${team} exceeds the ${SETUP_ARMY_TOKEN_BUDGET} army token budget (${spend} spent). Remove units before starting.`,
+          ...prev
+        ]);
+        return;
       }
     }
 
@@ -5164,16 +4628,6 @@ function CodeConq() {
         customUnits
       )
     );
-    if (gameMode === "resource-war") {
-      const rwEnemy = resourceWarEnemyTeam;
-      const w1Bonus = getResourceWarWaveRecruitBonus(1);
-      const spend = { ...resourceWarGold, [rwEnemy]: (resourceWarGold[rwEnemy] ?? 0) + w1Bonus };
-      const rec = recruitResourceWarAiArmy(spend, prepared as any[]);
-      prepared = rec.units;
-      setResourceWarGold(rec.gold);
-      setResourceWarWave(1);
-      setResourceWarIntermission(false);
-    }
     setUnits(prepared);
     if (customScenarioSpectator) {
       const present = new Set(prepared.map((u: any) => u.team));
@@ -5195,11 +4649,6 @@ function CodeConq() {
     if (customScenarioSpectator) {
       setLog((prev) => [
         `Spectator battle — all factions are AI (${AI_DIFFICULTY_LABELS[aiDifficulty]}). You watch only.`,
-        ...prev
-      ]);
-    } else if (gameMode === "resource-war") {
-      setLog((prev) => [
-        `Wave 1 / ${RESOURCE_WAR_TOTAL_WAVES} — ${resourceWarEnemyTeam} is on the field. Clear each wave, then Mine before the next.`,
         ...prev
       ]);
     }
@@ -5305,18 +4754,6 @@ function CodeConq() {
     setDraggedTroop(null);
     setSelectedTeam(isDualTeamBattle ? multiplayerTeams[0] : playerTeam);
     setGridOrientation("north");
-    if (gameMode === "resource-war") {
-      setResourceWarGold({
-        [resourceWarEnemyTeam]: RESOURCE_WAR_STARTING_GOLD
-      });
-      setResourceWarOres({
-        [playerTeam]: emptyResourceWarOreBag(),
-        [resourceWarEnemyTeam]: emptyResourceWarOreBag()
-      });
-      setResourceWarWave(0);
-      setResourceWarIntermission(false);
-      setCustomUnits(buildResourceWarStarterUnits(resourceWarEnemyTeam));
-    }
   };
 
   const startCampaignMission = (faction: TeamName, missionIndex: number) => {
@@ -5489,53 +4926,6 @@ function CodeConq() {
     resetCustomSetup();
   };
 
-  const startResourceWarMode = () => {
-    playBackgroundMusicFromUserGesture();
-    if (preTutorialGameOptionsRef.current) {
-      setGameOptions(preTutorialGameOptionsRef.current);
-      preTutorialGameOptionsRef.current = null;
-    }
-    setTutorialMissionIndex(null);
-    setTutorialCelebrate(false);
-    setIsGameMenuOpen(false);
-    setIsInGameOptionsOpen(false);
-    setIsInGameMechanicsOpen(false);
-    setIsInGameGraphicsOpen(false);
-    setIsInGameUnitsOpen(false);
-    setGridOrientation("north");
-    setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
-    const enemy = RESOURCE_WAR_WAVE_ENEMY_TEAM;
-    setResourceWarEnemyTeam(enemy);
-    setMultiplayerTeams([playerTeam, enemy]);
-    setResourceWarGold({
-      [enemy]: RESOURCE_WAR_STARTING_GOLD
-    });
-    setResourceWarOres({
-      [playerTeam]: emptyResourceWarOreBag(),
-      [enemy]: emptyResourceWarOreBag()
-    });
-    setUnits([]);
-    setGameMode("resource-war");
-    setIsSetupMode(true);
-    setCustomScenarioSpectator(false);
-    setTurn(playerTeam);
-    setRound(1);
-    setSelectedId(null);
-    setCustomUnits(buildResourceWarStarterUnits(enemy));
-    setDraggedTroop(null);
-    setSelectedTeam(playerTeam);
-    setLog([
-      `Resource war: You start with your king and four troops on the bottom half. ${RESOURCE_WAR_TOTAL_WAVES} Barbarian waves — they appear in a summon ring around their chief (chief at the rally if needed). Mine between waves for ores.`
-    ]);
-    setGameStarted(false);
-    setMergeCount(0);
-    setMergeMode(false);
-    setSelectedForMerge(null);
-    resetSpyState();
-    setResourceWarWave(0);
-    setResourceWarIntermission(false);
-  };
-
   const openSinglePlayerSkirmishSetup = () => {
     if (gameMode !== "single-player" || tutorialMissionIndex !== null) return;
     if (gameStarted) {
@@ -5608,12 +4998,6 @@ function CodeConq() {
     resetSpyState();
     setMultiplayerTeams(["Romans", "Barbarians"]);
     setCustomScenarioSpectator(false);
-    setResourceWarEnemyTeam("Barbarians");
-    setResourceWarGold({});
-    setResourceWarOres({});
-    setResourceWarMinigameOpen(false);
-    setResourceWarWave(0);
-    setResourceWarIntermission(false);
     setGridOrientation("north");
     setBattlefieldTerrain(generateTerrainMap(gameOptions.battlefieldSize, terrainPreset, terrainGenerationSettings));
     if (document.fullscreenElement) {
@@ -5758,17 +5142,6 @@ function CodeConq() {
       setMergeMode(false);
       setSelectedForMerge(null);
       resetSpyState();
-      return;
-    }
-
-    if (gameMode === "resource-war") {
-      setIsGameMenuOpen(false);
-      setIsInGameOptionsOpen(false);
-      setIsInGameMechanicsOpen(false);
-      setIsInGameGraphicsOpen(false);
-      setIsInGameUnitsOpen(false);
-      setGridOrientation("north");
-      restartSessionForGameplaySettings({ gameMode: "resource-war", playerTeam });
       return;
     }
 
@@ -7200,13 +6573,6 @@ function CodeConq() {
                 >
                   Custom scenario
                 </button>
-                <button
-                  type="button"
-                  onClick={startResourceWarMode}
-                  className="battle-button w-full px-6 py-4 text-lg font-semibold border border-amber-600/55 bg-amber-950/40 hover:bg-amber-900/50"
-                >
-                  Resource war
-                </button>
               </div>
             </div>
             <AppVersionCorner />
@@ -7992,65 +7358,20 @@ function CodeConq() {
                               <span className="hidden sm:inline">{`AI vs AI · ${multiplayerTeams.length} factions`}</span>
                             </>
                           )
-                        : gameMode === "resource-war"
+                        : gameMode === "custom-scenario"
                           ? (
                               <>
-                                <span className="sm:hidden">Res. war</span>
-                                <span className="hidden sm:inline">Resource war</span>
+                                <span className="sm:hidden">Custom</span>
+                                <span className="hidden sm:inline">Custom scenario</span>
                               </>
                             )
-                          : gameMode === "custom-scenario"
-                            ? (
-                                <>
-                                  <span className="sm:hidden">Custom</span>
-                                  <span className="hidden sm:inline">Custom scenario</span>
-                                </>
-                              )
-                            : (
-                                <>
-                                  <span className="sm:hidden">vs AI</span>
-                                  <span className="hidden sm:inline">Player vs AI</span>
-                                </>
-                              )}
+                          : (
+                              <>
+                                <span className="sm:hidden">vs AI</span>
+                                <span className="hidden sm:inline">Player vs AI</span>
+                              </>
+                            )}
               </span>
-              {gameMode === "resource-war" && (
-                <span
-                  className="inline-flex max-w-[min(100%,24rem)] flex-wrap items-center gap-x-1 gap-y-0.5 rounded-full border border-amber-500/55 bg-gradient-to-r from-amber-950/55 to-yellow-950/35 px-1.5 py-0.5 text-[8px] font-semibold tabular-nums text-amber-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:max-w-none sm:gap-x-1.5 sm:px-2 sm:text-[10px]"
-                  title="Ores mined in the link puzzle — your vault. Spend ore points to deploy troops."
-                >
-                  {gameStarted && resourceWarWave > 0 && (
-                    <span
-                      className="shrink-0 rounded-md border border-amber-600/50 bg-black/35 px-1 py-px font-bold text-amber-100/95"
-                      title={resourceWarIntermission ? "Between waves — finish Mine to continue" : "Current wave"}
-                    >
-                      W{resourceWarIntermission ? `${resourceWarWave}→${resourceWarWave + 1}` : `${resourceWarWave}/${RESOURCE_WAR_TOTAL_WAVES}`}
-                    </span>
-                  )}
-                  <span className="shrink-0 text-yellow-100/90">You</span>
-                  <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
-                    {resourceWarPlayerOreBag.map((n, i) => (
-                      <span
-                        key={i}
-                        className="inline-flex items-center gap-0.5 rounded-md border border-amber-700/35 bg-black/25 px-0.5 py-px"
-                        title={`Ore ${i + 1}`}
-                      >
-                        <ResourceWarOreIcon src={RESOURCE_LINK_ICON_SRC[i]!} sizeClass="h-4 w-4 sm:h-5 sm:w-5" />
-                        <span className="shrink-0 font-bold text-yellow-50">{n}</span>
-                      </span>
-                    ))}
-                  </span>
-                  <span className="shrink-0 text-amber-200/50" aria-hidden>
-                    ·
-                  </span>
-                  <span className="inline-flex shrink-0" title="AI war chest (gold)">
-                    <UiIcon src={UI_ICON.lootSack} className="h-3 w-3 opacity-90 sm:h-3.5 sm:w-3.5" alt="" />
-                  </span>
-                  <span className="max-w-[4.5rem] truncate text-yellow-100/75 sm:max-w-[7rem]" title={resourceWarEnemyTeam}>
-                    {resourceWarEnemyTeam}
-                  </span>
-                  <span className="shrink-0 font-bold text-amber-100/90">{resourceWarGold[resourceWarEnemyTeam] ?? 0}</span>
-                </span>
-              )}
             </div>
             {(gameMode === "multiplayer" || gameMode === "ai-versus") && isSetupMode && !gameStarted && (
               <div className="mt-1.5 flex max-w-full flex-wrap items-center gap-2">
@@ -8077,8 +7398,7 @@ function CodeConq() {
                     (gameMode === "multiplayer" ||
                       gameMode === "single-player" ||
                       gameMode === "campaign" ||
-                      gameMode === "custom-scenario" ||
-                      gameMode === "resource-war");
+                      gameMode === "custom-scenario");
                   const canUseCivRail =
                     Boolean(activeRailEligible) &&
                     railTeam === turn &&
@@ -8336,7 +7656,7 @@ function CodeConq() {
                 ))}
               </div>
             )}
-            {(!isSetupMode || isDualTeamBattle || gameMode === "custom-scenario" || gameMode === "resource-war") && (
+            {(!isSetupMode || isDualTeamBattle || gameMode === "custom-scenario") && (
               <button
                 type="button"
                 onClick={toggleBattlefieldFullscreen}
@@ -8419,32 +7739,14 @@ function CodeConq() {
                 <UiIcon src={UI_ICON.lootSack} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
               </button>
             )}
-            {gameMode === "resource-war" && (isSetupMode || (resourceWarIntermission && gameStarted)) && (
-              <button
-                type="button"
-                onClick={() => setResourceWarMinigameOpen(true)}
-                disabled={resourceWarMinigameOpen}
-                className={`${iconActionButtonClass} shrink-0 bg-amber-700 hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50`}
-                aria-label="Open mining minigame"
-                title={
-                  resourceWarIntermission && gameStarted
-                    ? "Mine — required between waves before the next enemy attack."
-                    : "Mine — 5 min link puzzle. Five ore types to your vault; score feeds the rival levy."
-                }
-              >
-                <span className="text-xs font-bold sm:text-sm" aria-hidden>
-                  {"\u26CF"}
-                </span>
-              </button>
-            )}
-            {((gameMode === "custom-scenario" || gameMode === "resource-war") && isSetupMode) && (
+            {gameMode === "custom-scenario" && isSetupMode && (
               <>
                 <button
                   type="button"
                   onClick={startCustomGame}
                   disabled={customUnits.length === 0 || Boolean(getSetupLineupLeaderError(customUnits))}
                   className={`${iconActionButtonClass} shrink-0 bg-green-600 hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50`}
-                  aria-label={gameMode === "resource-war" ? "Start battle" : "Start custom game"}
+                  aria-label="Start custom game"
                   title="Start"
                 >
                   <UiIcon src={UI_ICON.playGold} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
@@ -8488,8 +7790,7 @@ function CodeConq() {
               (gameMode === "multiplayer" ||
                 ((gameMode === "single-player" ||
                   gameMode === "campaign" ||
-                  gameMode === "custom-scenario" ||
-                  gameMode === "resource-war") &&
+                  gameMode === "custom-scenario") &&
                   turn === playerTeam &&
                   !(gameMode === "custom-scenario" && customScenarioSpectator))) && (
                 <>
@@ -8619,19 +7920,6 @@ function CodeConq() {
           >
             <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-200/85">Battle over</div>
             <div className="mt-0.5 text-sm font-bold leading-snug text-emerald-50 sm:text-base">{battleOutcomeBanner}</div>
-          </div>
-        )}
-
-        {gameMode === "resource-war" && gameStarted && !isSetupMode && resourceWarIntermission && !battleOutcomeBanner && (
-          <div
-            className="game-ui w-full rounded-none border-x-0 border-t border-amber-500/55 bg-amber-950/90 px-3 py-2 text-center shadow-[0_6px_24px_rgba(0,0,0,0.35)]"
-            role="status"
-            aria-live="polite"
-          >
-            <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-200/85">Between waves</div>
-            <div className="mt-0.5 text-xs font-semibold leading-snug text-amber-50 sm:text-sm">
-              Mine and Cash out to spawn wave {resourceWarWave + 1} of {RESOURCE_WAR_TOTAL_WAVES}.
-            </div>
           </div>
         )}
 
@@ -8928,7 +8216,7 @@ function CodeConq() {
             </div>
           )}
 
-          {(!isSetupMode || isDualTeamBattle || gameMode === "custom-scenario" || gameMode === "resource-war") && (
+          {(!isSetupMode || isDualTeamBattle || gameMode === "custom-scenario") && (
             <button
               type="button"
               onClick={toggleBattlefieldFullscreen}
@@ -9017,33 +8305,15 @@ function CodeConq() {
               <UiIcon src={UI_ICON.lootSack} className="h-4 w-4 sm:h-6 sm:w-6" alt="" />
             </button>
           )}
-          {gameMode === "resource-war" && (isSetupMode || (resourceWarIntermission && gameStarted)) && (
-            <button
-              type="button"
-              onClick={() => setResourceWarMinigameOpen(true)}
-              disabled={resourceWarMinigameOpen}
-              className={`pointer-events-auto ${iconActionButtonClass} bg-amber-700 hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed`}
-              aria-label="Open mining minigame"
-              title={
-                resourceWarIntermission && gameStarted
-                  ? "Mine — required between waves before the next enemy attack."
-                  : "Mine — 5 min link puzzle. Five ore types to your vault; score feeds the rival levy."
-              }
-            >
-              <span className="text-xs font-bold sm:text-sm" aria-hidden>
-                {"\u26CF"}
-              </span>
-            </button>
-          )}
-          {((gameMode === "custom-scenario" || gameMode === "resource-war") && isSetupMode) && (
+          {gameMode === "custom-scenario" && isSetupMode && (
             <>
               <button
                 type="button"
                 onClick={startCustomGame}
                 disabled={customUnits.length === 0 || Boolean(getSetupLineupLeaderError(customUnits))}
                 className={`pointer-events-auto ${iconActionButtonClass} bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed`}
-                aria-label={gameMode === "resource-war" ? "Start battle" : "Start custom game"}
-                title={gameMode === "resource-war" ? "Start battle" : "Start custom game"}
+                aria-label="Start custom game"
+                title="Start custom game"
               >
                 <UiIcon src={UI_ICON.playGold} className="h-4 w-4 sm:h-6 sm:w-6" />
               </button>
@@ -9089,8 +8359,7 @@ function CodeConq() {
             (gameMode === "multiplayer" ||
               ((gameMode === "single-player" ||
                 gameMode === "campaign" ||
-                gameMode === "custom-scenario" ||
-                gameMode === "resource-war") &&
+                gameMode === "custom-scenario") &&
                 turn === playerTeam &&
                 !(gameMode === "custom-scenario" && customScenarioSpectator))) && (
             <button
@@ -9125,8 +8394,7 @@ function CodeConq() {
             (gameMode === "multiplayer" ||
               ((gameMode === "single-player" ||
                 gameMode === "campaign" ||
-                gameMode === "custom-scenario" ||
-                gameMode === "resource-war") &&
+                gameMode === "custom-scenario") &&
                 turn === playerTeam &&
                 !(gameMode === "custom-scenario" && customScenarioSpectator))) && (
             <button
@@ -10733,44 +10001,6 @@ function CodeConq() {
                     ✕
                   </button>
                 </div>
-              ) : gameMode === "resource-war" ? (
-                <div className="mb-4 flex shrink-0 items-start justify-between gap-3 border-b border-amber-800/40 pb-4">
-                  <div className="min-w-0 pr-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-400/95">Resource war</p>
-                    <h2 className="mt-1.5 text-xl font-bold leading-tight tracking-tight text-yellow-50 sm:text-2xl">Mine, recruit, fight</h2>
-                    <p className="mt-2 max-w-[20rem] text-[12px] leading-relaxed text-yellow-100/68">
-                      Tap <span className="font-semibold text-amber-200/95">Mine</span> for the link puzzle — fill your vault (five ore types). Start battle for wave 1 of {RESOURCE_WAR_TOTAL_WAVES}; after each wave you must Mine again before the next enemy wave. Score still feeds the rival levy for their recruits.
-                    </p>
-                    <div className="mt-2 space-y-1.5 text-[12px] font-semibold tabular-nums text-yellow-100/92">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-amber-200/90">Your vault</span>
-                        <span className="inline-flex flex-wrap items-center gap-1.5">
-                          {resourceWarPlayerOreBag.map((n, i) => (
-                            <span key={i} className="inline-flex items-center gap-0.5" title={`Ore type ${i + 1}`}>
-                              <ResourceWarOreIcon
-                                src={RESOURCE_LINK_ICON_SRC[i]!}
-                                sizeClass="h-5 w-5 sm:h-6 sm:w-6"
-                              />
-                              <span>{n}</span>
-                            </span>
-                          ))}
-                        </span>
-                      </div>
-                      <p className="text-[11px] font-semibold text-yellow-100/85">
-                        {resourceWarEnemyTeam} war chest: {resourceWarGold[resourceWarEnemyTeam] ?? 0}
-                        <span className="ml-1.5 font-normal text-yellow-100/50">(AI recruits with gold)</span>
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsUnitPanelOpen(false)}
-                    className="battle-button shrink-0 rounded-xl border border-yellow-800/55 bg-black/50 px-3 py-2 text-sm font-semibold text-yellow-100/95 hover:border-amber-600/50 hover:bg-black/70"
-                    aria-label="Close deployment panel"
-                  >
-                    ✕
-                  </button>
-                </div>
               ) : (
                 <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -10789,7 +10019,7 @@ function CodeConq() {
                 </div>
               )}
 
-              {(gameMode === "custom-scenario" || gameMode === "resource-war") && (
+              {gameMode === "custom-scenario" && (
                 <div className="mb-4 grid shrink-0 gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-cyan-900/45 bg-cyan-950/25 p-3 shadow-inner shadow-black/20">
                     <label
@@ -10893,7 +10123,7 @@ function CodeConq() {
                     <span className="hidden text-[9px] text-yellow-100/40 sm:inline">Scroll →</span>
                   </div>
                   <div className="flex max-w-full gap-2 overflow-x-auto overflow-y-hidden pb-2 pt-0.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
-                    {resourceWarDeploymentBannerTeams.map((team) => {
+                    {setupTeams.map((team) => {
                       const passive = CIV_PASSIVES[team];
                       const placed = getTeamCount(team);
                       const isActive = selectedTeam === team;
@@ -11005,12 +10235,8 @@ function CodeConq() {
                 {setupPanelLikeCustomScenario && (
                   <div className="mb-3 border-l-2 border-amber-500/70 pl-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-200/90">Troop roster</p>
-                    <p className="text-base font-bold text-yellow-50">{resourceWarTroopPaletteTeam}</p>
-                    <p className="mt-0.5 text-[11px] text-yellow-100/55">
-                      {gameMode === "resource-war"
-                        ? "Drag to deploy — each unit costs ore points (see tooltips). Mine first to stock your vault."
-                        : "Drag icons to the battlefield"}
-                    </p>
+                    <p className="text-base font-bold text-yellow-50">{selectedTeam}</p>
+                    <p className="mt-0.5 text-[11px] text-yellow-100/55">Drag icons to the battlefield</p>
                   </div>
                 )}
                 <div
@@ -11020,18 +10246,12 @@ function CodeConq() {
                       : "grid grid-cols-5 gap-2 sm:grid-cols-6"
                   }
                 >
-                  {(AVAILABLE_TROOPS[resourceWarTroopPaletteTeam] ?? []).map((troop, index) => (
+                  {(AVAILABLE_TROOPS[selectedTeam] ?? []).map((troop, index) => (
                     <SetupTroopPaletteCell
                       key={`${troop.role}-${index}`}
                       troop={troop}
                       deploymentBudgetApplies={deploymentBudgetApplies}
-                      deploymentGoldApplies={gameMode === "resource-war"}
-                      selectedTeamGold={
-                        gameMode === "resource-war"
-                          ? sumResourceWarOres(normalizeResourceWarOreBag(resourceWarOres[resourceWarTroopPaletteTeam]))
-                          : (resourceWarGold[resourceWarTroopPaletteTeam] ?? 0)
-                      }
-                      selectedTeamTokenSpend={getTeamTokenSpend(resourceWarTroopPaletteTeam)}
+                      selectedTeamTokenSpend={getTeamTokenSpend(selectedTeam)}
                       paletteSize={setupPanelLikeCustomScenario ? "comfortable" : "default"}
                       onDragStart={() => {
                         setDraggedTroop(troop);
@@ -11047,22 +10267,13 @@ function CodeConq() {
                 <div className="mt-3 shrink-0 rounded-xl border border-yellow-800/50 bg-gradient-to-br from-black/50 to-amber-950/20 p-3">
                   <div className="flex items-center justify-between gap-2 border-b border-yellow-800/35 pb-2">
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-yellow-200/95">Deployment summary</span>
-                    {gameMode === "resource-war" ? (
-                      <span className="text-[9px] text-amber-200/80">Vault / AI gold</span>
-                    ) : (
-                      deploymentBudgetApplies && (
-                        <span className="text-[9px] text-amber-200/80">Token budget / side</span>
-                      )
+                    {deploymentBudgetApplies && (
+                      <span className="text-[9px] text-amber-200/80">Token budget / side</span>
                     )}
                   </div>
                   {deploymentBudgetApplies && (
                     <p className="mt-2 text-[10px] leading-snug text-amber-100/80">
                       Light 1 · med 2 · heavy 3 · elite 4 · unique 5 — max {SETUP_ARMY_TOKEN_BUDGET} per faction.
-                    </p>
-                  )}
-                  {gameMode === "resource-war" && (
-                    <p className="mt-2 text-[10px] leading-snug text-amber-100/80">
-                      Mine before battle for ores; between waves, Mine again to spawn the next wave ({RESOURCE_WAR_TOTAL_WAVES} total).
                     </p>
                   )}
                   <ul className="mt-2 max-h-[28vh] space-y-1 overflow-y-auto pr-0.5 text-[12px] text-yellow-100/88 sm:text-[11px]">
@@ -11080,19 +10291,6 @@ function CodeConq() {
                         <span className="shrink-0 text-right text-yellow-200/90">
                           <span className="font-semibold">{getTeamCount(team)}</span>
                           <span className="text-yellow-100/50">/16</span>
-                          {gameMode === "resource-war" &&
-                            (team === playerTeam ? (
-                              <span className="ml-1.5 inline-flex flex-wrap items-center justify-end gap-1 text-amber-200/95">
-                                {normalizeResourceWarOreBag(resourceWarOres[team]).map((n, i) => (
-                                  <span key={i} className="inline-flex items-center gap-0.5" title={`Ore ${i + 1}`}>
-                                    <ResourceWarOreIcon src={RESOURCE_LINK_ICON_SRC[i]!} sizeClass="h-4 w-4" />
-                                    <span>{n}</span>
-                                  </span>
-                                ))}
-                              </span>
-                            ) : (
-                              <span className="ml-1.5 text-amber-200/95">{resourceWarGold[team] ?? 0} gold</span>
-                            ))}
                           {deploymentBudgetApplies && (
                             <span className="ml-1.5 text-amber-200/95">
                               {getTeamTokenSpend(team)}/{SETUP_ARMY_TOKEN_BUDGET}
@@ -11168,18 +10366,6 @@ function CodeConq() {
       <AppVersionCorner />
       {multiplayerLobbyModal}
       {campaignBriefingModal}
-      <ResourceLinkMinigame
-        open={resourceWarMinigameOpen}
-        intermissionLock={gameMode === "resource-war" && resourceWarIntermission && gameStarted}
-        onClose={() => {
-          if (gameMode === "resource-war" && resourceWarIntermission && gameStarted) {
-            setLog((prev) => [`Finish the Mine session (Cash out) to spawn wave ${resourceWarWave + 1}.`, ...prev]);
-            return;
-          }
-          setResourceWarMinigameOpen(false);
-        }}
-        onSessionComplete={handleResourceWarMinigameComplete}
-      />
     </div>
   );
 }

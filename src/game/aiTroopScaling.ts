@@ -26,8 +26,8 @@ export function buildPrepareBattleOptsForGame(
   if (gameMode === "ai-versus") {
     return { aiTeams: [...multiplayerTeams], aiHpAttackMultiplier: mult };
   }
-  if (gameMode === "custom-scenario" || gameMode === "resource-war") {
-    if (gameMode === "custom-scenario" && customScenarioSpectator) {
+  if (gameMode === "custom-scenario") {
+    if (customScenarioSpectator) {
       const teams = [...new Set(customUnits.map((u: any) => u.team as TeamName))];
       if (teams.length === 0) return undefined;
       return { aiTeams: teams, aiHpAttackMultiplier: mult };
@@ -63,9 +63,6 @@ export function getAiTroopScalingForTeamInGame(
   }
   if (gameMode === "custom-scenario") {
     if (customScenarioSpectator) return mult;
-    return team !== playerTeam ? mult : 1;
-  }
-  if (gameMode === "resource-war") {
     return team !== playerTeam ? mult : 1;
   }
   return 1;

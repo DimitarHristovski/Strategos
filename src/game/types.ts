@@ -17,7 +17,6 @@ export type GameMode =
   | "campaign"
   | "multiplayer"
   | "custom-scenario"
-  | "resource-war"
   | "ai-versus";
 
 /** AI quality for single-player opponents and AI vs AI spectator mode. */
@@ -147,16 +146,6 @@ export type SavedGameState = {
     armorReductionPercent?: number;
   }>;
   gameMode?: GameMode | null;
-  /** Resource war: AI opponent faction and economy (setup). */
-  resourceWarEnemyTeam?: TeamName;
-  resourceWarGold?: Partial<Record<TeamName, number>>;
-  /** Resource war: per-faction ore tallies [5 slots] from mining (player spends these as “ore points”). */
-  resourceWarOres?: Partial<Record<TeamName, number[]>>;
-  resourceWarMineCells?: TerrainPoint[];
-  /** Resource war: current attack wave (1-based during battle). */
-  resourceWarWave?: number;
-  /** Resource war: between-wave mining gate before spawning the next wave. */
-  resourceWarIntermission?: boolean;
   /** Hot-seat / AI vs AI roster: 2–12 unique factions. */
   multiplayerTeams?: TeamName[];
   aiDifficulty?: AiDifficulty;

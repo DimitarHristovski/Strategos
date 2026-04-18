@@ -233,7 +233,6 @@ export function readPersistedSessionNavigation(): {
       gm === "campaign" ||
       gm === "multiplayer" ||
       gm === "custom-scenario" ||
-      gm === "resource-war" ||
       gm === "ai-versus"
         ? gm
         : null;
