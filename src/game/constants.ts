@@ -198,7 +198,14 @@ export function writeUserPrefs(prefs: StoredUserPrefs): void {
   }
 }
 
-export type StartScreenState = "menu" | "options" | "about" | "tutorial" | "campaign" | "single-player-setup";
+export type StartScreenState =
+  | "menu"
+  | "play"
+  | "options"
+  | "about"
+  | "tutorial"
+  | "campaign"
+  | "single-player-setup";
 
 /** About screen carousel panel count (must match slides in `CodeConq` About UI). */
 export const ABOUT_SCREEN_SLIDE_COUNT = 5;
@@ -234,6 +241,7 @@ export function readPersistedSessionNavigation(): {
       ss === "options" ||
       ss === "about" ||
       ss === "menu" ||
+      ss === "play" ||
       ss === "tutorial" ||
       ss === "campaign" ||
       ss === "single-player-setup"

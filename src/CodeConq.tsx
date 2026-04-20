@@ -115,6 +115,7 @@ import {
   applyCivTrapOnEntry,
   CIV_ABILITY_COOLDOWN_OWN_TURNS,
   CIV_ACTIVES,
+  CIV_SUMMON_ALLY_RANGE,
   CIV_VOLLEY_RANGE,
   clearExpiredCivTraps,
   createSummonedTroopFromRole,
@@ -183,6 +184,7 @@ import type {
   TerrainPreset,
   TerrainType,
   TroopCatalogEntry,
+  TroopMechanicType,
   UnitsReferenceScope
 } from "./game/types";
 import {
@@ -194,6 +196,23 @@ import {
   HANDBOOK_SIGNATURE_ICON_SRC,
   HANDBOOK_TERRAIN_ICON_SRC
 } from "./game/abilityIcons";
+
+/** Ground “mass” under the unit icon: melee = rectangles, mounted = wedge/triangles, ranged & siege = scattered. */
+function battleUnitPixelClusterClass(mech: TroopMechanicType | null): string {
+  if (!mech) return "battle-unit-pixel-cluster battle-unit-pixel-cluster--melee";
+  if (mech === "mounted") return "battle-unit-pixel-cluster battle-unit-pixel-cluster--mounted";
+  if (mech === "ranged" || mech === "sieged") return "battle-unit-pixel-cluster battle-unit-pixel-cluster--scatter";
+  return "battle-unit-pixel-cluster battle-unit-pixel-cluster--melee";
+}
+
+function battleUnitScatterPixelStyle(idx: number, unitId: string | undefined): CSSProperties {
+  const id = unitId ?? "";
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  const ax = ((h >>> 0) + idx * 1103515245) % 13 - 6;
+  const ay = (((h >>> 12) + idx * 2654435761) >>> 0) % 11 - 5;
+  return { transform: `translate(${ax}px, ${ay}px)` };
+}
 
 function HandbookGlyph({ emoji, src, className = "h-9 w-9" }: { emoji: string; src?: string; className?: string }) {
   if (src) return <UiIcon src={src} className={className} alt="" />;
@@ -385,8 +404,9 @@ function SetupTroopPaletteCell({
   });
   const leaderUnit = isLeaderRole(troop.role);
   const tokenCost = getUnitWeightTokenCost(troop.role);
-  const canAffordPlacement =
+  const canAffordTokens =
     !deploymentBudgetApplies || selectedTeamTokenSpend + tokenCost <= SETUP_ARMY_TOKEN_BUDGET;
+  const canAffordPlacement = canAffordTokens;
 
   const tooltip =
     tipOpen &&
@@ -449,12 +469,11 @@ function SetupTroopPaletteCell({
             <p className="mt-2 text-[10px] text-amber-100/90">
               Army tokens: <span className="font-semibold text-amber-200">{tokenCost}</span> (budget{" "}
               {SETUP_ARMY_TOKEN_BUDGET} per side)
-              {!canAffordPlacement && (
+              {!canAffordTokens && (
                 <span className="block text-red-300/95">Not enough tokens left for this unit.</span>
               )}
             </p>
           )}
-
           <div className="mt-3">
             <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/85">Signature skills</div>
             {troopAbilities.length > 0 ? (
@@ -890,12 +909,17 @@ function AppVersionCorner() {
       className="pointer-events-none fixed bottom-3 right-3 z-[200] select-none sm:bottom-4 sm:right-4"
       aria-hidden
     >
-      <span
-        className="inline-block rounded-md border border-yellow-600/45 bg-black/55 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-yellow-100/90 shadow-[0_4px_16px_rgba(0,0,0,0.35)] backdrop-blur-sm"
+      <div
+        className="rounded-md border border-amber-600/40 bg-black/60 px-2.5 py-1.5 text-right shadow-[0_4px_20px_rgba(0,0,0,0.4)] backdrop-blur-sm"
         title={`Strategos v${GAME_VERSION}`}
       >
-        v{GAME_VERSION}
-      </span>
+        <div className="text-[8px] font-semibold uppercase leading-tight tracking-[0.22em] text-amber-200/80">
+          Strategos
+        </div>
+        <div className="mt-0.5 font-mono text-[11px] font-semibold tabular-nums tracking-[0.08em] text-yellow-50/95">
+          v{GAME_VERSION}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1005,6 +1029,7 @@ function CodeConq() {
   const [customScenarioSpectator, setCustomScenarioSpectator] = useState(false);
   /** Hot-seat two factions (multiplayer) or AI vs AI — shared roster/setup rules. */
   const isDualTeamBattle = gameMode === "multiplayer" || gameMode === "ai-versus";
+  const setupPanelLikeCustomScenario = gameMode === "custom-scenario";
   const [civAbilityModeTeam, setCivAbilityModeTeam] = useState<TeamName | null>(null);
   const [civOwnTurnOrdinalForAbility, setCivOwnTurnOrdinalForAbility] = useState<Partial<Record<TeamName, number>>>({});
   const [civAbilityUnlockAtOwnOrdinal, setCivAbilityUnlockAtOwnOrdinal] = useState<Partial<Record<TeamName, number>>>({});
@@ -1247,10 +1272,14 @@ function CodeConq() {
     turnSliceStartedAtRef.current = Date.now();
   }, [turn, gameStarted, isSetupMode, gameOptions.timedPlayEnabled]);
 
-  // Update units when level changes
+  // Update units when level changes (skirmish / campaign only — not custom or resource war)
   useEffect(() => {
     if (isRestoringSavedGameRef.current) {
       isRestoringSavedGameRef.current = false;
+      return;
+    }
+
+    if (gameMode === "custom-scenario" || gameMode === "multiplayer" || gameMode === "ai-versus") {
       return;
     }
 
@@ -1455,12 +1484,15 @@ function CodeConq() {
       );
       setCivAbilityModeTeam(null);
       setSelectedForMerge(savedState.selectedForMerge ? applyCivilizationPassive(restoreUnitFromStorage(savedState.selectedForMerge)) : null);
-      const restoredGameMode = (savedState.gameMode ?? null) as GameMode | null;
+      const rawSavedMode = savedState.gameMode ?? null;
+      const restoredGameMode: GameMode | null =
+        rawSavedMode === "resource-war" ? null : (rawSavedMode as GameMode | null);
       setGameMode(restoredGameMode);
       {
         const ss = savedState.startScreen;
         if (
           ss === "menu" ||
+          ss === "play" ||
           ss === "options" ||
           ss === "about" ||
           ss === "tutorial" ||
@@ -2549,7 +2581,7 @@ function CodeConq() {
           }
         }
       } else if (civDef.targeting === "place_trap") {
-        const tile = pickAiCivSummonTile(battleUnits, currentTeam, battlefieldSize, battlefieldSize);
+        const tile = pickAiCivSummonTile(battleUnits, currentTeam, battlefieldSize, battlefieldSize, CIV_VOLLEY_RANGE);
         const taken = tile ? civBattleTraps.some((t) => t.x === tile.x && t.y === tile.y) : true;
         if (tile && !taken && regScore < 96) {
           const allies = battleUnits.filter((u) => u.team === currentTeam && u.hp > 0).length;
@@ -2710,7 +2742,14 @@ function CodeConq() {
     if (tutorialMissionIndex !== null) return;
     if (team !== turn) return;
     if (gameMode === "custom-scenario" && customScenarioSpectator) return;
-    if (!(gameMode === "multiplayer" || gameMode === "single-player" || gameMode === "campaign" || gameMode === "custom-scenario")) {
+    if (
+      !(
+        gameMode === "multiplayer" ||
+        gameMode === "single-player" ||
+        gameMode === "campaign" ||
+        gameMode === "custom-scenario"
+      )
+    ) {
       return;
     }
     if (gameMode !== "multiplayer" && team !== playerTeam) return;
@@ -2731,7 +2770,7 @@ function CodeConq() {
     const def = CIV_ACTIVES[team];
     const hint =
       def.targeting === "summon_unit"
-        ? `Click an empty tile within ${CIV_VOLLEY_RANGE} steps of a living ally to deploy a ${def.summonRole ?? "unit"}.`
+        ? `Click an empty tile within ${CIV_SUMMON_ALLY_RANGE} step${CIV_SUMMON_ALLY_RANGE === 1 ? "" : "s"} of a living ally to deploy a ${def.summonRole ?? "unit"}.`
         : def.targeting === "place_trap"
           ? `Click an empty tile within ${CIV_VOLLEY_RANGE} steps of a living ally to lay a trap (enemies take damage when they move onto it).`
           : def.targeting === "enemy_volley"
@@ -2750,7 +2789,8 @@ function CodeConq() {
     const keys = new Set<string>();
     for (let xi = 0; xi < sz; xi++) {
       for (let yi = 0; yi < sz; yi++) {
-        if (!isSummonReinforcementTileValid(units, cm, xi, yi)) continue;
+        const allyRadius = needSummon ? CIV_SUMMON_ALLY_RANGE : CIV_VOLLEY_RANGE;
+        if (!isSummonReinforcementTileValid(units, cm, xi, yi, allyRadius)) continue;
         if (civBattleTraps.some((t) => t.x === xi && t.y === yi)) continue;
         keys.add(`${xi},${yi}`);
       }
@@ -3474,8 +3514,10 @@ function CodeConq() {
     return <FormationLoadingScreen />;
   }
 
-  // Safety check - don't render if units is not properly initialized
-  if (!units || units.length === 0) {
+  // Safety check - don't render if units is not properly initialized.
+  // Custom scenario keeps `units` empty during setup; the grid uses `customUnits` until battle starts.
+  const setupGridUsesCustomUnitsOnly = isSetupMode && gameMode === "custom-scenario";
+  if (!units || (!setupGridUsesCustomUnitsOnly && units.length === 0)) {
     return <FormationLoadingScreen />;
   }
 
@@ -3957,9 +3999,9 @@ function CodeConq() {
           setLog((prev) => [`Deploy on an empty tile near an ally — not on ${clicked.name}.`, ...prev]);
           return;
         }
-        if (!isSummonReinforcementTileValid(units, team, x, y)) {
+        if (!isSummonReinforcementTileValid(units, team, x, y, CIV_SUMMON_ALLY_RANGE)) {
           setLog((prev) => [
-            `Invalid tile — empty cell within ${CIV_VOLLEY_RANGE} steps of a living ally.`,
+            `Invalid tile — empty cell within ${CIV_SUMMON_ALLY_RANGE} step${CIV_SUMMON_ALLY_RANGE === 1 ? "" : "s"} of a living ally.`,
             ...prev
           ]);
           return;
@@ -4360,8 +4402,8 @@ function CodeConq() {
             y,
             Icon: draggedTroop.Icon
           };
-          
-          setCustomUnits((prev) => [...prev, finalizeSetupPlacedTroop(newTroop)]);
+          const placed = finalizeSetupPlacedTroop(newTroop);
+          setCustomUnits((prev) => [...prev, placed]);
           setDraggedTroop(null);
           setInspectedTile(null);
         }
@@ -4426,8 +4468,8 @@ function CodeConq() {
             y,
             Icon: draggedTroop.Icon
           };
-          
-          setCustomUnits((prev) => [...prev, finalizeSetupPlacedTroop(newTroop)]);
+          const placed = finalizeSetupPlacedTroop(newTroop);
+          setCustomUnits((prev) => [...prev, placed]);
           setDraggedTroop(null);
         }
       }
@@ -4574,7 +4616,7 @@ function CodeConq() {
     }
 
     setIsSetupMode(false);
-    const prepared = prepareUnitsForBattle(
+    let prepared = prepareUnitsForBattle(
       customUnits,
       buildPrepareBattleOptsForGame(
         gameMode,
@@ -6487,6 +6529,59 @@ function CodeConq() {
       );
     }
 
+    if (startScreen === "play") {
+      return (
+        <>
+          <div
+            className="cc-game-cursors flex min-h-screen flex-col items-center justify-center p-4 sm:p-6"
+            style={appBackgroundStyle}
+          >
+            <div className="game-ui w-full max-w-2xl p-6 text-center sm:p-8">
+              <button
+                type="button"
+                onClick={() => setStartScreen("menu")}
+                className="battle-button mb-6 w-fit px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
+              >
+                Back
+              </button>
+              <div className="mx-auto flex w-full max-w-md flex-col gap-4">
+                <button
+                  type="button"
+                  onClick={() => setStartScreen("single-player-setup")}
+                  className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+                >
+                  Single Player
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStartScreen("campaign")}
+                  className="battle-button w-full px-6 py-4 text-lg font-semibold border border-emerald-700/50 bg-emerald-950/45 hover:bg-emerald-900/55"
+                >
+                  Campaign
+                </button>
+                <button
+                  type="button"
+                  onClick={openMultiplayerLobby}
+                  className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+                >
+                  Multiplayer
+                </button>
+                <button
+                  type="button"
+                  onClick={startCustomScenarioMode}
+                  className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
+                >
+                  Custom scenario
+                </button>
+              </div>
+            </div>
+            <AppVersionCorner />
+          </div>
+          {multiplayerLobbyModal}
+        </>
+      );
+    }
+
     if (startScreen === "tutorial") {
       return (
         <>
@@ -6583,7 +6678,7 @@ function CodeConq() {
             <div className="game-ui w-full max-w-2xl p-6 text-left sm:p-8">
               <button
                 type="button"
-                onClick={() => setStartScreen("menu")}
+                onClick={() => setStartScreen("play")}
                 className="battle-button mb-6 w-fit px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
               >
                 Back
@@ -6672,7 +6767,7 @@ function CodeConq() {
                 type="button"
                 onClick={() => {
                   setCampaignSelectedFaction(null);
-                  setStartScreen("menu");
+                  setStartScreen("play");
                 }}
                 className="battle-button mb-6 w-fit px-4 py-2 text-sm font-semibold bg-gray-700 hover:bg-gray-800"
               >
@@ -6804,8 +6899,13 @@ function CodeConq() {
                 <p className="mt-1 text-xs uppercase tracking-[0.28em] text-amber-200/75">Swipe panels · ← → keys · Prev / Next</p>
               </div>
               <div className="flex justify-center sm:justify-end">
-                <div className="rounded-full border border-yellow-500/35 bg-black/25 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow-100">
-                  v{GAME_VERSION}
+                <div className="rounded-full border border-amber-600/40 bg-black/35 px-3 py-1.5 text-right shadow-[0_2px_12px_rgba(0,0,0,0.25)]">
+                  <div className="text-[8px] font-semibold uppercase leading-tight tracking-[0.2em] text-amber-200/75">
+                    Release
+                  </div>
+                  <div className="mt-0.5 font-mono text-[11px] font-semibold tabular-nums tracking-[0.06em] text-yellow-100">
+                    v{GAME_VERSION}
+                  </div>
                 </div>
               </div>
             </div>
@@ -7051,31 +7151,10 @@ function CodeConq() {
               <div className="mx-auto flex w-full max-w-md flex-col gap-4">
                 <button
                   type="button"
-                  onClick={() => setStartScreen("single-player-setup")}
+                  onClick={() => setStartScreen("play")}
                   className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
                 >
-                  Single Player
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStartScreen("campaign")}
-                  className="battle-button w-full px-6 py-4 text-lg font-semibold border border-emerald-700/50 bg-emerald-950/45 hover:bg-emerald-900/55"
-                >
-                  Campaign
-                </button>
-                <button
-                  type="button"
-                  onClick={openMultiplayerLobby}
-                  className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-                >
-                  Multiplayer
-                </button>
-                <button
-                  type="button"
-                  onClick={startCustomScenarioMode}
-                  className="battle-button w-full px-6 py-4 text-lg font-semibold bg-gray-700 hover:bg-gray-800"
-                >
-                  Custom scenario
+                  Play
                 </button>
                 <button
                   type="button"
@@ -7369,6 +7448,15 @@ function CodeConq() {
                 <span className="hidden sm:inline">Round {round}</span>
               </span>
             )}
+            {!isSetupMode && gameStarted && selectedUnitIds.length > 0 && (
+              <span
+                className="rounded-full border border-amber-500/75 bg-amber-950/55 px-2 py-0.5 font-mono text-[11px] font-bold tabular-nums text-amber-50 shadow-[0_0_12px_rgba(245,158,11,0.12)] sm:px-3 sm:py-1 sm:text-sm"
+                title={`${selectedUnitIds.length} ${selectedUnitIds.length === 1 ? "unit" : "units"} selected`}
+                aria-live="polite"
+              >
+                {selectedUnitIds.length}
+              </span>
+            )}
 
             {!isSetupMode && gameStarted && gameOptions.timedPlayEnabled && timedPlayTeamKeys.length > 0 && !timedPlayLoserTeam && (
               <span
@@ -7641,16 +7729,18 @@ function CodeConq() {
                 </button>
               )}
             {gameMode === "custom-scenario" && isSetupMode && (
+              <button
+                type="button"
+                onClick={autoDeployCustomBattle}
+                className={`${iconActionButtonClass} shrink-0 bg-blue-600 hover:bg-blue-700`}
+                aria-label="Auto deploy"
+                title="Auto deploy"
+              >
+                <UiIcon src={UI_ICON.lootSack} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
+              </button>
+            )}
+            {gameMode === "custom-scenario" && isSetupMode && (
               <>
-                <button
-                  type="button"
-                  onClick={autoDeployCustomBattle}
-                  className={`${iconActionButtonClass} shrink-0 bg-blue-600 hover:bg-blue-700`}
-                  aria-label="Auto deploy"
-                  title="Auto deploy"
-                >
-                  <UiIcon src={UI_ICON.lootSack} className="h-3.5 w-3.5 sm:h-6 sm:w-6" alt="" />
-                </button>
                 <button
                   type="button"
                   onClick={startCustomGame}
@@ -7834,6 +7924,17 @@ function CodeConq() {
         )}
 
         <div className="pointer-events-none fixed right-2 top-[4.5rem] z-20 flex max-h-[calc(100dvh-5.75rem)] flex-col items-end gap-1.5 sm:right-4 sm:top-28 sm:max-h-[calc(100vh-8rem)] sm:gap-2">
+          {!isSetupMode && gameStarted && selectedUnitIds.length > 0 && (
+            <div
+              className="pointer-events-auto rounded-lg border-2 border-amber-400/60 bg-black/80 px-3 py-2 text-center shadow-[0_4px_22px_rgba(245,158,11,0.2)] backdrop-blur-sm"
+              title={`${selectedUnitIds.length} ${selectedUnitIds.length === 1 ? "unit" : "units"} selected`}
+            >
+              <div className="text-[9px] font-semibold uppercase tracking-[0.22em] text-amber-200/90">Selected</div>
+              <div className="mt-0.5 font-mono text-[22px] font-bold leading-none tabular-nums text-yellow-50 sm:text-[26px]">
+                {selectedUnitIds.length}
+              </div>
+            </div>
+          )}
           <div className="pointer-events-auto flex max-h-[calc(100dvh-5.75rem)] flex-col items-end gap-1.5 overflow-y-auto max-sm:hidden sm:max-h-[calc(100vh-8rem)] sm:gap-2">
           {isBattlefieldFullscreen && !isSetupMode && gameStarted && gameOptions.timedPlayEnabled && timedPlayTeamKeys.length > 0 && !timedPlayLoserTeam && (
             <div
@@ -7905,6 +8006,15 @@ function CodeConq() {
                 <span className="block text-[11px] uppercase tracking-wide">Spy</span>
                 <span className="block text-xs sm:text-sm">{spyCount}/3</span>
               </div>
+              {selectedUnitIds.length > 0 && (
+                <div
+                  className="min-w-[3.25rem] text-amber-50 font-semibold bg-amber-950/70 px-2.5 py-1.5 rounded border border-amber-500/70 text-center backdrop-blur-sm"
+                  title={`${selectedUnitIds.length} ${selectedUnitIds.length === 1 ? "unit" : "units"} selected`}
+                >
+                  <span className="block text-[11px] uppercase tracking-wide text-amber-200/95">Selected</span>
+                  <span className="block font-mono text-base font-bold tabular-nums sm:text-lg">{selectedUnitIds.length}</span>
+                </div>
+              )}
             </div>
           )}
           </div>
@@ -7922,8 +8032,24 @@ function CodeConq() {
                   <TroopIconMark unit={focusedBattleUnit} imgClassName="h-9 w-9" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-amber-300/80">
-                    {isFocusedIntelObscured ? "Hostile (classified)" : selected ? "Selected Unit" : "Focused Unit"}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-amber-300/80">
+                      {isFocusedIntelObscured
+                        ? "Hostile (classified)"
+                        : inspectedUnit
+                          ? "Inspected"
+                          : selected
+                            ? "Selected"
+                            : "Focused Unit"}
+                    </div>
+                    {selected && !inspectedUnit && selectedUnitIds.length > 0 && (
+                      <span
+                        className="inline-flex min-h-[1.75rem] min-w-[1.75rem] items-center justify-center rounded-lg border-2 border-amber-400/60 bg-amber-500/20 px-2 font-mono text-lg font-bold tabular-nums leading-none text-amber-50 sm:text-xl"
+                        title={`${selectedUnitIds.length} ${selectedUnitIds.length === 1 ? "unit" : "units"} selected`}
+                      >
+                        {selectedUnitIds.length}
+                      </span>
+                    )}
                   </div>
                   <div className="truncate text-base font-semibold text-yellow-50">
                     {isFocusedIntelObscured ? "???" : focusedBattleUnit.name}
@@ -8169,17 +8295,18 @@ function CodeConq() {
           )}
 
           {gameMode === "custom-scenario" && isSetupMode && (
+            <button
+              type="button"
+              onClick={autoDeployCustomBattle}
+              className={`pointer-events-auto ${iconActionButtonClass} bg-blue-600 hover:bg-blue-700`}
+              aria-label="Auto deploy troops"
+              title="Auto deploy troops"
+            >
+              <UiIcon src={UI_ICON.lootSack} className="h-4 w-4 sm:h-6 sm:w-6" alt="" />
+            </button>
+          )}
+          {gameMode === "custom-scenario" && isSetupMode && (
             <>
-              <button
-                type="button"
-                onClick={autoDeployCustomBattle}
-                className={`pointer-events-auto ${iconActionButtonClass} bg-blue-600 hover:bg-blue-700`}
-                aria-label="Auto deploy troops"
-                title="Auto deploy troops"
-              >
-                <UiIcon src={UI_ICON.lootSack} className="h-4 w-4 sm:h-6 sm:w-6" />
-              </button>
-
               <button
                 type="button"
                 onClick={startCustomGame}
@@ -8190,7 +8317,6 @@ function CodeConq() {
               >
                 <UiIcon src={UI_ICON.playGold} className="h-4 w-4 sm:h-6 sm:w-6" />
               </button>
-
               <button
                 type="button"
                 onClick={resetCustomSetup}
@@ -8772,6 +8898,7 @@ function CodeConq() {
                 {[...Array(battlefieldSize)].flatMap((_, y) =>
                   [...Array(battlefieldSize)].map((_, x) => {
                 const u = getUnit(x, y);
+                const unitPixelMech = u ? getTroopMechanicType(u) : null;
                 const isSelected = Boolean(u?.id && selectedUnitIds.includes(u.id));
                 const key = `${x},${y}`;
                 const isMeleeApproach =
@@ -9277,9 +9404,9 @@ function CodeConq() {
                           }}
                           className="battle-unit-layout-root relative z-30 flex h-full w-full min-w-0 flex-col items-center justify-center will-change-transform [transform:translateZ(0)]"
                         >
-                          {/* Pixel troop body so tile feels occupied (bird-dot style). */}
+                          {/* Pixel troop body: melee blocks, mounted wedge, ranged/siege scattered. */}
                           <div
-                            className="battle-unit-pixel-cluster"
+                            className={battleUnitPixelClusterClass(unitPixelMech)}
                             style={{
                               ["--hp-grid-side" as string]: String(
                                 Math.max(1, Math.ceil(Math.sqrt(Math.max(1, Math.floor(Number(u.hp) || 1)))))
@@ -9289,7 +9416,15 @@ function CodeConq() {
                             aria-hidden
                           >
                             {Array.from({ length: Math.max(1, Math.floor(Number(u.hp) || 1)) }, (_, idx) => (
-                              <span key={idx} className="battle-unit-pixel-dot" />
+                              <span
+                                key={idx}
+                                className="battle-unit-pixel-dot"
+                                style={
+                                  unitPixelMech === "ranged" || unitPixelMech === "sieged"
+                                    ? battleUnitScatterPixelStyle(idx, u.id)
+                                    : undefined
+                                }
+                              />
                             ))}
                           </div>
                           {/* Unit Icon */}
@@ -9836,14 +9971,14 @@ function CodeConq() {
         {isUnitPanelOpen && isSetupMode && (
           <div
             className={
-              gameMode === "custom-scenario"
+              setupPanelLikeCustomScenario
                 ? "fixed left-2 right-2 top-[4.75rem] z-40 sm:left-auto sm:right-4 sm:w-[min(26rem,calc(100vw-1rem))]"
                 : "fixed left-3 right-3 top-24 z-40 sm:left-auto sm:right-4 sm:w-[22rem]"
             }
           >
             <div
               className={
-                gameMode === "custom-scenario"
+                setupPanelLikeCustomScenario
                   ? "game-ui relative flex max-h-[calc(100vh-5rem)] flex-col overflow-y-auto overflow-x-hidden rounded-2xl border border-amber-800/45 bg-gradient-to-b from-[#141a14]/98 via-gray-950/98 to-black/95 p-4 shadow-[0_20px_50px_rgba(0,0,0,0.55)] ring-1 ring-amber-900/25 sm:max-h-[calc(100vh-7rem)] sm:p-5"
                   : "game-ui relative flex max-h-[calc(100vh-7rem)] flex-col overflow-hidden p-3 sm:p-4"
               }
@@ -9901,7 +10036,10 @@ function CodeConq() {
                       onChange={(e) => {
                         const next = e.target.value as AiDifficulty;
                         setAiDifficulty(next);
-                        restartSessionForGameplaySettings({ aiDifficulty: next });
+                        restartSessionForGameplaySettings({
+                          aiDifficulty: next,
+                          ...(gameMode ? { gameMode } : {})
+                        });
                       }}
                       className="mt-2.5 w-full cursor-pointer rounded-lg border border-cyan-700/50 bg-gray-950/90 px-3 py-2.5 text-sm font-medium text-cyan-50 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/25"
                     >
@@ -9926,7 +10064,10 @@ function CodeConq() {
                       value={playerTeam}
                       onChange={(e) => {
                         const next = e.target.value as TeamName;
-                        restartSessionForGameplaySettings({ playerTeam: next });
+                        restartSessionForGameplaySettings({
+                          playerTeam: next,
+                          ...(gameMode ? { gameMode } : {})
+                        });
                       }}
                       className="mt-2.5 w-full cursor-pointer rounded-lg border border-amber-700/50 bg-gray-950/90 px-3 py-2.5 text-sm font-medium text-amber-50 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/25"
                     >
@@ -9972,7 +10113,7 @@ function CodeConq() {
                 </div>
               )}
 
-              {gameMode === "custom-scenario" ? (
+              {setupPanelLikeCustomScenario ? (
                 <div className="mb-3 shrink-0">
                   <div className="mb-2 flex items-end justify-between gap-2">
                     <div>
@@ -10086,12 +10227,12 @@ function CodeConq() {
 
               <div
                 className={
-                  gameMode === "custom-scenario"
+                  setupPanelLikeCustomScenario
                     ? "flex min-h-[min(42vh,17.5rem)] shrink-0 flex-col overflow-x-hidden pb-2 pr-0.5 pt-1"
                     : "min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pr-0.5"
                 }
               >
-                {gameMode === "custom-scenario" && (
+                {setupPanelLikeCustomScenario && (
                   <div className="mb-3 border-l-2 border-amber-500/70 pl-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-200/90">Troop roster</p>
                     <p className="text-base font-bold text-yellow-50">{selectedTeam}</p>
@@ -10100,18 +10241,18 @@ function CodeConq() {
                 )}
                 <div
                   className={
-                    gameMode === "custom-scenario"
+                    setupPanelLikeCustomScenario
                       ? "grid min-h-[12rem] grid-cols-4 gap-2.5 sm:grid-cols-5"
                       : "grid grid-cols-5 gap-2 sm:grid-cols-6"
                   }
                 >
-                  {AVAILABLE_TROOPS[selectedTeam].map((troop, index) => (
+                  {(AVAILABLE_TROOPS[selectedTeam] ?? []).map((troop, index) => (
                     <SetupTroopPaletteCell
                       key={`${troop.role}-${index}`}
                       troop={troop}
                       deploymentBudgetApplies={deploymentBudgetApplies}
                       selectedTeamTokenSpend={getTeamTokenSpend(selectedTeam)}
-                      paletteSize={gameMode === "custom-scenario" ? "comfortable" : "default"}
+                      paletteSize={setupPanelLikeCustomScenario ? "comfortable" : "default"}
                       onDragStart={() => {
                         setDraggedTroop(troop);
                         playTroopSelectSfx({ ...troop, ...generateTroopStats(troop.role) });
@@ -10122,7 +10263,7 @@ function CodeConq() {
                 </div>
               </div>
 
-              {gameMode === "custom-scenario" ? (
+              {setupPanelLikeCustomScenario ? (
                 <div className="mt-3 shrink-0 rounded-xl border border-yellow-800/50 bg-gradient-to-br from-black/50 to-amber-950/20 p-3">
                   <div className="flex items-center justify-between gap-2 border-b border-yellow-800/35 pb-2">
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-yellow-200/95">Deployment summary</span>

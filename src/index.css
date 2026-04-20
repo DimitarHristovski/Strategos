@@ -1746,6 +1746,59 @@
         0 0 3px color-mix(in oklab, var(--unit-pixel-color, #94a3b8) 35%, transparent);
 }
 
+/* Close combat: rectangular “block” pixels in a tight grid */
+.battle-unit-pixel-cluster--melee {
+    width: 94%;
+    height: 30%;
+    grid-template-columns: repeat(var(--hp-grid-side, 1), 6px);
+    grid-auto-rows: 3px;
+    gap: 2px 1px;
+}
+
+.battle-unit-pixel-cluster--melee .battle-unit-pixel-dot {
+    width: 5px;
+    height: 2px;
+    border-radius: 0;
+}
+
+/* Mounted: triangular wedge + arrowhead pixels */
+.battle-unit-pixel-cluster--mounted {
+    width: 78%;
+    height: 56%;
+    clip-path: polygon(50% 2%, 4% 100%, 100% 100%);
+    grid-template-columns: repeat(var(--hp-grid-side, 1), 4px);
+    grid-auto-rows: 2px;
+    gap: 3px;
+    padding-top: 2px;
+}
+
+.battle-unit-pixel-cluster--mounted .battle-unit-pixel-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 0;
+    clip-path: polygon(100% 0%, 0% 100%, 100% 100%);
+}
+
+/* Ranged & siege: flex + per-dot jitter (React) reads as scattered skirmishers */
+.battle-unit-pixel-cluster--scatter {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-content: center;
+    align-items: center;
+    width: 96%;
+    height: 58%;
+    gap: 0;
+}
+
+.battle-unit-pixel-cluster--scatter .battle-unit-pixel-dot {
+    flex: 0 0 auto;
+    width: 2px;
+    height: 2px;
+    margin: 0 1px;
+    border-radius: 0;
+}
+
 /* Outer: position + rotation. Inner: CSS “props” (arrows / rocks / charge embers) flying along the arc. */
 .battle-projectile-wrap {
     position: absolute;
@@ -3313,5 +3366,5 @@ body.cc-cursor-setup-deploy {
 }
 
 body.cc-cursor-setup-deploy * {
-  cursor: inherit !important;
+    cursor: inherit !important;
 }
